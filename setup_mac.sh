@@ -7,6 +7,7 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 configs_dir="$repo_dir/.config"
+codex_dir="$repo_dir/.codex"
 
 if [[ ! -d "$configs_dir" ]]; then
   echo "未找到 $configs_dir"
@@ -54,6 +55,34 @@ while IFS= read -r -d '' config_source; do
   echo "已创建: $target_path -> $config_source"
   created_any=true
 done < <(find "$configs_dir" -mindepth 1 -maxdepth 1 -print0)
+
+codex_config_source="$codex_dir/config.toml"
+if [[ -f "$codex_config_source" ]]; then
+  codex_target_dir="$target_dir/.codex"
+  codex_target_path="$codex_target_dir/config.toml"
+
+  read -rp "是否将 Codex 配置链接到 $codex_target_path? [y/N] " codex_answer
+  if [[ "$codex_answer" =~ ^[Yy]$ ]]; then
+    mkdir -p "$codex_target_dir"
+    if [[ -e "$codex_target_path" || -L "$codex_target_path" ]]; then
+      read -rp "目标 $codex_target_path 已存在，是否覆盖? [y/N] " codex_replace
+      if [[ ! "$codex_replace" =~ ^[Yy]$ ]]; then
+        echo "保留现有：$codex_target_path"
+      else
+        rm -rf "$codex_target_path"
+        ln -s "$codex_config_source" "$codex_target_path"
+        echo "已创建: $codex_target_path -> $codex_config_source"
+        created_any=true
+      fi
+    else
+      ln -s "$codex_config_source" "$codex_target_path"
+      echo "已创建: $codex_target_path -> $codex_config_source"
+      created_any=true
+    fi
+  else
+    echo "跳过 Codex 配置"
+  fi
+fi
 
 if [[ "$created_any" != true ]]; then
   echo "本次未创建任何链接。"
