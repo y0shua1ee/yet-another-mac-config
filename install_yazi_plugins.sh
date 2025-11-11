@@ -79,6 +79,8 @@ require_cmd git
 warn_if_missing starship "starship is needed for the starship.yazi prompt integration."
 warn_if_missing lazygit "lazygit is needed for the lazygit.yazi binding."
 warn_if_missing 7zz "7-Zip CLI (7zz) unlocks password-protected archives in compress.yazi."
+# zoom.yazi 依赖 ImageMagick，提前提醒缺失的 magick 命令
+warn_if_missing magick "ImageMagick (magick) is required for zoom.yazi to scale previews."
 
 if [[ "$OSTYPE" == darwin* ]]; then
   default_lg_config="$HOME/Library/Application Support/lazygit/config.yml"
@@ -101,6 +103,7 @@ plugins=(
   "KKV9/compress"
   "Lil-Dank/lazygit"
   "yazi-rs/plugins:full-border"
+  "yazi-rs/plugins:zoom"
 )
 
 echo "YAZI_CONFIG_HOME set to: $YAZI_CONFIG_HOME"

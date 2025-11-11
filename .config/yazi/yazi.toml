@@ -97,6 +97,11 @@ id   = "git"
 name = "*/"
 run  = "git"
 
+# zoom.yazi 作为图片预览，默认倍率为 0，便于后续按键缩放
+[[plugin.prepend_previewers]]
+mime = "image/*"
+run  = "zoom"
+
 fetchers = [
 	# Mimetype
 	{ id = "mime", name = "*", run = "mime", prio = "high" },
