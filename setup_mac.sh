@@ -84,6 +84,32 @@ if [[ -f "$codex_config_source" ]]; then
   fi
 fi
 
+# 额外处理 Hammerspoon 配置目录，便于统一软链接
+hammerspoon_source="$repo_dir/.hammerspoon"
+if [[ -d "$hammerspoon_source" ]]; then
+  hammerspoon_target="$target_dir/.hammerspoon"
+  read -rp "是否将 Hammerspoon 配置链接到 $hammerspoon_target? [y/N] " hs_answer
+  if [[ "$hs_answer" =~ ^[Yy]$ ]]; then
+    if [[ -e "$hammerspoon_target" || -L "$hammerspoon_target" ]]; then
+      read -rp "目标 $hammerspoon_target 已存在，是否覆盖? [y/N] " hs_replace
+      if [[ ! "$hs_replace" =~ ^[Yy]$ ]]; then
+        echo "保留现有：$hammerspoon_target"
+      else
+        rm -rf "$hammerspoon_target"
+        ln -s "$hammerspoon_source" "$hammerspoon_target"
+        echo "已创建: $hammerspoon_target -> $hammerspoon_source"
+        created_any=true
+      fi
+    else
+      ln -s "$hammerspoon_source" "$hammerspoon_target"
+      echo "已创建: $hammerspoon_target -> $hammerspoon_source"
+      created_any=true
+    fi
+  else
+    echo "跳过 Hammerspoon 配置"
+  fi
+fi
+
 if [[ "$created_any" != true ]]; then
   echo "本次未创建任何链接。"
 fi

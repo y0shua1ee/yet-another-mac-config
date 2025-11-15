@@ -6,7 +6,8 @@ My Mac config
 
 1. 赋予脚本执行权限：`chmod +x setup_mac.sh`
 2. 执行脚本：`./setup_mac.sh`
-3. 根据提示输入目标 macOS 用户名，脚本会逐个遍历仓库 `.config` 下的子目录，并在 `/Users/<username>/.config` 中为每个项目单独创建软链接；若某个目标项已存在，会先确认是否覆盖，默认则跳过。
+3. 根据提示输入目标 macOS 用户名，脚本会逐个遍历仓库 `.config` 下的子目录，并在 `/Users/<username>/.config` 中创建软链接；若某个目标项已存在，会先确认是否覆盖，默认则跳过。
+4. 同一脚本也会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`，这样 Hammerspoon 配置可与仓库保持一致；在此之前请先通过 `brew install --cask hammerspoon` 安装好 Hammerspoon，并根据需要安装 `Ghostty`（例如 `brew install --cask ghostty`）以使用 `Ctrl+Alt+T` 新开 Ghostty 窗口的快捷方式。
 
 ## Yazi 插件同步
 
