@@ -19,4 +19,15 @@ My Mac config
 
 脚本可安全重复执行，方便在多台机器间保持插件一致。
 
+## 本地文件同步约定
+
+以下内容仅保留在本地环境，不会同步到仓库：
+
+- `.codex/`：Codex 本地配置。
+- `.config/op/config`：1Password CLI 的本地设备信息。
+- `.config/mole/*.log`：清理工具运行日志。
+- `.config/ghostty/*.bak`：Ghostty 配置备份文件。
+
+如果后续新增只适用于当前机器的配置或缓存文件，建议继续补充到 `.gitignore`，避免误提交到仓库。
+
 后续其他初始化操作也会陆续添加到 `setup_mac.sh` 中。
