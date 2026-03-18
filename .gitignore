@@ -4,6 +4,7 @@
 
 # 本地应用状态
 .config/jgit/
+.config/linearmouse/
 .config/mole/
 .config/op/
 .config/raycast/

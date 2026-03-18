@@ -26,6 +26,7 @@ My Mac config
 
 - `.codex/`：Codex 本地配置。
 - `.config/op/`：1Password CLI 的本地设备信息。
+- `.config/linearmouse/`：鼠标与触控板的本机硬件配置。
 - `.config/mole/`：清理工具运行日志与本地运行状态。
 - `.config/raycast/`：Raycast 本地扩展与缓存数据。
 - `.config/jgit/`：Jujutsu / Git 相关本地配置。
