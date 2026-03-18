@@ -1,4 +1,9 @@
 .DS_Store
 
+.codex/
 raycast/
 jgit/
+
+.config/ghostty/*.bak
+.config/mole/*.log
+.config/op/config

@@ -6,7 +6,7 @@
 after-startup-command = []
 
 # Start AeroSpace at login
-start-at-login = true
+start-at-login = false
 
 # Normalizations. See: https://nikitabobko.github.io/AeroSpace/guide#normalization
 enable-normalization-flatten-containers = true
@@ -59,16 +59,34 @@ automatically-unhide-macos-hidden-apps = false
     if.window-title-regex-substring = 'QQ'
     run = 'layout floating'
 
+# Maipo floating
+[[on-window-detected]]
+    if.app-id = 'com.wutian.weibo'
+    if.window-title-regex-substring = 'Maipo'
+    run = 'layout floating'
+
 # Telegram floating
 [[on-window-detected]]
     if.app-id = 'ru.keepcoder.Telegram'
     if.window-title-regex-substring = 'Telegram'
     run = 'layout floating'
 
+# Discord floating
+[[on-window-detected]]
+    if.app-id = 'com.hnc.Discord'
+    if.window-title-regex-substring = 'Discord'
+    run = 'layout floating'
+
 # ChatGPT floating
 [[on-window-detected]]
     if.app-id = 'com.openai.chat'
     if.window-title-regex-substring = 'ChatGPT'
+    run = 'layout floating'
+
+# Claude floating
+[[on-window-detected]]
+    if.app-id = 'com.anthropic.claudefordesktop'
+    if.window-title-regex-substring = 'Claude'
     run = 'layout floating'
 
 # Ghostty floating
@@ -85,6 +103,20 @@ automatically-unhide-macos-hidden-apps = false
     if.during-aerospace-startup = false
     run = 'layout floating'
 
+# Senplayer floating
+[[on-window-detected]]
+    if.app-id = 'com.wuziqi.SenPlayer'
+    if.app-name-regex-substring = 'Senplayer'
+    if.during-aerospace-startup = false
+    run = 'layout floating'
+
+# mpv floating
+[[on-window-detected]]
+    if.app-id = 'io.mpv'
+    if.app-name-regex-substring = 'mpv'
+    if.during-aerospace-startup = false
+    run = 'layout floating'
+
 # PicList floating
 [[on-window-detected]]
     if.app-id = 'com.kuingsmile.piclist'
@@ -95,7 +127,7 @@ automatically-unhide-macos-hidden-apps = false
 # 备忘录 floating
 [[on-window-detected]]
     if.app-id = 'com.apple.Notes'
-    if.app-name-regex-substring = '备忘录'
+    if.app-name-regex-substring = '备忘录|Notes'
     if.during-aerospace-startup = false
     run = 'layout floating'
 
@@ -124,12 +156,12 @@ automatically-unhide-macos-hidden-apps = false
 #                 See:
 #                 https://nikitabobko.github.io/AeroSpace/guide#assign-workspaces-to-monitors
 [gaps]
-    inner.horizontal = 0
-    inner.vertical =   0
-    outer.left =       0
-    outer.bottom =     0
-    outer.top =        0
-    outer.right =      0
+    inner.horizontal = 10
+    inner.vertical =   10
+    outer.left =       8
+    outer.bottom =     8
+    outer.top =        8
+    outer.right =      8
 
 # 'main' binding mode declaration
 # See: https://nikitabobko.github.io/AeroSpace/guide#binding-modes

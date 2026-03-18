@@ -1,18 +1,13 @@
 {
+  "$schema" : "https:\/\/schema.linearmouse.app\/0.10.2",
   "schemes" : [
     {
-      "scrolling" : {
-        "acceleration" : {
-          "vertical" : 1
-        },
-        "reverse" : {
-          "vertical" : true
-        },
-        "distance" : {
-          "vertical" : 3
-        },
-        "speed" : {
-          "vertical" : 0
+      "if" : {
+        "device" : {
+          "category" : "mouse",
+          "productID" : "0x101b",
+          "productName" : "ATK Mouse 8K Dongle",
+          "vendorID" : "0x373b"
         }
       },
       "pointer" : {
@@ -20,86 +15,118 @@
         "disableAcceleration" : false,
         "speed" : 0.35
       },
-      "if" : {
-        "device" : {
-          "vendorID" : "0x373b",
-          "productID" : "0x101b",
-          "productName" : "ATK Mouse 8K Dongle",
-          "category" : "mouse"
-        }
-      }
-    },
-    {
       "scrolling" : {
         "acceleration" : {
           "vertical" : 1
-        },
-        "distance" : {
-          "vertical" : "auto"
-        },
-        "speed" : {
-          "vertical" : 0
-        }
-      },
-      "pointer" : {
-        "acceleration" : 2.0345,
-        "disableAcceleration" : false,
-        "speed" : 0.0689655172413792768
-      },
-      "if" : {
-        "device" : {
-          "vendorID" : "0x0",
-          "productID" : "0x0",
-          "productName" : "Apple Internal Keyboard \/ Trackpad",
-          "category" : "trackpad"
-        }
-      }
-    },
-    {
-      "scrolling" : {
-        "acceleration" : {
-          "vertical" : 1
-        }
-      },
-      "if" : {
-        "device" : {
-          "vendorID" : "0x0",
-          "productID" : "0x0",
-          "productName" : "Apple Internal Keyboard \/ Trackpad",
-          "category" : "trackpad"
-        },
-        "app" : "eu.exelban.Stats"
-      }
-    },
-    {
-      "scrolling" : {
-        "acceleration" : {
-          "vertical" : 1
-        },
-        "reverse" : {
-          "vertical" : true
         },
         "distance" : {
           "vertical" : 3
         },
+        "reverse" : {
+          "vertical" : true
+        },
         "speed" : {
           "vertical" : 0
+        }
+      }
+    },
+    {
+      "if" : {
+        "device" : {
+          "category" : "trackpad",
+          "productID" : "0x0",
+          "productName" : "Apple Internal Keyboard \/ Trackpad",
+          "vendorID" : "0x0"
+        }
+      },
+      "pointer" : {
+        "acceleration" : 6.7932,
+        "disableAcceleration" : false,
+        "redirectsToScroll" : false,
+        "speed" : "unset"
+      },
+      "scrolling" : {
+        "acceleration" : 1,
+        "distance" : "auto",
+        "speed" : 0
+      }
+    },
+    {
+      "if" : {
+        "app" : "eu.exelban.Stats",
+        "device" : {
+          "category" : "trackpad",
+          "productID" : "0x0",
+          "productName" : "Apple Internal Keyboard \/ Trackpad",
+          "vendorID" : "0x0"
+        }
+      },
+      "scrolling" : {
+        "acceleration" : {
+          "vertical" : 1
+        }
+      }
+    },
+    {
+      "if" : {
+        "device" : {
+          "category" : "mouse",
+          "productID" : "0xc54d",
+          "productName" : "USB Receiver",
+          "serialNumber" : "2039377A3431",
+          "vendorID" : "0x46d"
         }
       },
       "pointer" : {
         "acceleration" : 0,
         "speed" : 0.45
       },
+      "scrolling" : {
+        "acceleration" : {
+          "vertical" : 1
+        },
+        "distance" : {
+          "vertical" : 3
+        },
+        "reverse" : {
+          "vertical" : true
+        },
+        "speed" : {
+          "vertical" : 0
+        }
+      }
+    },
+    {
       "if" : {
         "device" : {
           "category" : "mouse",
-          "vendorID" : "0x46d",
-          "productID" : "0xc54d",
-          "productName" : "USB Receiver",
-          "serialNumber" : "2039377A3431"
+          "productID" : "0xd048",
+          "productName" : "Keychron M5 8K",
+          "serialNumber" : "1234567890",
+          "vendorID" : "0x3434"
         }
+      },
+      "pointer" : {
+        "acceleration" : 1,
+        "disableAcceleration" : true,
+        "redirectsToScroll" : false,
+        "speed" : "unset"
+      },
+      "scrolling" : {
+        "acceleration" : 1,
+        "distance" : 5,
+        "modifiers" : {
+          "horizontal" : {
+            "command" : {
+              "type" : "preventDefault"
+            }
+          }
+        },
+        "reverse" : {
+          "vertical" : false
+        },
+        "speed" : 0
       }
     }
-  ],
-  "$schema" : "https:\/\/schema.linearmouse.app\/0.10.0"
+  ]
 }

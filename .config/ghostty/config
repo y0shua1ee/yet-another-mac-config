@@ -86,3 +86,4 @@ background-blur-radius = 20
 
 # 解决 sudo 命令报错
 shell-integration-features = sudo
+keybind = shift+enter=text:\x1b\r
