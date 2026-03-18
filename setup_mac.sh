@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# yet-another-mac-config bootstrap script.
+# yet-another-mac-config 初始化脚本。
 # 1) 读取目标用户名
-# 2) 在目标用户的 ~/.config 中按项目创建软链接
-# 后续可在此脚本中扩展更多初始化步骤。
+# 2) 仅同步仓库中已跟踪的配置目录
+# 3) 后续可在此脚本中扩展更多初始化步骤
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,6 +13,22 @@ if [[ ! -d "$configs_dir" ]]; then
   echo "未找到 $configs_dir"
   exit 1
 fi
+
+collect_config_names() {
+  local tracked_names
+
+  # 优先读取 Git 已跟踪的目录，避免把本地忽略目录也拿来创建软链接。
+  if command -v git >/dev/null 2>&1 && git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    tracked_names="$(git -C "$repo_dir" ls-files -- .config | awk -F/ 'NF >= 3 {print $2}' | sort -u)"
+    if [[ -n "$tracked_names" ]]; then
+      printf '%s\n' "$tracked_names"
+      return
+    fi
+  fi
+
+  # 如果当前目录不是 Git 工作区，则回退到现有目录扫描逻辑。
+  find "$configs_dir" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort
+}
 
 # 请求目标用户名；允许同一脚本用于多台机器。
 read -rp "请输入 macOS 用户名: " username
@@ -32,8 +48,14 @@ fi
 mkdir -p "$target_config_dir"
 
 created_any=false
-while IFS= read -r -d '' config_source; do
-  config_name="$(basename "$config_source")"
+while IFS= read -r config_name; do
+  [[ -n "$config_name" ]] || continue
+
+  config_source="$configs_dir/$config_name"
+  if [[ ! -d "$config_source" ]]; then
+    continue
+  fi
+
   target_path="$target_config_dir/$config_name"
 
   read -rp "是否为 $config_name 创建软链接到 $target_path? [y/N] " answer
@@ -54,7 +76,7 @@ while IFS= read -r -d '' config_source; do
   ln -s "$config_source" "$target_path"
   echo "已创建: $target_path -> $config_source"
   created_any=true
-done < <(find "$configs_dir" -mindepth 1 -maxdepth 1 -print0)
+done < <(collect_config_names)
 
 codex_config_source="$codex_dir/config.toml"
 if [[ -f "$codex_config_source" ]]; then

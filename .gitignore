@@ -1,9 +1,12 @@
 .DS_Store
 
 .codex/
-raycast/
-jgit/
 
+# 本地应用状态
+.config/jgit/
+.config/mole/
+.config/op/
+.config/raycast/
+
+# 本地备份文件
 .config/ghostty/*.bak
-.config/mole/*.log
-.config/op/config
