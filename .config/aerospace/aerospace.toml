@@ -89,6 +89,11 @@ automatically-unhide-macos-hidden-apps = false
     if.window-title-regex-substring = 'Claude'
     run = 'layout floating'
 
+# Codex floating
+[[on-window-detected]]
+    if.app-id = 'com.openai.codex'
+    run = 'layout floating'
+
 # Ghostty floating
 [[on-window-detected]]
     if.app-id = 'com.mitchellh.ghostty'

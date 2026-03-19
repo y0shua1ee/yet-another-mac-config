@@ -2,6 +2,10 @@
 
 .codex/
 
+# 本地指令文件
+AGENTS.md
+CLAUDE.md
+
 # 本地应用状态
 .config/jgit/
 .config/linearmouse/
