@@ -2,9 +2,9 @@
 
 .codex/
 
-# 本地指令文件
-AGENTS.md
-CLAUDE.md
+# 指令文件纳入版本控制
+!**/AGENTS.md
+!**/CLAUDE.md
 
 # 本地应用状态
 .config/jgit/
