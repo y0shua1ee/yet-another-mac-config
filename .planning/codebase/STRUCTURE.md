@@ -11,7 +11,7 @@ yet-another-mac-config/
 │   ├── borders/                  # JankyBorders window decoration
 │   ├── btop/                     # System monitoring tool
 │   ├── ghostty/                  # Terminal emulator configuration
-│   ├── jgit/                     # Jujutsu/Git config (local only)
+│   ├── jgit/                     # JGit (Java Git) config (local only)
 │   ├── linearmouse/              # Mouse/trackpad settings (local only)
 │   ├── mole/                     # Cleanup tool state (local only)
 │   ├── mpv/                      # Media player config

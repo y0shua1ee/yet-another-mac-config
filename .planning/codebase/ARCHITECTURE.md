@@ -43,7 +43,7 @@ This is a centralized Mac configuration repository that uses symbolic links to d
 
 **Terminal/Shell Layer:**
 - Purpose: Shell environment initialization and prompt configuration
-- Location: `zsh/.zshrc`
+- Location: `/zsh/.zshrc`
 - Contains: Oh My Zsh setup, theme configuration, plugin sourcing, tool initialization (Starship)
 - Depends on: Oh My Zsh framework, Brew completions, local `.zshrc.local` (not tracked)
 - Used by: Terminal on each new Zsh session
@@ -125,7 +125,7 @@ This is a centralized Mac configuration repository that uses symbolic links to d
 - Responsibilities: Read username, enumerate tracked configs, create symlinks, handle special cases (zshrc, Hammerspoon, Codex)
 
 **Shell Entry:**
-- Location: `/.config/zsh/.zshrc` → symlinked to `~/.zshrc`
+- Location: `/zsh/.zshrc` → symlinked to `~/.zshrc`
 - Triggers: Every new Zsh shell session
 - Responsibilities: Load Oh My Zsh, configure theme, enable plugins, initialize Starship prompt, source local config
 

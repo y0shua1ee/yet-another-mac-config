@@ -22,8 +22,8 @@
 - Bash (setup scripts, fallback compatibility)
 
 **Package Manager:**
-- Homebrew (`brew`) - Primary macOS package manager
-- nanobrew (`nb`) - Lightweight alternative package manager (preferred per project guidelines)
+- nanobrew (`nb`) - Primary/preferred package manager (per project guidelines)
+- Homebrew (`brew`) - Fallback only, kept for compatibility
 - npm/Node.js - For OpenCode and Raycast extension ecosystem
 
 ## Frameworks
@@ -59,7 +59,7 @@
 - btop - System resource monitor (TOML config)
 - Linear Mouse - Mouse/trackpad configuration
 - Mole - Cleanup tool
-- Codex - Local development configuration tool
+- Codex - OpenAI AI coding CLI tool
 
 ## Key Dependencies
 

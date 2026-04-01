@@ -6,7 +6,7 @@
 
 **Files:**
 - JavaScript/CommonJS modules: `kebab-case.cjs` or `kebab-case.js` (e.g., `gsd-check-update.js`, `frontmatter.cjs`)
-- Shell scripts: `kebab-case.sh` with executable permission (e.g., `setup_mac.sh`, `install_yazi_plugins.sh`)
+- Shell scripts: `snake_case.sh` with executable permission (e.g., `setup_mac.sh`, `install_yazi_plugins.sh`)
 - Configuration files: lowercase with extension (e.g., `.zshrc`, `config.toml`)
 
 **Functions:**

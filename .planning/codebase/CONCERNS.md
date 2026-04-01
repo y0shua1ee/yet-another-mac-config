@@ -4,11 +4,11 @@
 
 ## Symlink Management
 
-**Dual AGENTS.md/CLAUDE.md symlink pattern:**
-- Issue: Multiple AGENTS.md and CLAUDE.md files exist across `.config/nvim/`, `.config/yazi/`, `.config/`, `zsh/`, and `.hammerspoon/`, with 6 of 7 being symlinks pointing back to root versions
-- Files: `AGENTS.md` (6 symlinks), `CLAUDE.md` (6 symlinks at `.config/nvim/CLAUDE.md`, `.config/yazi/CLAUDE.md`, `.config/CLAUDE.md`, `zsh/CLAUDE.md`, `.hammerspoon/CLAUDE.md`, and root `/CLAUDE.md`)
-- Impact: Creates confusion about single source of truth. If guidance documents are modified in subdirectories, changes may not persist. Symlinks are brittle when moving config directories or during setup
-- Fix approach: Keep one physical CLAUDE.md and one physical AGENTS.md in root, symlink all others to root versions. Verify symlink targets exist after any directory reorganization. Consider adding a validation script to `.planning/` that checks symlink integrity
+**AGENTS.md/CLAUDE.md symlink pattern:**
+- Structure: Each directory (root, `.config/`, `.config/nvim/`, `.config/yazi/`, `zsh/`, `.hammerspoon/`) has its own independent CLAUDE.md (real file with directory-specific guidance content). Each directory's AGENTS.md is a symlink pointing to its sibling CLAUDE.md (e.g., `./AGENTS.md → CLAUDE.md`, `.config/nvim/AGENTS.md → CLAUDE.md`)
+- Files: 6 independent CLAUDE.md real files + 6 AGENTS.md symlinks (each → local CLAUDE.md)
+- Impact: Correct per project convention (one entity file + one symlink per directory). Each subdirectory maintains its own context-specific guidance
+- Note: This is intentional design, not a concern. Per project feedback, only one entity file should exist per directory with the other as a symlink
 
 ## Setup Script Issues
 
@@ -75,13 +75,13 @@
 ## Codebase Sync Gaps
 
 **Codex configuration intentionally not tracked:**
-- Issue: `.codex/config.toml` is explicitly excluded from git tracking (README line 44) but setup_mac.sh still offers to symlink it (line 86)
-- Files: `/setup_mac.sh` (line 86), `.gitignore` (line 5)
+- Issue: `.codex/` is explicitly excluded from git tracking (`.gitignore` line 3) but setup_mac.sh still offers to symlink it (line 86)
+- Files: `/setup_mac.sh` (line 86), `.gitignore` (line 3)
 - Impact: Codex is useful but not synced across machines, creating fragmentation. User must manually configure Codex on each machine. Setup script silently fails if .codex doesn't exist locally
 - Fix approach: Clarify if Codex should be machine-local or shared. If local, remove setup_mac.sh prompts. If sharable, document which parts are private vs public and create a split configuration
 
 **Raycast extensions fully local:**
-- Issue: Raycast extensions are in `.config/raycast/` but git-ignored completely (line 14), yet AeroSpace config has no Raycast rules, suggesting no integration attempted
+- Issue: Raycast extensions are in `.config/raycast/` but git-ignored completely (`.gitignore` line 14), yet AeroSpace config has no Raycast rules, suggesting no integration attempted
 - Files: `/.config/raycast/`, `.gitignore` (line 14)
 - Impact: Raycast setup is completely manual per machine. No visibility into what extensions are installed where
 - Fix approach: Either version-control essential Raycast extension list, or update README to document which extensions to install manually
@@ -90,7 +90,7 @@
 
 **No validation that local-only dirs remain untracked:**
 - Issue: `.gitignore` lists local-only directories (`.codex/`, `.config/op/`, `.config/linearmouse/`, etc.) but there's no CI or pre-commit hook to verify they stay ignored
-- Files: `.gitignore` (lines 5, 13-16, 21-22, 25)
+- Files: `.gitignore` (lines 3, 10-14, 17, 20)
 - Impact: User could accidentally commit secrets (1Password tokens in `.config/op/`), session data, or personal data if they move files around
 - Fix approach: Add a `.git/hooks/pre-commit` script to verify no ignored files are staged
 
