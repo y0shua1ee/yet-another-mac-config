@@ -1,72 +1,72 @@
-# Config syntax crash course
-# ==========================
-# # The config file consists of simple key-value pairs,
-# # separated by equals signs.
-# font-family = Iosevka
-# window-padding-x = 2
-#
-# # Spacing around the equals sign does not matter.
-# # All of these are identical:
-# key=value
-# key= value
-# key =value
-# key = value
-#
-# # Any line beginning with a # is a comment. It's not possible to put
-# # a comment after a config option, since it would be interpreted as a
-# # part of the value. For example, this will have a value of "#123abc":
-# background = #123abc
-#
-# # Empty values are used to reset config keys to default.
-# key =
-#
-# # Some config options have unique syntaxes for their value,
-# # which is explained in the docs for that config option.
-# # Just for example:
-# resize-overlay-duration = 4s 200ms
-
-font-family = "Hack Nerd Font"
-
-font-style-bold = "Medium"
-font-style-bold-italic = "Medium Italic"
-font-size = 13.4
+# 字体设置
+font-family = Maple Mono Normal NF CN
+font-size = 13
 font-thicken = true
-grapheme-width-method = "unicode"
+font-thicken-strength = 1
+adjust-cell-height = 1
 
-adjust-cell-width = -5%
-palette = 0=#212733
-palette = 1=#f08778
-palette = 2=#53bf97
-palette = 3=#fdcc60
-palette = 4=#60b8d6
-palette = 5=#ec7171
-palette = 6=#98e6ca
-palette = 7=#fafafa
-palette = 8=#686868
-palette = 9=#f58c7d
-palette = 10=#58c49c
-palette = 11=#ffd165
-palette = 12=#65bddb
-palette = 13=#f17676
-palette = 14=#9debcf
-palette = 15=#ffffff
-background = #1f2430
-foreground = #cbccc6
+# Catppuccin Mocha 主题
+theme = Catppuccin Mocha
+background = #1e1e2e
+foreground = #cdd6f4
+selection-background = #585b70
+selection-foreground = #cdd6f4
+cursor-color = #f5e0dc
+cursor-text = #1e1e2e
+palette = 0=#45475a
+palette = 1=#f38ba8
+palette = 2=#a6e3a1
+palette = 3=#f9e2af
+palette = 4=#89b4fa
+palette = 5=#f5c2e7
+palette = 6=#94e2d5
+palette = 7=#bac2de
+palette = 8=#585b70
+palette = 9=#f38ba8
+palette = 10=#a6e3a1
+palette = 11=#f9e2af
+palette = 12=#89b4fa
+palette = 13=#f5c2e7
+palette = 14=#94e2d5
+palette = 15=#a6adc8
 
-selection-invert-fg-bg = true
-
-cursor-style = "bar"
-cursor-style-blink = true
-scrollback-limit = 100000
-window-padding-x = 20
-window-padding-y = 2,10
-window-save-state = "always"
-
-# 背景不透明度
+# 背景不透明度（毛玻璃效果）
 background-opacity = 0.65
 # 背景模糊半径
-background-blur-radius = 20
+background-blur = 16
 
-# 解决 sudo 命令报错
+# 光标
+cursor-style = bar
+cursor-style-blink = true
+
+# 窗口
+window-padding-x = 12
+window-padding-y = 6
+window-width = 115
+window-height = 38
+window-save-state = always
+window-step-resize = true
+window-colorspace = display-p3
+scrollback-limit = 100000
+
+# macOS 相关
+macos-icon = custom-style
+macos-icon-frame = aluminum
+macos-icon-ghost-color = #FFFFFF
+macos-icon-screen-color = #4facfe,#00f2fe
+macos-titlebar-proxy-icon = hidden
+macos-auto-secure-input = true
+macos-secure-input-indication = true
+title = " "
+
+# 铃声
+bell-features = no-attention,no-title
+
+# Shell 集成
 shell-integration-features = sudo
+
+# 快捷键
 keybind = shift+enter=text:\x1b\r
+
+# 自动更新
+auto-update = off
