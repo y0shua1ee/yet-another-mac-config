@@ -106,6 +106,32 @@ if [[ -f "$codex_config_source" ]]; then
   fi
 fi
 
+# 额外处理 .zshrc，软链接到用户主目录
+zshrc_source="$repo_dir/zsh/.zshrc"
+if [[ -f "$zshrc_source" ]]; then
+  zshrc_target="$target_dir/.zshrc"
+  read -rp "是否将 .zshrc 链接到 $zshrc_target? [y/N] " zsh_answer
+  if [[ "$zsh_answer" =~ ^[Yy]$ ]]; then
+    if [[ -e "$zshrc_target" || -L "$zshrc_target" ]]; then
+      read -rp "目标 $zshrc_target 已存在，是否覆盖? [y/N] " zsh_replace
+      if [[ ! "$zsh_replace" =~ ^[Yy]$ ]]; then
+        echo "保留现有：$zshrc_target"
+      else
+        rm -rf "$zshrc_target"
+        ln -s "$zshrc_source" "$zshrc_target"
+        echo "已创建: $zshrc_target -> $zshrc_source"
+        created_any=true
+      fi
+    else
+      ln -s "$zshrc_source" "$zshrc_target"
+      echo "已创建: $zshrc_target -> $zshrc_source"
+      created_any=true
+    fi
+  else
+    echo "跳过 .zshrc"
+  fi
+fi
+
 # 额外处理 Hammerspoon 配置目录，便于统一软链接
 hammerspoon_source="$repo_dir/.hammerspoon"
 if [[ -d "$hammerspoon_source" ]]; then
