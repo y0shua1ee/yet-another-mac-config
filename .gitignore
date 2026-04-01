@@ -13,5 +13,8 @@
 .config/op/
 .config/raycast/
 
+# 本地缓存
+.config/opencode/cache/
+
 # 本地备份文件
 .config/ghostty/*.bak
