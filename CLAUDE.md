@@ -11,5 +11,5 @@
 - The generated file structure must conform to the above description.
 - When generating or modifying scripts, comments in Chinese are required.
 - Maintain simple and easy-to-understand naming conventions.
-- Before installing software, you should search and read relevant documentation online. If Homebrew can be used for installation, then prioritize using Homebrew.
+- Before installing software, you should search and read relevant documentation online. Prioritize using nanobrew (`nb`) for package installation; Homebrew (`brew`) is kept as a fallback only.
 
