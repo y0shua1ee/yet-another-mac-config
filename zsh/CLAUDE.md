@@ -8,5 +8,4 @@
 ## Editing rules
 - Never put secrets, tokens, or machine-specific paths into `.zshrc`.
 - When adding new environment variables, decide: public → `.zshrc`; private → remind the user to add it to `~/.zshrc.local`.
-- Comments in Chinese are required.
 - Keep the file concise — avoid large blocks of commented-out boilerplate.
