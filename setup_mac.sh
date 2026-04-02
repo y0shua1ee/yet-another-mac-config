@@ -158,6 +158,26 @@ if [[ -d "$hammerspoon_source" ]]; then
   fi
 fi
 
+# 额外处理 oh-my-tmux 安装
+# tmux.conf.local 由仓库跟踪；tmux.conf 软链接到本地 oh-my-tmux 克隆（已 gitignore）
+oh_my_tmux_path="${XDG_DATA_HOME:-$target_dir/.local/share}/tmux/oh-my-tmux"
+tmux_conf_dir="$target_config_dir/tmux"
+if [[ -d "$tmux_conf_dir" || -L "$tmux_conf_dir" ]] && [[ ! -e "$tmux_conf_dir/tmux.conf" ]]; then
+  read -rp "是否安装 oh-my-tmux（tmux 主题框架）? [y/N] " omt_answer
+  if [[ "$omt_answer" =~ ^[Yy]$ ]]; then
+    if [[ ! -d "$oh_my_tmux_path" ]]; then
+      mkdir -p "$(dirname "$oh_my_tmux_path")"
+      git clone -q --single-branch https://github.com/gpakosz/.tmux.git "$oh_my_tmux_path"
+      echo "已安装 oh-my-tmux: $oh_my_tmux_path"
+    fi
+    if [[ -d "$oh_my_tmux_path" ]]; then
+      ln -sf "$oh_my_tmux_path/.tmux.conf" "$tmux_conf_dir/tmux.conf"
+      echo "已创建: $tmux_conf_dir/tmux.conf -> $oh_my_tmux_path/.tmux.conf"
+      created_any=true
+    fi
+  fi
+fi
+
 if [[ "$created_any" != true ]]; then
   echo "本次未创建任何链接。"
 fi

@@ -13,6 +13,9 @@
 .config/op/
 .config/raycast/
 
+# oh-my-tmux 主配置（软链接到本地安装路径，机器相关）
+.config/tmux/tmux.conf
+
 # 本地缓存
 .config/opencode/cache/
 

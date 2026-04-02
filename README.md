@@ -12,6 +12,7 @@ My Mac config
 | `.config/ghostty` | Ghostty 终端 |
 | `.config/nvim` | Neovim（基于 LazyVim） |
 | `.config/opencode` | OpenCode 及 GSD 工作流 |
+| `.config/tmux` | tmux（基于 oh-my-tmux） |
 | `.config/typora` | Typora 自定义主题 |
 | `.config/yazi` | Yazi 文件管理器及插件 |
 | `.hammerspoon` | Hammerspoon 自动化 |
@@ -25,7 +26,8 @@ My Mac config
 3. 根据提示输入目标 macOS 用户名，脚本会逐个遍历仓库中已跟踪的 `.config` 一级配置目录，并在 `/Users/<username>/.config` 中创建软链接；若某个目标项已存在，会先确认是否覆盖，默认则跳过。
 4. 如果当前工作区里本地存在 `.codex/config.toml`，脚本会额外询问是否同步到 `~/.codex/config.toml`；该文件默认只保留在本地，不会提交到仓库。
 5. 脚本会询问是否将 `zsh/.zshrc` 软链接到 `~/.zshrc`。通用配置（主题、插件、补全等）存放在此文件中；API 密钥、项目变量等隐私内容应写入 `~/.zshrc.local`（不纳入版本控制），会在 `.zshrc` 末尾自动加载。
-6. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`；在此之前请先通过 `nb install --cask hammerspoon` 安装好 Hammerspoon，并根据需要安装 `Ghostty`（例如 `nb install --cask ghostty`）以使用 `Ctrl+Alt+T` 新开 Ghostty 窗口的快捷方式。
+6. 脚本会检测 `.config/tmux` 是否缺少 `tmux.conf`，如果缺少则提示安装 [oh-my-tmux](https://github.com/gpakosz/.tmux)，自动克隆到 `~/.local/share/tmux/oh-my-tmux` 并创建软链接。
+7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`；在此之前请先通过 `nb install --cask hammerspoon` 安装好 Hammerspoon，并根据需要安装 `Ghostty`（例如 `nb install --cask ghostty`）以使用 `Ctrl+Alt+T` 新开 Ghostty 窗口的快捷方式。
 
 ## Yazi 插件同步
 
@@ -48,6 +50,7 @@ My Mac config
 - `.config/raycast/`：Raycast 本地扩展与缓存数据。
 - `.config/jgit/`：Jujutsu / Git 相关本地配置。
 - `.config/opencode/cache/`：OpenCode 缓存数据。
+- `.config/tmux/tmux.conf`：oh-my-tmux 主配置的软链接，指向本地克隆路径，机器相关。
 - `.config/ghostty/*.bak`：Ghostty 配置备份文件。
 - `.DS_Store`：macOS 自动生成的目录元数据文件。
 
