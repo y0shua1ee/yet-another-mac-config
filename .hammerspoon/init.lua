@@ -114,23 +114,29 @@ rightCmdRemapper:start()
 --------------------------------------------------------------------------------
 -- 4. Ctrl + Alt + T 打开 Ghostty
 --------------------------------------------------------------------------------
-local function openGhosttyInNewWindow()
+local function toggleGhostty()
     local app = hs.application.get("Ghostty")
 
     if not app then
-        -- Ghostty 未运行→启动新实例（必定生成新窗口）
+        -- Ghostty 未运行→启动新实例
         hs.task.new("/usr/bin/open", nil, {"-na", "Ghostty"}):start()
         return
     end
 
-    -- 已运行→激活后发送 Cmd+N，确保开新窗口，新窗口自带首个标签页
-    app:activate()
-    hs.timer.doAfter(0.05, function()
-        hs.eventtap.keyStroke({"cmd"}, "n", 0, app)
-    end)
+    local windows = app:allWindows()
+    if #windows == 0 then
+        -- 已运行但没有窗口→新建窗口
+        app:activate()
+        hs.timer.doAfter(0.05, function()
+            hs.eventtap.keyStroke({"cmd"}, "n", 0, app)
+        end)
+    else
+        -- 已有窗口→切到前台
+        app:activate()
+    end
 end
 
-hs.hotkey.bind({"ctrl", "alt"}, "T", openGhosttyInNewWindow)
+hs.hotkey.bind({"ctrl", "alt"}, "T", toggleGhostty)
 
 -- 最后弹出提示，确认配置加载完成
 hs.alert.show("Hammerspoon: Performance Version Loaded!")
