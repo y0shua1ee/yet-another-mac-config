@@ -160,7 +160,7 @@ fi
 
 # 额外处理 oh-my-tmux 安装
 # tmux.conf.local 由仓库跟踪；tmux.conf 软链接到本地 oh-my-tmux 克隆（已 gitignore）
-oh_my_tmux_path="${XDG_DATA_HOME:-$target_dir/.local/share}/tmux/oh-my-tmux"
+oh_my_tmux_path="$target_dir/.local/share/tmux/oh-my-tmux"
 tmux_conf_dir="$target_config_dir/tmux"
 if [[ -d "$tmux_conf_dir" || -L "$tmux_conf_dir" ]] && [[ ! -e "$tmux_conf_dir/tmux.conf" ]]; then
   read -rp "是否安装 oh-my-tmux（tmux 主题框架）? [y/N] " omt_answer
