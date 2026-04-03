@@ -17,8 +17,8 @@ Output: {phase_num}-UI-REVIEW.md
 </objective>
 
 <execution_context>
-@/Users/areslee/.config/opencode/get-shit-done/workflows/ui-review.md
-@/Users/areslee/.config/opencode/get-shit-done/references/ui-brand.md
+@$HOME/.config/opencode/get-shit-done/workflows/ui-review.md
+@$HOME/.config/opencode/get-shit-done/references/ui-brand.md
 </execution_context>
 
 <context>
@@ -26,6 +26,6 @@ Phase: $ARGUMENTS — optional, defaults to last completed phase.
 </context>
 
 <process>
-Execute @/Users/areslee/.config/opencode/get-shit-done/workflows/ui-review.md end-to-end.
+Execute @$HOME/.config/opencode/get-shit-done/workflows/ui-review.md end-to-end.
 Preserve all workflow gates.
 </process>

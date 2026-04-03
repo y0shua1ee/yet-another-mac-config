@@ -15,8 +15,8 @@ Use when you know what you want but don't know which `/gsd-*` command to run.
 </objective>
 
 <execution_context>
-@/Users/areslee/.config/opencode/get-shit-done/workflows/do.md
-@/Users/areslee/.config/opencode/get-shit-done/references/ui-brand.md
+@$HOME/.config/opencode/get-shit-done/workflows/do.md
+@$HOME/.config/opencode/get-shit-done/references/ui-brand.md
 </execution_context>
 
 <context>
@@ -24,6 +24,6 @@ $ARGUMENTS
 </context>
 
 <process>
-Execute the do workflow from @/Users/areslee/.config/opencode/get-shit-done/workflows/do.md end-to-end.
+Execute the do workflow from @$HOME/.config/opencode/get-shit-done/workflows/do.md end-to-end.
 Route user intent to the best GSD command and invoke it.
 </process>

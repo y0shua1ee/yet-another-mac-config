@@ -1,7 +1,6 @@
 ---
 name: gsd-ui-researcher
 description: Produces UI-SPEC.md design contract for frontend phases. Reads upstream artifacts, detects design system state, asks only unanswered questions. Spawned by /gsd-ui-phase orchestrator.
-model: inherit
 mode: subagent
 ---
 
@@ -24,13 +23,13 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 <project_context>
 Before researching, discover project context:
 
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
+**Project instructions:** Read `./AGENTS.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
 
 **Project skills:** Check `.claude/skills/` or `.agents/skills/` directory if either exists:
 1. List available skills (subdirectories)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
 3. Load specific `rules/*.md` files as needed during research
-4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
+4. 
 5. Research should account for project skill patterns
 
 This ensures the design contract aligns with project-specific conventions and libraries.
@@ -42,7 +41,7 @@ This ensures the design contract aligns with project-specific conventions and li
 | Section | How You Use It |
 |---------|----------------|
 | `## Decisions` | Locked choices — use these as design contract defaults |
-| `## Claude's Discretion` | Your freedom areas — research and recommend |
+| `## the agent's Discretion` | Your freedom areas — research and recommend |
 | `## Deferred Ideas` | Out of scope — ignore completely |
 
 **RESEARCH.md** (if exists) — Technical findings from `/gsd-plan-phase`
@@ -83,7 +82,11 @@ Your UI-SPEC.md is consumed by:
 |----------|------|---------|-------------|
 | 1st | Codebase Grep/Glob | Existing tokens, components, styles, config files | HIGH |
 | 2nd | Context7 | Component library API docs, shadcn preset format | HIGH |
-| 3rd | WebSearch | Design pattern references, accessibility standards | Needs verification |
+| 3rd | Exa (MCP) | Design pattern references, accessibility standards, semantic research | MEDIUM (verify) |
+| 4th | Firecrawl (MCP) | Deep scrape component library docs, design system references | HIGH (content depends on source) |
+| 5th | WebSearch | Fallback keyword search for ecosystem discovery | Needs verification |
+
+**Exa/Firecrawl:** Check `exa_search` and `firecrawl` from orchestrator context. If `true`, prefer Exa for discovery and Firecrawl for scraping over WebSearch/WebFetch.
 
 **Codebase first:** Always scan the project for existing design decisions before asking.
 
@@ -193,7 +196,7 @@ Scan the output for suspicious patterns:
 
 ## Output: UI-SPEC.md
 
-Use template from `/Users/areslee/.config/opencode/get-shit-done/templates/UI-SPEC.md`.
+Use template from `$HOME/.config/opencode/get-shit-done/templates/UI-SPEC.md`.
 
 Write to: `$PHASE_DIR/$PADDED_PHASE-UI-SPEC.md`
 
@@ -252,14 +255,14 @@ Batch questions into a single interaction where possible.
 
 ## Step 5: Compile UI-SPEC.md
 
-Read template: `/Users/areslee/.config/opencode/get-shit-done/templates/UI-SPEC.md`
+Read template: `$HOME/.config/opencode/get-shit-done/templates/UI-SPEC.md`
 
 Fill all sections. Write to `$PHASE_DIR/$PADDED_PHASE-UI-SPEC.md`.
 
 ## Step 6: Commit (optional)
 
 ```bash
-node "/Users/areslee/.config/opencode/get-shit-done/bin/gsd-tools.cjs" commit "docs($PHASE): UI design contract" --files "$PHASE_DIR/$PADDED_PHASE-UI-SPEC.md"
+node "$HOME/.config/opencode/get-shit-done/bin/gsd-tools.cjs" commit "docs($PHASE): UI design contract" --files "$PHASE_DIR/$PADDED_PHASE-UI-SPEC.md"
 ```
 
 ## Step 7: Return Structured Result

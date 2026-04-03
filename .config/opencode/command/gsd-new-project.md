@@ -28,14 +28,14 @@ Initialize a new project through unified flow: questioning → research (optiona
 </objective>
 
 <execution_context>
-@/Users/areslee/.config/opencode/get-shit-done/workflows/new-project.md
-@/Users/areslee/.config/opencode/get-shit-done/references/questioning.md
-@/Users/areslee/.config/opencode/get-shit-done/references/ui-brand.md
-@/Users/areslee/.config/opencode/get-shit-done/templates/project.md
-@/Users/areslee/.config/opencode/get-shit-done/templates/requirements.md
+@$HOME/.config/opencode/get-shit-done/workflows/new-project.md
+@$HOME/.config/opencode/get-shit-done/references/questioning.md
+@$HOME/.config/opencode/get-shit-done/references/ui-brand.md
+@$HOME/.config/opencode/get-shit-done/templates/project.md
+@$HOME/.config/opencode/get-shit-done/templates/requirements.md
 </execution_context>
 
 <process>
-Execute the new-project workflow from @/Users/areslee/.config/opencode/get-shit-done/workflows/new-project.md end-to-end.
+Execute the new-project workflow from @$HOME/.config/opencode/get-shit-done/workflows/new-project.md end-to-end.
 Preserve all workflow gates (validation, approvals, commits, routing).
 </process>

@@ -19,8 +19,8 @@ Runs inline — no Task, no question, no Bash.
 </objective>
 
 <execution_context>
-@/Users/areslee/.config/opencode/get-shit-done/workflows/note.md
-@/Users/areslee/.config/opencode/get-shit-done/references/ui-brand.md
+@$HOME/.config/opencode/get-shit-done/workflows/note.md
+@$HOME/.config/opencode/get-shit-done/references/ui-brand.md
 </execution_context>
 
 <context>
@@ -28,6 +28,6 @@ $ARGUMENTS
 </context>
 
 <process>
-Execute the note workflow from @/Users/areslee/.config/opencode/get-shit-done/workflows/note.md end-to-end.
+Execute the note workflow from @$HOME/.config/opencode/get-shit-done/workflows/note.md end-to-end.
 Capture the note, list notes, or promote to todo — depending on arguments.
 </process>
