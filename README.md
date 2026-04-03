@@ -39,6 +39,30 @@ My Mac config
 
 脚本可安全重复执行，方便在多台机器间保持插件一致。
 
+## 后台服务管理
+
+以下服务已迁移至 nanobrew 管理（`nb services`），不再使用 `brew services`：
+
+| 服务 | 说明 | 开机自启 |
+|------|------|----------|
+| borders | JankyBorders 窗口边框 | 是 |
+| nginx | HTTP 服务器（默认端口 8080） | 是 |
+| clouddrive2 | CloudDrive2 云盘挂载 | 是 |
+| unbound | DNS resolver | 否 |
+
+开机自启通过 `~/Library/LaunchAgents/` 中的 plist 软链接实现，指向 nanobrew prefix 下的 plist 文件。`nb services start/stop` 仅控制当前会话的运行状态，不影响开机自启。
+
+常用命令：
+
+```bash
+nb services list              # 查看当前运行状态
+nb services start <name>      # 启动服务（仅当前会话）
+nb services stop <name>       # 停止服务（仅当前会话）
+nb services restart <name>    # 重启服务
+```
+
+> **注意：** nginx 的配置路径硬编码为 `/opt/homebrew/etc/nginx/`（来自预编译 bottle），即使 nginx 二进制已迁移到 nanobrew，该目录仍需保留。
+
 ## 本地文件同步约定
 
 以下内容仅保留在本地环境，不会同步到仓库：

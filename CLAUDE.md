@@ -13,6 +13,7 @@
   2. **CLAUDE.md** (sub-directory): create one if adding a new config directory, or update the existing one. Always symlink `AGENTS.md -> CLAUDE.md` alongside it.
   3. **README.md / CLAUDE.md at higher levels**: check whether they need updates too (usually not, unless global conventions change).
 - This checklist is non-optional. Do not consider a configuration change complete until all relevant documentation is in sync.
+- Before committing or pushing, always review the diff for privacy leaks (API keys, tokens, passwords, private IPs, personal identifiers, etc.). If found, remove them before proceeding.
 
 ## Style
 - Please communicate with me in Chinese.
