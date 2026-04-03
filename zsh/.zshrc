@@ -28,9 +28,6 @@ export PATH="$HOME/.local/bin:/opt/nanobrew/prefix/bin:$PATH"
 # 默认编辑器（需先安装 neovim：nb install neovim）
 command -v nvim >/dev/null 2>&1 && export EDITOR=nvim
 
-# Claude Code：跳过交互式权限确认（依赖 git 版本控制兜底）
-alias claude='claude --dangerously-skip-permissions'
-
 # Starship 提示符
 eval "$(starship init zsh)"
 
