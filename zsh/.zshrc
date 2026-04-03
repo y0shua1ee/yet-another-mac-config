@@ -3,6 +3,9 @@
 # 机器相关或隐私内容请写在 ~/.zshrc.local 中
 # =============================================================================
 
+# PATH 去重：对 export PATH= 字符串赋值生效，保留首次出现、移除重复
+typeset -U PATH
+
 # Oh My Zsh 基础路径
 export ZSH="$HOME/.oh-my-zsh"
 
@@ -19,6 +22,8 @@ ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#7f849c'
 
 # Homebrew 环境
 eval "$(/opt/homebrew/bin/brew shellenv)"
+# nanobrew 和 uv 路径置于 Homebrew 之前，确保升级后的包和 uv 工具优先生效
+export PATH="$HOME/.local/bin:/opt/nanobrew/prefix/bin:$PATH"
 
 # Starship 提示符
 eval "$(starship init zsh)"
@@ -30,6 +35,20 @@ if type brew &>/dev/null; then
   autoload -Uz compinit
   compinit
 fi
+
+# nanobrew 补全（使用 nb 内置的完整补全脚本，不依赖 brew）
+if type nb &>/dev/null; then
+  eval "$(nb completions zsh)"
+fi
+
+# yazi
+function y() {
+	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
+	command yazi "$@" --cwd-file="$tmp"
+	IFS= read -r -d '' cwd < "$tmp"
+	[ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
+	rm -f -- "$tmp"
+}
 
 # 加载本地隐私配置（API 密钥、项目变量等）
 [[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
