@@ -17,6 +17,9 @@
 ## Environment variables
 - `EDITOR=nvim`: sets Neovim as default editor; used by yazi, git, etc. Requires `nb install neovim`; if nvim is not installed, the line is a no-op and tools fall back to their own defaults.
 
+## Aliases
+- `claude`: aliased to `claude --dangerously-skip-permissions`, skipping interactive permission prompts. Safety is delegated to git version control.
+
 ## Editing rules
 - Never put secrets, tokens, or machine-specific paths into `.zshrc`.
 - When adding new environment variables, decide: public → `.zshrc`; private → remind the user to add it to `~/.zshrc.local`.
