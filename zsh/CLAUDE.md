@@ -5,14 +5,17 @@
 - Only general, non-sensitive settings belong here (theme, plugins, completions, prompt).
 - Machine-specific or private content (API keys, project variables, local paths) must go in `~/.zshrc.local`, which is sourced at the end of `.zshrc` and is NOT tracked by git.
 
-## PATH 优先级
-- 自定义 PATH 必须在 `eval "$(brew shellenv)"` **之后**设置，否则会被 homebrew 覆盖。
-- 当前顺序：`~/.local/bin`（uv 工具）> `/opt/nanobrew/prefix/bin`（nanobrew 包）> `/opt/homebrew/bin`（homebrew 迁移残留）。
-- 使用 `typeset -U PATH`（大写）去重。注意：小写 `typeset -U path` 只对数组操作生效，对 `export PATH=` 字符串赋值无效。
+## PATH priority
+- Custom PATH must be set **after** `eval "$(brew shellenv)"`, otherwise Homebrew will override it.
+- Current order: `~/.local/bin` (uv tools) > `/opt/nanobrew/prefix/bin` (nanobrew packages) > `/opt/homebrew/bin` (Homebrew migration leftovers).
+- Use `typeset -U PATH` (uppercase) for deduplication. Note: lowercase `typeset -U path` only works on array operations, not on `export PATH=` string assignments.
 
 ## Python / uv
-- Python 版本由 `uv` 统一管理（通过 nanobrew 安装），不再使用 nanobrew 或 Homebrew 安装 Python。
-- macOS 系统自带 Python (`/usr/bin/python3`) 保留不动。
+- Python versions are managed by `uv` (installed via nanobrew). Do not install Python through nanobrew or Homebrew.
+- The macOS system Python (`/usr/bin/python3`) is left untouched.
+
+## Environment variables
+- `EDITOR=nvim`: sets Neovim as default editor; used by yazi, git, etc. Requires `nb install neovim`; if nvim is not installed, the line is a no-op and tools fall back to their own defaults.
 
 ## Editing rules
 - Never put secrets, tokens, or machine-specific paths into `.zshrc`.

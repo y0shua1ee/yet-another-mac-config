@@ -17,7 +17,7 @@ My Mac config
 | `.config/yazi` | Yazi 文件管理器及插件 |
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
-| `zsh/.zshrc` | Zsh 通用配置 |
+| `zsh/.zshrc` | Zsh 通用配置（含 `EDITOR=nvim` 等环境变量） |
 
 ## 使用说明
 

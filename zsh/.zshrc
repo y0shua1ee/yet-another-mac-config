@@ -25,6 +25,9 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 # nanobrew 和 uv 路径置于 Homebrew 之前，确保升级后的包和 uv 工具优先生效
 export PATH="$HOME/.local/bin:/opt/nanobrew/prefix/bin:$PATH"
 
+# 默认编辑器（需先安装 neovim：nb install neovim）
+command -v nvim >/dev/null 2>&1 && export EDITOR=nvim
+
 # Starship 提示符
 eval "$(starship init zsh)"
 
