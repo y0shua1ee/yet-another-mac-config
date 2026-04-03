@@ -14,6 +14,8 @@
   3. **README.md / CLAUDE.md at higher levels**: check whether they need updates too (usually not, unless global conventions change).
 - This checklist is non-optional. Do not consider a configuration change complete until all relevant documentation is in sync.
 - Before committing or pushing, always review the diff for privacy leaks (API keys, tokens, passwords, private IPs, personal identifiers, etc.). If found, remove them before proceeding.
+- After each configuration change is complete (including documentation checklist), automatically create a git commit without waiting for user instruction. Keep each commit atomic and focused on one logical change.
+- Do NOT push to remote automatically. Only push when the user explicitly requests it.
 
 ## Style
 - Please communicate with me in Chinese.
