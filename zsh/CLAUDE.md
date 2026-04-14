@@ -11,7 +11,7 @@
 - Use `typeset -U PATH` (uppercase) for deduplication. Note: lowercase `typeset -U path` only works on array operations, not on `export PATH=` string assignments.
 
 ## Bun
-- `BUN_INSTALL` and bun completions are configured at the end of `.zshrc`.
+- `BUN_INSTALL` and bun completions are configured in `.zshrc`, before the `.zshrc.local` source line.
 - bun is installed via its official installer, not via nanobrew or Homebrew.
 
 ## Python / uv
