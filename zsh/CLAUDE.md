@@ -7,8 +7,12 @@
 
 ## PATH priority
 - Custom PATH must be set **after** `eval "$(brew shellenv)"`, otherwise Homebrew will override it.
-- Current order: `~/.local/bin` (uv tools) > `/opt/nanobrew/prefix/bin` (nanobrew packages) > `/opt/homebrew/bin` (Homebrew migration leftovers).
+- Current order: `$HOME/.bun/bin` (bun) > `~/.local/bin` (uv tools) > `/opt/nanobrew/prefix/bin` (nanobrew packages) > `/opt/homebrew/bin` (Homebrew migration leftovers).
 - Use `typeset -U PATH` (uppercase) for deduplication. Note: lowercase `typeset -U path` only works on array operations, not on `export PATH=` string assignments.
+
+## Bun
+- `BUN_INSTALL` and bun completions are configured at the end of `.zshrc`.
+- bun is installed via its official installer, not via nanobrew or Homebrew.
 
 ## Python / uv
 - Python versions are managed by `uv` (installed via nanobrew). Do not install Python through nanobrew or Homebrew.
