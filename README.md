@@ -54,17 +54,16 @@ colima start            # 启动 Colima VM（默认 2 CPU / 2 GB 内存 / 20 GB 
 docker run hello-world  # 验证 Docker 是否正常
 ```
 
-`docker-compose` 作为 Docker CLI 插件加载，需在 `~/.docker/config.json` 中添加：
+`docker-compose` 作为 Docker CLI 插件加载，需在 `~/.docker/config.json` 中添加以下键（如果文件已存在，请合并到现有 JSON 中，不要覆盖整个文件）：
 
-```json
-{
-  "cliPluginsExtraDirs": [
-    "/opt/homebrew/lib/docker/cli-plugins"
-  ]
-}
+```jsonc
+// 合并到 ~/.docker/config.json，保留已有的 auths 等字段
+"cliPluginsExtraDirs": [
+  "/opt/homebrew/lib/docker/cli-plugins"
+]
 ```
 
-> **注意：** `~/.docker/config.json` 可能包含登录凭据，不纳入版本控制。
+> **注意：** `~/.docker/config.json` 可能包含 registry 登录凭据等敏感信息，不纳入版本控制。
 
 常用 Colima 命令：
 
