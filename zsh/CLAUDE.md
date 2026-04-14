@@ -7,19 +7,19 @@
 
 ## PATH priority
 - Custom PATH must be set **after** `eval "$(brew shellenv)"`, otherwise Homebrew will override it.
-- Current order: `$HOME/.bun/bin` (bun) > `~/.local/bin` (uv tools) > `/opt/nanobrew/prefix/bin` (nanobrew packages) > `/opt/homebrew/bin` (Homebrew migration leftovers).
+- Current order: `$HOME/.bun/bin` (bun) > `~/.local/bin` (uv tools) > `/opt/homebrew/bin` (Homebrew).
 - Use `typeset -U PATH` (uppercase) for deduplication. Note: lowercase `typeset -U path` only works on array operations, not on `export PATH=` string assignments.
 
 ## Bun
 - `BUN_INSTALL` and bun completions are configured in `.zshrc`, before the `.zshrc.local` source line.
-- bun is installed via its official installer, not via nanobrew or Homebrew.
+- bun is installed via its official installer, not via Homebrew.
 
 ## Python / uv
-- Python versions are managed by `uv` (installed via nanobrew). Do not install Python through nanobrew or Homebrew.
+- Python versions are managed by `uv` (installed via Homebrew). Do not install Python through Homebrew directly.
 - The macOS system Python (`/usr/bin/python3`) is left untouched.
 
 ## Environment variables
-- `EDITOR=nvim`: sets Neovim as default editor; used by yazi, git, etc. Requires `nb install neovim`; if nvim is not installed, the line is a no-op and tools fall back to their own defaults.
+- `EDITOR=nvim`: sets Neovim as default editor; used by yazi, git, etc. Requires `brew install neovim`; if nvim is not installed, the line is a no-op and tools fall back to their own defaults.
 
 ## Editing rules
 - Never put secrets, tokens, or machine-specific paths into `.zshrc`.

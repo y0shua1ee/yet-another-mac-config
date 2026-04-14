@@ -22,10 +22,10 @@ ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#7f849c'
 
 # Homebrew 环境
 eval "$(/opt/homebrew/bin/brew shellenv)"
-# nanobrew 和 uv 路径置于 Homebrew 之前，确保升级后的包和 uv 工具优先生效
-export PATH="$HOME/.local/bin:/opt/nanobrew/prefix/bin:$PATH"
+# uv 工具路径置于 Homebrew 之前
+export PATH="$HOME/.local/bin:$PATH"
 
-# 默认编辑器（需先安装 neovim：nb install neovim）
+# 默认编辑器（需先安装 neovim：brew install neovim）
 command -v nvim >/dev/null 2>&1 && export EDITOR=nvim
 
 # Starship 提示符
@@ -37,11 +37,6 @@ if type brew &>/dev/null; then
 
   autoload -Uz compinit
   compinit
-fi
-
-# nanobrew 补全（使用 nb 内置的完整补全脚本，不依赖 brew）
-if type nb &>/dev/null; then
-  eval "$(nb completions zsh)"
 fi
 
 # yazi

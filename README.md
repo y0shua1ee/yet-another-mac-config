@@ -27,13 +27,13 @@ My Mac config
 4. 如果当前工作区里本地存在 `.codex/config.toml`，脚本会额外询问是否同步到 `~/.codex/config.toml`；该文件默认只保留在本地，不会提交到仓库。
 5. 脚本会询问是否将 `zsh/.zshrc` 软链接到 `~/.zshrc`。通用配置（主题、插件、补全等）存放在此文件中；API 密钥、项目变量等隐私内容应写入 `~/.zshrc.local`（不纳入版本控制），会在 `.zshrc` 末尾自动加载。
 6. 脚本会检测 `.config/tmux` 是否缺少 `tmux.conf`，如果缺少则提示安装 [oh-my-tmux](https://github.com/gpakosz/.tmux)，自动克隆到 `~/.local/share/tmux/oh-my-tmux` 并创建软链接。
-7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`；在此之前请先通过 `nb install --cask hammerspoon` 安装好 Hammerspoon，并根据需要安装 `Ghostty`（例如 `nb install --cask ghostty`）以使用 `Ctrl+Alt+T` 新开 Ghostty 窗口的快捷方式。
+7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`；在此之前请先通过 `brew install --cask hammerspoon` 安装好 Hammerspoon，并根据需要安装 `Ghostty`（例如 `brew install --cask ghostty`）以使用 `Ctrl+Alt+T` 新开 Ghostty 窗口的快捷方式。
 
 ## Yazi 插件同步
 
 `install_yazi_plugins.sh` 用来在新环境里批量安装/更新 `package.toml` 中锁定的所有 Yazi 插件，并按需设置部分环境变量（比如 `LG_CONFIG_FILE`，确保 `lazygit.yazi` 能工作）。使用方式：
 
-1. 确认 `ya` CLI 已安装：`nb install yazi`。
+1. 确认 `ya` CLI 已安装：`brew install yazi`。
 2. 可选：指定配置目录，例如 `./install_yazi_plugins.sh --config-dir "$HOME/.config/yazi"`；若不传参数脚本会优先使用 `XDG_CONFIG_HOME/yazi`，否则回退到仓库内 `.config/yazi`。
 3. 等待脚本自动执行 `ya pkg install`，输出当前生效的插件列表，并提示缺失的依赖工具（如 `git`、`starship`、`lazygit`、`7zz`、`magick` 等）。
 
@@ -41,7 +41,7 @@ My Mac config
 
 ## 后台服务管理
 
-以下服务已迁移至 nanobrew 管理（`nb services`），不再使用 `brew services`：
+以下服务通过 `brew services` 管理：
 
 | 服务 | 说明 | 开机自启 |
 |------|------|----------|
@@ -50,18 +50,16 @@ My Mac config
 | clouddrive2 | CloudDrive2 云盘挂载 | 是 |
 | unbound | DNS resolver | 否 |
 
-开机自启通过 `~/Library/LaunchAgents/` 中的 plist 软链接实现，指向 nanobrew prefix 下的 plist 文件。`nb services start/stop` 仅控制当前会话的运行状态，不影响开机自启。
-
 常用命令：
 
 ```bash
-nb services list              # 查看当前运行状态
-nb services start <name>      # 启动服务（仅当前会话）
-nb services stop <name>       # 停止服务（仅当前会话）
-nb services restart <name>    # 重启服务
+brew services list              # 查看当前运行状态
+brew services start <name>      # 启动服务（开机自启）
+brew services stop <name>       # 停止服务（取消开机自启）
+brew services restart <name>    # 重启服务
 ```
 
-> **注意：** nginx 的配置路径硬编码为 `/opt/homebrew/etc/nginx/`（来自预编译 bottle），即使 nginx 二进制已迁移到 nanobrew，该目录仍需保留。
+> **注意：** nginx 的配置路径为 `/opt/homebrew/etc/nginx/`。
 
 ## 本地文件同步约定
 
