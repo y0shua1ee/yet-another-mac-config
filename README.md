@@ -39,6 +39,42 @@ My Mac config
 
 脚本可安全重复执行，方便在多台机器间保持插件一致。
 
+## 容器运行环境
+
+使用 [Colima](https://github.com/abiosoft/colima) 作为 Docker Desktop 的轻量替代方案，搭配 Homebrew 安装的 `docker` CLI 和 `docker-compose` 插件：
+
+```bash
+brew install colima docker docker-compose
+```
+
+首次启动：
+
+```bash
+colima start            # 启动 Colima VM（默认 2 CPU / 2 GB 内存 / 20 GB 磁盘）
+docker run hello-world  # 验证 Docker 是否正常
+```
+
+`docker-compose` 作为 Docker CLI 插件加载，需在 `~/.docker/config.json` 中添加：
+
+```json
+{
+  "cliPluginsExtraDirs": [
+    "/opt/homebrew/lib/docker/cli-plugins"
+  ]
+}
+```
+
+> **注意：** `~/.docker/config.json` 可能包含登录凭据，不纳入版本控制。
+
+常用 Colima 命令：
+
+```bash
+colima start            # 启动（也可通过 brew services start colima 开机自启）
+colima stop             # 停止
+colima status           # 查看状态
+colima delete           # 删除 VM（释放磁盘空间）
+```
+
 ## 后台服务管理
 
 以下服务通过 `brew services` 管理：
@@ -49,6 +85,7 @@ My Mac config
 | nginx | HTTP 服务器（默认端口 8080） | 是 |
 | clouddrive2 | CloudDrive2 云盘挂载 | 是 |
 | unbound | DNS resolver | 否 |
+| colima | Colima 容器运行时（可选） | 否 |
 
 常用命令：
 
