@@ -11,7 +11,6 @@ My Mac config
 | `.config/btop` | btop 系统监控 |
 | `.config/ghostty` | Ghostty 终端 |
 | `.config/nvim` | Neovim（基于 LazyVim） |
-| `.config/opencode` | OpenCode 及 GSD 工作流 |
 | `.config/tmux` | tmux（基于 oh-my-tmux） |
 | `.config/typora` | Typora 自定义主题 |
 | `.config/yazi` | Yazi 文件管理器及插件 |
@@ -107,7 +106,6 @@ brew services restart <name>    # 重启服务
 - `.config/mole/`：清理工具运行日志与本地运行状态。
 - `.config/raycast/`：Raycast 本地扩展与缓存数据。
 - `.config/jgit/`：Jujutsu / Git 相关本地配置。
-- `.config/opencode/cache/`：OpenCode 缓存数据。
 - `.config/tmux/tmux.conf`：oh-my-tmux 主配置的软链接，指向本地克隆路径，机器相关。
 - `.config/ghostty/*.bak`：Ghostty 配置备份文件。
 - `.DS_Store`：macOS 自动生成的目录元数据文件。

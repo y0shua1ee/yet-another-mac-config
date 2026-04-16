@@ -18,8 +18,5 @@
 # tpm 管理的插件（运行时安装，不纳入版本控制）
 .config/tmux/plugins/
 
-# 本地缓存
-.config/opencode/cache/
-
 # 本地备份文件
 .config/ghostty/*.bak
