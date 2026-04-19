@@ -53,5 +53,8 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 [ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
 
+# Claude Code
+alias c='CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000 claude --dangerously-skip-permissions'
+
 # 加载本地隐私配置（API 密钥、项目变量等）——必须放在最后，以便覆盖上方任何设置
 [[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
