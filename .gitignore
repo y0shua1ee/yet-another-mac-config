@@ -1,6 +1,7 @@
 .DS_Store
 
 .codex/
+.claude/
 
 # 指令文件纳入版本控制
 !**/AGENTS.md

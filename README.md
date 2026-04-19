@@ -101,6 +101,7 @@ brew services restart <name>    # 重启服务
 以下内容仅保留在本地环境，不会同步到仓库：
 
 - `.codex/`：Codex 本地配置。
+- `.claude/`：Claude Code 的项目级状态（worktrees、settings.local.json 等）。
 - `.config/op/`：1Password CLI 的本地设备信息。
 - `.config/linearmouse/`：鼠标与触控板的本机硬件配置。
 - `.config/mole/`：清理工具运行日志与本地运行状态。
