@@ -17,6 +17,7 @@ My Mac config
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
 | `zsh/.zshrc` | Zsh 通用配置（含 `EDITOR=nvim`、bun 等环境变量） |
+| `flake.nix` + `nix/` | 渐进式 Nix 迁移骨架（Phase 1，默认不激活，详见下文） |
 
 ## 使用说明
 
@@ -114,3 +115,52 @@ brew services restart <name>    # 重启服务
 `setup_mac.sh` 只会处理 Git 已跟踪的 `.config` 目录，因此这些本地忽略目录不会出现在同步提示里。
 
 如果后续新增只适用于当前机器的配置或缓存文件，建议继续补充到 `.gitignore`，避免误提交到仓库。
+
+## 渐进式 Nix 迁移
+
+本仓库正在以「小步前进、不破坏现状」的方式引入 Nix。底层运行时选用 [Determinate Nix](https://docs.determinate.systems/)，系统层使用 [nix-darwin](https://github.com/nix-darwin/nix-darwin)，用户层使用 [Home Manager](https://nix-community.github.io/home-manager/)。详细结构与约束见 [`nix/CLAUDE.md`](nix/CLAUDE.md)。
+
+### Phase 1 现已管理（骨架）
+
+- `flake.nix`：入口，定义 `darwinConfigurations.AresdeMacBook-Air`。
+- `nix/darwin/default.nix`：**最小**系统层配置；关键点：`nix.enable = false;` 让 Determinate Nix 自行管理守护进程，避免与 nix-darwin 冲突。
+- `nix/home/default.nix`：Home Manager 用户层入口；默认**不 import** zsh 模块。
+- `nix/modules/zsh.nix`：首版 zsh Home Manager 模块，仅搬入 `zsh/.zshrc` 中「安全/通用」子集（`EDITOR=nvim`、bun、`PATH` 去重、yazi 辅助函数、Claude Code 别名、`~/.zshrc.local` 入口），Phase 1 **故意不启用**。
+
+### Phase 1 暂不管理（仍按原方式）
+
+- `~/.zshrc` 仍是仓库里 `zsh/.zshrc` 的软链接；现有 Oh My Zsh 主题与插件继续沿用现有脚本。
+- Homebrew 软件包、`brew services`、系统默认值（`system.defaults.*`）、字体、应用等一律保持现状。
+- `setup_mac.sh` 仍是首选的初始化方式；Nix 只是额外可选通道。
+
+### 安全激活步骤（需先装好 Determinate Nix）
+
+```bash
+# 0. 安装 Determinate Nix（官方安装器，首次执行；不要用旧版 nix-installer）
+#    curl -fsSL https://install.determinate.systems/nix | sh -s -- install
+
+# 1. 首次进入仓库后生成 flake.lock（生成后请一并提交）
+nix flake lock
+
+# 2. 静态检查；仓库首次应能通过
+nix flake check
+
+# 3. 先 build 再决定是否 switch —— build 不会改系统状态
+darwin-rebuild build --flake .#AresdeMacBook-Air
+
+# 4. 确认无误后再真正激活
+darwin-rebuild switch --flake .#AresdeMacBook-Air
+```
+
+> **谨慎原则**：
+> - 不要用 `--flake .` 直接运行（会猜测 hostname），显式指定 `.#AresdeMacBook-Air`。
+> - 切换到新机器时请先改 `flake.nix` 中的 `hostname` / `username` / `system`，再执行上述步骤。
+> - 本骨架不执行任何卸载/清理类操作；如果激活失败，回退方式就是不再运行 `switch`，原有 dotfile 保持不变。
+
+### 后续阶段的路线图（暂定）
+
+- **Phase 2**：真正启用 `nix/modules/zsh.nix`，替换 `~/.zshrc` 软链接；同步把 Oh My Zsh 主题/插件迁到 Home Manager 原生能力或 `programs.zsh.oh-my-zsh`。
+- **Phase 3**：将部分 Homebrew 软件包迁到 `nix-darwin` 的 `homebrew` 模块（声明式）或 Home Manager `home.packages`。
+- **Phase 4**：逐步把 `system.defaults.*`、字体、服务纳入管理。
+
+每个阶段都应单独一次提交，并更新本章节。
