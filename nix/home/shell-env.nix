@@ -8,10 +8,8 @@
   # 关于何时生效：
   # - home.sessionVariables 会被写入 ~/.nix-profile/etc/profile.d/hm-session-vars.sh
   # - 该文件只有在 Home Manager 生成的 shell 配置里才会被 source
-  # - Phase 2C：`../modules/zsh.nix` 已 import 进 home/default.nix，配置图 ready，
-  #   但真正接管 ~/.zshrc 仍需一次 `sudo darwin-rebuild switch`。switch 之前
-  #   这些变量不会在登录 shell 中生效，仍由 zsh/.zshrc 里的 `export EDITOR=nvim`
-  #   承担运行时职责；switch 之后 Home Manager 版 zsh 会自动接管。
+  # - 当前机器已完成 Home Manager 版 zsh 的 switch，所以下列变量已经在登录 shell 中
+  #   生效；仓库 zsh/.zshrc 中保留的 `export EDITOR=nvim` 只作为旧软链接回退路径。
   # =============================================================================
 
   home.sessionVariables = {

@@ -2,7 +2,7 @@
 {
   # =============================================================================
   # Home Manager 用户层配置
-  # Phase 2C：zsh 模块已纳入配置图，但真正接管 ~/.zshrc 仍要等下一次 switch
+  # Phase 2D：Home Manager 已接管 ~/.zshrc
   # =============================================================================
 
   imports = [
@@ -10,13 +10,10 @@
     ./packages.nix
     ./shell-env.nix
 
-    # Phase 2C：zsh 模块现已进入配置图（flake check / build 可见），
-    # 但真正生效仍需一次 `sudo darwin-rebuild switch`。
-    # switch 发生时：
-    #   - 仓库 `zsh/.zshrc → ~/.zshrc` 的软链接会被 home-manager 视为冲突，
-    #     因 flake.nix 里设了 `backupFileExtension = "hm-backup"`，原软链接
-    #     会被重命名为 `~/.zshrc.hm-backup`，随后 home-manager 生成自己的
-    #     `~/.zshrc`（内容见 ../modules/zsh.nix + ../../zsh/shared.zsh）。
+    # Phase 2D：zsh 模块已完成 switch 并实际接管 ~/.zshrc。
+    # 当前机器上：
+    #   - Home Manager 正在生成 `~/.zshrc`（内容见 ../modules/zsh.nix + ../../zsh/shared.zsh）。
+    #   - 旧仓库软链接已手动保留为 `~/.zshrc.pre-hm-switch-backup`，便于人工回退。
     #   - 机器相关片段（如 OpenClaw 绝对路径 completion）应放到 `~/.zshrc.local`，
     #     它会在 home-manager 版 zsh 末尾被自动 source，不进仓库。
     ../modules/zsh.nix
