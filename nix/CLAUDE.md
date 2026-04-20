@@ -1,9 +1,9 @@
 # Nix 配置指南（面向 agents）
 
-## 目的 / Phase 1 范围
-- 这是渐进式 Nix 迁移的第一阶段骨架，底层运行时是 [Determinate Nix](https://docs.determinate.systems/)，系统层用 [nix-darwin](https://github.com/nix-darwin/nix-darwin)，用户层用 [Home Manager](https://nix-community.github.io/home-manager/)。
-- 此阶段故意保守：**不接管任何现有 dotfile**，不触碰 Homebrew、系统默认值、服务等。
-- 这个仓库仍然是「事实源」，Nix 只是又一种可选的激活方式。
+## 目的 / 当前阶段
+- 这是渐进式 Nix 迁移，底层运行时是 [Determinate Nix](https://docs.determinate.systems/)，系统层用 [nix-darwin](https://github.com/nix-darwin/nix-darwin)，用户层用 [Home Manager](https://nix-community.github.io/home-manager/)。
+- **Phase 2C 现状：zsh 模块已纳入 Home Manager 配置图，`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；真正接管 `~/.zshrc` 仍要等下一次 `sudo darwin-rebuild switch`。**
+- 这个仓库仍然是「事实源」，Nix 只是又一种可选的激活方式。在 switch 发生之前（或 switch 之后 rollback），`~/.zshrc` 仍由仓库 `zsh/.zshrc` 软链接承担。
 
 ## 目录结构
 ```
@@ -13,24 +13,26 @@ nix/
 ├── darwin/
 │   └── default.nix    # nix-darwin 系统层（最小）
 ├── home/
-│   ├── default.nix    # Home Manager 用户层入口（默认不启用 zsh 模块）
+│   ├── default.nix    # Home Manager 用户层入口（已 import ../modules/zsh.nix）
 │   ├── packages.nix   # Phase 2A：低风险纯 CLI 工具
-│   └── shell-env.nix  # Phase 2A：通用非私密环境变量（声明先行，zsh 模块启用后自动生效）
+│   └── shell-env.nix  # Phase 2A：通用非私密环境变量（switch 后 zsh 模块会令其生效）
 └── modules/
-    └── zsh.nix        # 首版 zsh Home Manager 模块（安全/核心子集）
+    └── zsh.nix        # zsh Home Manager 模块（Phase 2C 已 ready，待 switch 生效）
 ```
 
 另有仓库侧共享脚本：`zsh/shared.zsh`。它被 `zsh/.zshrc` 与 `nix/modules/zsh.nix` 共同复用，用来承载公开、跨机器通用的 shell 逻辑。
 
-根目录的 `flake.nix` 通过 `darwinConfigurations.AresdeMacBook-Air` 把上述三层装配起来。
+根目录的 `flake.nix` 通过 `darwinConfigurations.AresdeMacBook-Air` 把上述三层装配起来，并开启 `home-manager.backupFileExtension = "hm-backup"`，用于首次 switch 时把已有的 `~/.zshrc` 自动备份为 `~/.zshrc.hm-backup`，避免覆盖手写内容。
 
 ## 重要约束
 - `darwin/default.nix` 里 `nix.enable = false;` —— Determinate Nix 自己管理 nix 守护进程，nix-darwin **不得**再接管，否则会互相覆盖。
-- `home/default.nix` 默认**不 import** `modules/zsh.nix`。Phase 1 禁止直接启用 zsh 模块，否则 Home Manager 会改写 `~/.zshrc`，与仓库中 `zsh/.zshrc → ~/.zshrc` 软链接冲突。
-- 启用 zsh 模块前必须先：
-  1. 移除 `~/.zshrc` 软链接（或依赖 `home-manager.backupFileExtension = "hm-backup"` 自动备份）。
-  2. 在 `nix/home/default.nix` 的 `imports` 中取消注释 `../modules/zsh.nix`。
-  3. 先 `darwin-rebuild build --flake .#...` 检查再 `switch`。
+- `home/default.nix` 现在**确实 import** 了 `modules/zsh.nix`。也就是说，下次执行 `sudo darwin-rebuild switch` 时，Home Manager 会直接生成自己的 `~/.zshrc`，从而接管这份 dotfile。在 switch 之前保持日常使用即可，仓库里的 `zsh/.zshrc` 软链接不会被自动触碰。
+- 触发 switch 前后的注意事项：
+  1. 先 `nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air`，再 `sudo darwin-rebuild switch`。
+  2. 首次 switch 时，`~/.zshrc` 软链接会被 `home-manager.backupFileExtension` 重命名为 `~/.zshrc.hm-backup`；新 `~/.zshrc` 由 `modules/zsh.nix` 基于 `../../zsh/shared.zsh` 生成。
+  3. 机器相关或绝对路径的 shell 片段（例如仓库里 `zsh/.zshrc` 末尾追加的 OpenClaw completion）不应进仓库共享区，而应写入 `~/.zshrc.local`；Home Manager 版 zsh 的 `initExtra` 会在末尾自动 `source` 它。
+  4. 需要回滚时：`sudo darwin-rebuild switch --rollback`，并按需把 `~/.zshrc.hm-backup` 还原为 `~/.zshrc`。
+- 当前阶段 **不** 触碰：`~/.zshrc`（takeover 动作本身）、`~/.zshrc.local`、Homebrew casks / 服务、`system.defaults.*`、字体、`.hammerspoon`。这些仍按原方式管理。
 
 ## 修改风格
 - 保持最小改动。任何向系统层下沉（如启用 `homebrew`、`system.defaults`）的变更都应单独成一个 commit，并更新根 README 的「渐进式 Nix 迁移」章节。

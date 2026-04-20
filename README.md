@@ -17,7 +17,7 @@ My Mac config
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
 | `zsh/.zshrc` | Zsh 通用配置（含 `EDITOR=nvim`、bun 等环境变量） |
-| `flake.nix` + `nix/` | 渐进式 Nix 迁移骨架（Phase 2A：低风险 CLI 包 + 通用环境变量；`~/.zshrc` 仍由仓库软链接托管） |
+| `flake.nix` + `nix/` | 渐进式 Nix 迁移骨架（Phase 2C：zsh 模块已纳入 Home Manager 配置图，`nix flake check` / `darwin-rebuild build` 已通过；真正接管 `~/.zshrc` 仍待下一次 `sudo darwin-rebuild switch`） |
 
 ## 使用说明
 
@@ -122,14 +122,13 @@ brew services restart <name>    # 重启服务
 
 ### Phase 1 现已管理（骨架）
 
-- `flake.nix`：入口，定义 `darwinConfigurations.AresdeMacBook-Air`。
+- `flake.nix`：入口，定义 `darwinConfigurations.AresdeMacBook-Air`，并开启 `home-manager.backupFileExtension = "hm-backup"`。
 - `nix/darwin/default.nix`：**最小**系统层配置；关键点：`nix.enable = false;` 让 Determinate Nix 自行管理守护进程，避免与 nix-darwin 冲突。
-- `nix/home/default.nix`：Home Manager 用户层入口；默认**不 import** zsh 模块。
-- `nix/modules/zsh.nix`：首版 zsh Home Manager 模块，仅搬入 `zsh/.zshrc` 中「安全/通用」子集（`EDITOR=nvim`、bun、`PATH` 去重、yazi 辅助函数、Claude Code 别名、`~/.zshrc.local` 入口），Phase 1 **故意不启用**。
+- `nix/home/default.nix`：Home Manager 用户层入口。
+- `nix/modules/zsh.nix`：zsh Home Manager 模块，`initExtra` 直接内联 `zsh/shared.zsh`，并在末尾 `source ~/.zshrc.local`。
 
-### Phase 1 暂不管理（仍按原方式）
+### 仍按原方式管理（未下沉到 Nix）
 
-- `~/.zshrc` 仍是仓库里 `zsh/.zshrc` 的软链接；现有 Oh My Zsh 主题与插件继续沿用现有脚本。
 - Homebrew 软件包、`brew services`、系统默认值（`system.defaults.*`）、字体、应用等一律保持现状。
 - `setup_mac.sh` 仍是首选的初始化方式；Nix 只是额外可选通道。
 
@@ -184,25 +183,34 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 > **谨慎原则**：
 > - 不要用 `--flake .` 直接运行（会猜测 hostname），显式指定 `.#AresdeMacBook-Air`。
 > - 切换到新机器时请先改 `flake.nix` 中的 `hostname` / `username` / `system`，再执行上述步骤。
-> - 激活过程若遇到「existing file would be overwritten」类冲突，Phase 1 的 `home-manager.backupFileExtension = "hm-backup"` 会把目标文件备份为 `*.hm-backup`；Phase 1 默认不启用 zsh 模块，所以不会碰 `~/.zshrc`。
-> - 本骨架不执行任何卸载/清理类操作；如果激活失败，回退方式就是不再运行 `switch`，原有 dotfile 保持不变。
+> - 激活过程若遇到「existing file would be overwritten」类冲突，`home-manager.backupFileExtension = "hm-backup"` 会把目标文件备份为 `*.hm-backup`。**Phase 2C 起，zsh 模块已 import 到 Home Manager 配置图中**，所以 **下一次** `switch` 会真正生成 `~/.zshrc`，同时把当前的软链接 `~/.zshrc` 备份为 `~/.zshrc.hm-backup`。切换前请确认可接受这一点。
+> - 本骨架不执行任何卸载/清理类操作；如果激活失败，回退方式可选：(a) 不再运行 `switch`，原有 dotfile 保持不变；(b) 已 switch 但想回退，`sudo darwin-rebuild switch --rollback` 并在需要时把 `~/.zshrc.hm-backup` 还原为 `~/.zshrc`。
 
 ### Phase 2A 现已管理（低风险 Home Manager 扩展）
 
 - `nix/home/packages.nix`：把若干稳定纯 CLI 工具（`ripgrep`、`fd`、`jq`、`tree`、`bat`）交给 Home Manager 的 `home.packages`。激活后会装到 `/etc/profiles/per-user/<user>/bin`，与 Homebrew 版本共存、互不覆盖。
-- `nix/home/shell-env.nix`：声明通用非私密变量 `EDITOR=nvim` / `VISUAL=nvim` / `PAGER=less`。目前 `programs.zsh` 仍未启用，这些变量**暂不在登录 shell 中生效**，由 `zsh/.zshrc` 里的 `export EDITOR=nvim` 继续承担运行时职责；等 Phase 2B 打开 zsh 模块后它们会自动接管。
-
-Phase 2A **仍然不接管** `~/.zshrc`、`~/.zshrc.local`、Homebrew casks、GUI 应用、`.hammerspoon`、`system.defaults.*`、`brew services`、字体等。
+- `nix/home/shell-env.nix`：声明通用非私密变量 `EDITOR=nvim` / `VISUAL=nvim` / `PAGER=less`。switch 之前它们尚未在登录 shell 中生效（仍由 `zsh/.zshrc` 里的 `export EDITOR=nvim` 承担运行时职责）；下一次 switch 打开 zsh 模块后它们会自动接管。
 
 ### Phase 2B 预备重构（已完成）
 
-- `zsh/shared.zsh`：新增一份共享 shell 片段，承载 `zsh/.zshrc` 与 `nix/modules/zsh.nix` 共同需要的公开、跨机器通用逻辑，减少两边继续漂移。
-- 当前软链接版 `zsh/.zshrc` 仍保留 Oh My Zsh、Homebrew completion 与本机 OpenClaw completion 的调用方职责；未来如果启用 Home Manager 的 `programs.zsh`，`nix/modules/zsh.nix` 会直接复用同一份 `zsh/shared.zsh`。
-- `~/.zshrc.local` 仍保留为私有覆盖入口，未被接管。
+- `zsh/shared.zsh`：承载 `zsh/.zshrc` 与 `nix/modules/zsh.nix` 共同需要的公开、跨机器通用逻辑，消除双份漂移。
+- 当前软链接版 `zsh/.zshrc` 保留 Oh My Zsh、Homebrew completion 与本机 OpenClaw completion 的调用方职责；启用 Home Manager 版 zsh 后，`nix/modules/zsh.nix` 会直接复用同一份 `zsh/shared.zsh`。
+- `~/.zshrc.local` 仍是私有覆盖入口，始终不纳入版本控制，也不被 Nix 接管。
+
+### Phase 2C 现状：repo-side ready，尚未 switch
+
+- `nix/home/default.nix` 已 `import ../modules/zsh.nix`，配置图里 zsh 模块**真实存在**。
+- 已通过 `nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 的离线验证。
+- **尚未**执行 `sudo darwin-rebuild switch`：也就是说 `~/.zshrc` 当前仍是指向仓库 `zsh/.zshrc` 的软链接，日常体验不变。
+- 下一次 `switch` 会：
+  1. 把 `~/.zshrc` 软链接重命名为 `~/.zshrc.hm-backup`（来自 `flake.nix` 的 `home-manager.backupFileExtension = "hm-backup"`）。
+  2. 写入新的 `~/.zshrc`（由 `nix/modules/zsh.nix` 基于 `zsh/shared.zsh` 生成）。
+  3. 令 `nix/home/shell-env.nix` 里的 `EDITOR=nvim` 等 `home.sessionVariables` 真正生效。
+- 机器相关片段（例如 OpenClaw 绝对路径 completion）需要搬到 `~/.zshrc.local`，Home Manager 版 zsh 的 `initExtra` 会在末尾自动 `source` 它。
 
 ### 后续阶段的路线图（暂定）
 
-- **Phase 2B**：真正启用 `nix/modules/zsh.nix`，替换 `~/.zshrc` 软链接；同步把 Oh My Zsh 主题/插件迁到 Home Manager 原生能力或 `programs.zsh.oh-my-zsh`。届时 `shell-env.nix` 里的 sessionVariables 会生效，可从 `zsh/.zshrc` 中移除对应 `export`。
+- **Phase 2D（真正 takeover）**：执行 `sudo darwin-rebuild switch --flake .#AresdeMacBook-Air`，切换到 Home Manager 版 `~/.zshrc`；之后 `zsh/.zshrc` 中已被 `shared.zsh` 覆盖的那部分 `export` 可以清理，仓库里的 `zsh/.zshrc` 保留作为「无 Nix 回退」通道。同步把 Oh My Zsh 主题/插件迁到 Home Manager 原生能力或 `programs.zsh.oh-my-zsh`。
 - **Phase 3**：将更多 Homebrew 软件包迁到 `nix-darwin` 的 `homebrew` 模块（声明式）或继续扩充 Home Manager `home.packages`。
 - **Phase 4**：逐步把 `system.defaults.*`、字体、服务纳入管理。
 

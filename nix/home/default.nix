@@ -1,7 +1,8 @@
 { lib, pkgs, username, ... }:
 {
   # =============================================================================
-  # Home Manager 用户层配置（Phase 1：骨架，默认不接管已有 dotfile）
+  # Home Manager 用户层配置
+  # Phase 2C：zsh 模块已纳入配置图，但真正接管 ~/.zshrc 仍要等下一次 switch
   # =============================================================================
 
   imports = [
@@ -9,12 +10,16 @@
     ./packages.nix
     ./shell-env.nix
 
-    # zsh 模块仍然故意不启用：启用会让 Home Manager 接管 ~/.zshrc，
-    # 而当前 ~/.zshrc 仍是仓库里 zsh/.zshrc 的软链接。
-    # Phase 2B 激活前请先：
-    #   1) rm ~/.zshrc（或允许 home-manager 用 *.hm-backup 后缀备份）
-    #   2) 在下一行取消注释
-    # ../modules/zsh.nix
+    # Phase 2C：zsh 模块现已进入配置图（flake check / build 可见），
+    # 但真正生效仍需一次 `sudo darwin-rebuild switch`。
+    # switch 发生时：
+    #   - 仓库 `zsh/.zshrc → ~/.zshrc` 的软链接会被 home-manager 视为冲突，
+    #     因 flake.nix 里设了 `backupFileExtension = "hm-backup"`，原软链接
+    #     会被重命名为 `~/.zshrc.hm-backup`，随后 home-manager 生成自己的
+    #     `~/.zshrc`（内容见 ../modules/zsh.nix + ../../zsh/shared.zsh）。
+    #   - 机器相关片段（如 OpenClaw 绝对路径 completion）应放到 `~/.zshrc.local`，
+    #     它会在 home-manager 版 zsh 末尾被自动 source，不进仓库。
+    ../modules/zsh.nix
   ];
 
   home.username = username;
