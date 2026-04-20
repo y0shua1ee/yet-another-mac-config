@@ -5,9 +5,13 @@
   # =============================================================================
 
   imports = [
-    # zsh 模块已就位，但 Phase 1 故意不启用：启用会让 Home Manager 接管 ~/.zshrc，
+    # Phase 2A：低风险的包与通用 shell 环境变量
+    ./packages.nix
+    ./shell-env.nix
+
+    # zsh 模块仍然故意不启用：启用会让 Home Manager 接管 ~/.zshrc，
     # 而当前 ~/.zshrc 仍是仓库里 zsh/.zshrc 的软链接。
-    # Phase 2 激活前请先：
+    # Phase 2B 激活前请先：
     #   1) rm ~/.zshrc（或允许 home-manager 用 *.hm-backup 后缀备份）
     #   2) 在下一行取消注释
     # ../modules/zsh.nix
@@ -22,5 +26,6 @@
   # 管理 home-manager 自身
   programs.home-manager.enable = true;
 
-  # Phase 1 刻意不声明任何 home.packages；包管理仍交给 Homebrew。
+  # Phase 2A 起：少量稳定 CLI 交由 home.packages（见 ./packages.nix）；
+  # 其它大多数软件（尤其是 cask / GUI / 带服务的工具）仍由 Homebrew 管理。
 }

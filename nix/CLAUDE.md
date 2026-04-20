@@ -13,7 +13,9 @@ nix/
 ├── darwin/
 │   └── default.nix    # nix-darwin 系统层（最小）
 ├── home/
-│   └── default.nix    # Home Manager 用户层入口（默认不启用 zsh 模块）
+│   ├── default.nix    # Home Manager 用户层入口（默认不启用 zsh 模块）
+│   ├── packages.nix   # Phase 2A：低风险纯 CLI 工具
+│   └── shell-env.nix  # Phase 2A：通用非私密环境变量（声明先行，zsh 模块启用后自动生效）
 └── modules/
     └── zsh.nix        # 首版 zsh Home Manager 模块（安全/核心子集）
 ```
