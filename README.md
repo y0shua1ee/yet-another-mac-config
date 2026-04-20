@@ -133,28 +133,56 @@ brew services restart <name>    # 重启服务
 - Homebrew 软件包、`brew services`、系统默认值（`system.defaults.*`）、字体、应用等一律保持现状。
 - `setup_mac.sh` 仍是首选的初始化方式；Nix 只是额外可选通道。
 
-### 安全激活步骤（需先装好 Determinate Nix）
+### 安全激活步骤
+
+> **鸡生蛋问题**：全新机器上没有 `darwin-rebuild` 命令，它必须等 nix-darwin 第一次激活后才会被装进 PATH。因此首次激活用 `nix run` 触发 nix-darwin 自带的安装/切换入口，之后再切回 `darwin-rebuild`。
+
+**Step 0 — 安装 Determinate Nix**（仅首次）
 
 ```bash
-# 0. 安装 Determinate Nix（官方安装器，首次执行；不要用旧版 nix-installer）
-#    curl -fsSL https://install.determinate.systems/nix | sh -s -- install
+# 官方安装器（Determinate Nix 发行版；不要混用旧版 nix-installer）
+curl -fsSL https://install.determinate.systems/nix | sh -s -- install
+# 安装完毕后在新 shell 里验证
+nix --version
+```
 
-# 1. 首次进入仓库后生成 flake.lock（生成后请一并提交）
+**Step 1 — 生成 / 锁定依赖**（仓库根目录内）
+
+```bash
+# 首次会创建 flake.lock；生成后请 git add 并提交，保持可重现
 nix flake lock
-
-# 2. 静态检查；仓库首次应能通过
+# 可选：静态检查
 nix flake check
+```
 
-# 3. 先 build 再决定是否 switch —— build 不会改系统状态
-darwin-rebuild build --flake .#AresdeMacBook-Air
+**Step 2 — 首次 build（不改系统，只下载依赖并评估）**
 
-# 4. 确认无误后再真正激活
+```bash
+# 不用 darwin-rebuild（还没装），用 nix run 拉起 nix-darwin
+nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
+  build --flake .#AresdeMacBook-Air
+```
+
+**Step 3 — 首次激活（真正写入系统状态）**
+
+```bash
+# 第一次必须用 nix run；激活成功后 /run/current-system/sw/bin/darwin-rebuild 才存在
+nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
+  switch --flake .#AresdeMacBook-Air
+```
+
+**Step 4 — 之后的迭代**
+
+```bash
+# 从第二次起 darwin-rebuild 已在 PATH，先 build 预检再 switch
+darwin-rebuild build  --flake .#AresdeMacBook-Air
 darwin-rebuild switch --flake .#AresdeMacBook-Air
 ```
 
 > **谨慎原则**：
 > - 不要用 `--flake .` 直接运行（会猜测 hostname），显式指定 `.#AresdeMacBook-Air`。
 > - 切换到新机器时请先改 `flake.nix` 中的 `hostname` / `username` / `system`，再执行上述步骤。
+> - 激活过程若遇到「existing file would be overwritten」类冲突，Phase 1 的 `home-manager.backupFileExtension = "hm-backup"` 会把目标文件备份为 `*.hm-backup`；Phase 1 默认不启用 zsh 模块，所以不会碰 `~/.zshrc`。
 > - 本骨架不执行任何卸载/清理类操作；如果激活失败，回退方式就是不再运行 `switch`，原有 dotfile 保持不变。
 
 ### 后续阶段的路线图（暂定）

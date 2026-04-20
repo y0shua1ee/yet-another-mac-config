@@ -34,15 +34,24 @@ nix/
 - Nix 代码中的注释使用中文（与仓库整体风格一致）。
 
 ## 常用命令（需已安装 Determinate Nix）
+
+首次激活 nix-darwin 时系统里还没有 `darwin-rebuild`，必须用 `nix run` 引导；之后才能使用 `darwin-rebuild`。
+
 ```bash
 # 静态校验（不执行激活）
 nix flake check
 
-# 仅构建，不切换：看到无报错再决定是否 switch
-darwin-rebuild build --flake .#AresdeMacBook-Air
+# —— 首次激活（全新机器上）——
+# build 预检：
+nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
+  build --flake .#AresdeMacBook-Air
+# 正式切换：
+nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
+  switch --flake .#AresdeMacBook-Air
 
-# 真正激活（会修改系统/用户状态）
+# —— 第二次以后 darwin-rebuild 已在 PATH ——
+darwin-rebuild build  --flake .#AresdeMacBook-Air
 darwin-rebuild switch --flake .#AresdeMacBook-Air
 ```
 
-首次 `nix flake check` 会生成 `flake.lock`。它应当纳入版本控制以保证可重现。
+首次 `nix flake lock` / `nix flake check` 会生成 `flake.lock`。它应当纳入版本控制以保证可重现。
