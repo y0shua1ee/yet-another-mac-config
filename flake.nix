@@ -29,8 +29,13 @@
       hostname = "AresdeMacBook-Air";
     in
     {
-      # 用法：darwin-rebuild switch --flake .#AresdeMacBook-Air
-      # 首次激活前强烈建议：darwin-rebuild build --flake .#AresdeMacBook-Air
+      # 用法（详见 README「安全激活步骤」章节）：
+      #   - 全新机器首次激活，darwin-rebuild 尚未在 PATH，必须用 nix run 引导：
+      #       nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
+      #         switch --flake .#AresdeMacBook-Air
+      #     （先跑 build 再跑 switch 更稳）
+      #   - 从第二次起可直接：
+      #       darwin-rebuild switch --flake .#AresdeMacBook-Air
       darwinConfigurations.${hostname} = nix-darwin.lib.darwinSystem {
         inherit system;
         specialArgs = { inherit inputs username hostname; };
