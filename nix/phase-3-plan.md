@@ -58,26 +58,31 @@ Phase 3 拆成三个连续子阶段，范围从低风险到中低风险递进。
 - 不追求把所有本机 brew 安装项一次录完
 - 不试图让 Nix 立刻替代所有 Homebrew 用途
 
-**完成标准（第一版已达成的部分打勾，剩余为后续补录）**
+**完成标准**
 
 - [x] `nix flake check` 通过
 - [x] `darwin-rebuild build --flake .#AresdeMacBook-Air` 通过
-- [ ] `sudo darwin-rebuild switch --flake .#AresdeMacBook-Air` 已在当前机器人工执行并验证
+- [x] `sudo darwin-rebuild switch --flake .#AresdeMacBook-Air` 已在当前机器人工执行并验证
 - [x] 未声明的本机包不会因为这一步被自动清掉（`onActivation.cleanup = "none"`）
 
-### Phase 3B：tmux 进入“声明式运行时”，但不重写配置体系
+### Phase 3B：tmux 进入“声明式运行时”，但不重写配置体系（已完成）
 
 **目标**
 
 先把 tmux 从“配置在 repo、运行时依赖靠手工准备”推进到“运行时安装路径更可复现”，但不破坏当前 oh-my-tmux + `tmux.conf.local` 的工作流。
 
-**本子阶段要做什么**
+**当前进度（已完成）**
 
-- 评估 tmux 二进制应继续放在 Homebrew 清单里，还是转入 Home Manager `home.packages`
-- 明确并记录 tmux 的事实源边界：
-  - `~/.config/tmux/tmux.conf.local` 继续作为用户自定义入口
-  - `tmux.conf` 继续允许是指向本地 oh-my-tmux 的软链接
-- 若需要，补一层最小文档，说明在 Phase 3 里“声明式”接管的只是运行时与 bootstrap，不是重写 tmux 配置结构
+- 决策：tmux 二进制**继续留在 Homebrew**，不转入 Home Manager `home.packages`。
+  - 理由一：本机 tmux 已由 Homebrew 安装在 `/opt/homebrew/bin/tmux`（3.6a），长期稳定，迁移到 nixpkgs 会把 PATH 里的 provider 换掉并产生过渡成本。
+  - 理由二：与已声明在 `nix/darwin/homebrew.nix` 中的 `neovim` / `starship` / `git` 口径保持一致，避免两个 provider 的 tmux 二进制在 PATH 里互相抢占。
+  - 理由三：Phase 3B 的目标只是“让运行时更可复现”，只需声明一行，而不是换底层。
+- 落地：`nix/darwin/homebrew.nix` 的 `brews` 列表中新增 `"tmux"`，并在同文件注释里记录 Phase 3B 的决策与边界。
+- tmux 事实源边界明确保持不变：
+  - `~/.config/tmux/tmux.conf.local` 继续是用户自定义入口，跟踪在 git 中。
+  - `~/.config/tmux/tmux.conf` 继续是指向 `~/.local/share/tmux/oh-my-tmux/.tmux.conf` 的本地软链接（机器相关、gitignore）。
+  - 插件（`tmux-resurrect` / `tmux-continuum`）仍按 oh-my-tmux 的原有方式管理。
+- 验证：`nix flake check` 通过；`darwin-rebuild build --flake .#AresdeMacBook-Air` 通过（生成的 `Brewfile` 包含 `brew "tmux"`）；`sudo darwin-rebuild switch` 需在单独一次操作中由人工执行。
 
 **刻意不做**
 
@@ -87,9 +92,9 @@ Phase 3 拆成三个连续子阶段，范围从低风险到中低风险递进。
 
 **完成标准**
 
-- 新机器按 README + Nix 路线能更稳定地得到 tmux 运行时
-- 现有 tmux 行为与快捷键不因 Phase 3B 改变
-- `.config/tmux/CLAUDE.md` 与根 README 文档口径一致
+- [x] 新机器按 README + Nix 路线能更稳定地得到 tmux 运行时（由 `nix/darwin/homebrew.nix` 声明）
+- [x] 现有 tmux 行为与快捷键不因 Phase 3B 改变（provider 未变）
+- [x] `.config/tmux/CLAUDE.md` 与根 README 文档口径一致
 
 ### Phase 3C：少量稳定 `system.defaults.*` 试点
 

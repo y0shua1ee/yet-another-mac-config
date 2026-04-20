@@ -17,7 +17,7 @@ My Mac config
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
 | `zsh/.zshrc` | Zsh 通用配置（含 `EDITOR=nvim`、bun 等环境变量） |
-| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3A 第一版：`nix/darwin/homebrew.nix` 已启用保守的 Homebrew 声明式清单；详见 `nix/phase-3-plan.md`） |
+| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3A 第一版：`nix/darwin/homebrew.nix` 已启用保守的 Homebrew 声明式清单；Phase 3B：tmux 运行时加入该清单，配置体系保持 oh-my-tmux + `tmux.conf.local` 不变；详见 `nix/phase-3-plan.md`） |
 
 ## 使用说明
 
@@ -210,16 +210,27 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 
 - `nix/darwin/homebrew.nix` 已引入，并在 `nix/darwin/default.nix` 中 import。
 - 激活参数刻意保守：`onActivation.autoUpdate = false`、`onActivation.upgrade = false`、`onActivation.cleanup = "none"`。也就是说，`darwin-rebuild switch` **不会**自动 `brew update`、`brew upgrade`，也**不会**清理未声明的本机 brew 包。
-- 已声明的首批 inventory（CLI 优先、GUI 只挑仓库已管理其配置的）：
+- 已声明的 inventory（CLI 优先、GUI 只挑仓库已管理其配置的；`tmux` 在 Phase 3B 纳入）：
   - **taps**：`nikitabobko/tap`
-  - **brews**：`ast-grep`、`btop`、`fastfetch`、`fzf`、`gh`、`git`、`lazygit`、`neovim`、`starship`、`wget`、`yazi`、`yt-dlp`、`zsh-completions`
+  - **brews**：`ast-grep`、`btop`、`fastfetch`、`fzf`、`gh`、`git`、`lazygit`、`neovim`、`starship`、`tmux`、`wget`、`yazi`、`yt-dlp`、`zsh-completions`
   - **casks**：`aerospace`、`ghostty`、`typora`、`visual-studio-code`
-- 目前仍不纳入：`tmux`（Phase 3B 再定归属）、服务类 formula（`brew services` 相关，如 `borders` / `nginx` / `unbound` / `colima` / `clouddrive2` / `ollama`）、版本管理器与多语言运行时（`nvm` / `pnpm` / `uv` / `deno` / `python@*` / `go` / `rust` / `llvm` 等）、字体 cask、`hammerspoon` cask、以及含账号态 / 登录态的工具（`1password-cli`、`raycast`、各 IM / 云盘类 app 等）。
+- 目前仍不纳入：服务类 formula（`brew services` 相关，如 `borders` / `nginx` / `unbound` / `colima` / `clouddrive2` / `ollama`）、版本管理器与多语言运行时（`nvm` / `pnpm` / `uv` / `deno` / `python@*` / `go` / `rust` / `llvm` 等）、字体 cask、`hammerspoon` cask、以及含账号态 / 登录态的工具（`1password-cli`、`raycast`、各 IM / 云盘类 app 等）。
 - 要追加条目，请直接编辑 `nix/darwin/homebrew.nix`，遵循同样的保守口径；不要贸然启用 `cleanup = "check"` 或 `autoUpdate / upgrade`。
+
+### Phase 3B：tmux 运行时声明化（仅运行时，不重写配置体系）
+
+- `tmux` 已加入 `nix/darwin/homebrew.nix` 的 `brews` 列表。选择 Homebrew 而不是 Home Manager `home.packages` 的原因：
+  - 本机 tmux 一直由 Homebrew 安装在 `/opt/homebrew/bin/tmux`，已长期稳定；仅做清单声明化而不换 provider，零行为变化。
+  - 与 `neovim` / `starship` / `git` 的口径一致，避免双份 tmux 二进制在 PATH 里互相覆盖。
+  - 新机器走 Nix 路线时，`darwin-rebuild switch` 会自动补上 tmux 运行时，可复现性提升。
+- 明确保持不变的边界（**本阶段不做**）：
+  - 不把 `.config/tmux/tmux.conf.local` 改写为 Home Manager `programs.tmux.extraConfig`。
+  - 不替换 oh-my-tmux；`~/.config/tmux/tmux.conf` 继续是指向 `~/.local/share/tmux/oh-my-tmux/.tmux.conf` 的本地软链接（机器相关，按约定 gitignore）。
+  - 不引入 tmux 插件系统重构；现有 `tmux-resurrect` / `tmux-continuum` 的使用方式不变。
+- 验证：`nix flake check`、`darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。
 
 ### 后续阶段的路线图
 
-- **Phase 3B**：tmux 运行时声明化（不重写现有 oh-my-tmux + `tmux.conf.local` 体系）。
 - **Phase 3C**：少量稳定 `system.defaults.*` 试点。
 - **Phase 4**：再决定是否扩大 Homebrew / `brew services` / GUI 配置接管范围。
 - **Phase 5**：再讨论字体、更多系统默认项、以及更大范围的本机自动化迁移。

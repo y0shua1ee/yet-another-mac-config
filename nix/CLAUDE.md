@@ -3,8 +3,9 @@
 ## 目的 / 当前阶段
 - 这是渐进式 Nix 迁移，底层运行时是 [Determinate Nix](https://docs.determinate.systems/)，系统层用 [nix-darwin](https://github.com/nix-darwin/nix-darwin)，用户层用 [Home Manager](https://nix-community.github.io/home-manager/)。
 - **Phase 2D 现状：Home Manager 已接管 `~/.zshrc`。`nix flake check`、`darwin-rebuild build --flake .#AresdeMacBook-Air` 与 `sudo darwin-rebuild switch --flake .#AresdeMacBook-Air` 都已在当前机器跑通。**
-- **Phase 3A 现状：已引入保守的 Homebrew 声明式清单（`nix/darwin/homebrew.nix`）。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`switch` 需由人工执行。onActivation 全部设为 `false` / `"none"`，不自动 update / upgrade / cleanup，也不会卸载任何本机已有的 brew 包。**
-- **Phase 3 计划文档：`nix/phase-3-plan.md`。默认顺序是：先做 Homebrew 清单声明化，再做 tmux 运行时声明化，最后只试点少量稳定 `system.defaults.*`。**
+- **Phase 3A 现状：已引入保守的 Homebrew 声明式清单（`nix/darwin/homebrew.nix`）。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`switch` 已由人工执行成功。onActivation 全部设为 `false` / `"none"`，不自动 update / upgrade / cleanup，也不会卸载任何本机已有的 brew 包。**
+- **Phase 3B 现状：tmux 运行时已纳入 `nix/darwin/homebrew.nix` 的 `brews`，继续使用 Homebrew 提供的 `/opt/homebrew/bin/tmux`，没有转入 Home Manager `home.packages`。现有 oh-my-tmux + `~/.config/tmux/tmux.conf.local` 工作流保持不变；`tmux.conf` 仍是指向本地 oh-my-tmux 克隆的软链接（机器相关，不纳入仓库）。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过。**
+- **Phase 3 计划文档：`nix/phase-3-plan.md`。剩余子阶段：Phase 3C —— 少量稳定 `system.defaults.*` 试点。**
 - 这个仓库仍然是「事实源」，Nix 只是又一种可选的激活方式。当前机器上的旧仓库软链接版 zsh 仍保留在 `~/.zshrc.pre-hm-switch-backup`，便于人工回退。
 
 ## 目录结构
@@ -14,7 +15,7 @@ nix/
 ├── AGENTS.md          # 软链接 -> CLAUDE.md（二者内容保持一致）
 ├── darwin/
 │   ├── default.nix    # nix-darwin 系统层入口
-│   └── homebrew.nix   # Phase 3A：保守的 Homebrew 声明式清单
+│   └── homebrew.nix   # Phase 3A：保守的 Homebrew 声明式清单（Phase 3B 新增 tmux）
 ├── home/
 │   ├── default.nix    # Home Manager 用户层入口（已 import ../modules/zsh.nix 并实际生效）
 │   ├── packages.nix   # Phase 2A：低风险纯 CLI 工具
@@ -37,6 +38,8 @@ nix/
   4. 需要回滚时：`sudo darwin-rebuild switch --rollback`，并按需把 `~/.zshrc.pre-hm-switch-backup` 还原为 `~/.zshrc`。
 - 当前阶段仍**不** 触碰：`~/.zshrc.local`、`brew services`、字体、`.hammerspoon`、secrets / 登录态，以及大范围 `system.defaults.*` 迁移。这些继续按原方式管理。
 - Phase 3A 的 Homebrew 模块是“保守首版”：只纳入长期稳定、已在日常使用的少量 formula / cask，未声明的本机 brew 包不会被自动卸载；要追加新条目时，按 `nix/darwin/homebrew.nix` 里的分类说明（服务类 / 字体 / 账号态工具暂不纳入）追加即可，不要开启 `cleanup = "check"` 或 `autoUpdate / upgrade`。
+- Phase 3B 只接管 tmux **运行时**，不重写配置：不要把 `.config/tmux/tmux.conf.local` 迁到 Home Manager `programs.tmux.extraConfig`，也不要替换 oh-my-tmux 或插件体系。tmux 二进制继续由 Homebrew 提供（`/opt/homebrew/bin/tmux`），配置事实源是仓库中的 `.config/tmux/tmux.conf.local` 与本地 oh-my-tmux 软链接。
+- 已知非阻断警告：最近一次 build/switch 会提示 `programs.zsh.initExtraFirst` / `initExtra` 已 deprecated，建议未来改成 `programs.zsh.initContent` + `lib.mkBefore`。这属于 Home Manager 上游的演进，Phase 3B 不顺手处理，留到独立的 zsh 维护 commit 再改。
 - 若要继续推进 Phase 3，请先阅读 `nix/phase-3-plan.md`，不要跳过其中的范围边界与回滚原则。
 
 ## 修改风格

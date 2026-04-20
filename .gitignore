@@ -21,3 +21,7 @@
 
 # 本地备份文件
 .config/ghostty/*.bak
+
+# Nix 构建产物（`darwin-rebuild build` 会生成 `result` / `result-*` 符号链接）
+/result
+/result-*

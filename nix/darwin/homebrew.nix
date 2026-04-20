@@ -36,7 +36,6 @@
     # brew formulae：聚焦于稳定 CLI 工具
     # 刻意不包含的：
     #   - ripgrep / fd / jq / tree / bat：已由 Home Manager `home.packages` 管理
-    #   - tmux：Phase 3B 再决定归属（Homebrew 或 Home Manager）
     #   - 服务类（borders / nginx / unbound / colima / clouddrive2 / ollama 等）：
     #     与 brew services 绑定，按 Phase 3A 约束不纳入
     #   - 版本管理器 / 多语言运行时（nvm / pnpm / uv / deno / python@* / go / rust / llvm 等）：
@@ -52,6 +51,12 @@
       "lazygit"         # Git TUI
       "neovim"          # 主力编辑器（配置已由 .config/nvim 管理）
       "starship"        # 跨 shell 提示符，shell 共享逻辑中已引用
+      # Phase 3B：tmux 运行时声明化。
+      # 选择继续放在 Homebrew 而不是 Home Manager `home.packages`，理由：
+      #   - 本机 tmux 已经由 Homebrew 安装在 /opt/homebrew/bin/tmux，长期稳定
+      #   - 配置体系（oh-my-tmux + ~/.config/tmux/tmux.conf.local）不变，本阶段只接管运行时
+      #   - 与 neovim / starship / git 的口径一致，避免双份 tmux 二进制在 PATH 里互相覆盖
+      "tmux"            # 终端复用器（配置由 .config/tmux 管理；oh-my-tmux 仍按本地克隆方式使用）
       "wget"            # 通用下载工具
       "yazi"            # 文件管理器（配置已由 .config/yazi 管理）
       "yt-dlp"          # 媒体下载 CLI
