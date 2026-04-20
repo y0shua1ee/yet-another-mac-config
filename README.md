@@ -125,7 +125,7 @@ brew services restart <name>    # 重启服务
 - `flake.nix`：入口，定义 `darwinConfigurations.AresdeMacBook-Air`，并开启 `home-manager.backupFileExtension = "hm-backup"`。
 - `nix/darwin/default.nix`：**最小**系统层配置；关键点：`nix.enable = false;` 让 Determinate Nix 自行管理守护进程，避免与 nix-darwin 冲突。
 - `nix/home/default.nix`：Home Manager 用户层入口。
-- `nix/modules/zsh.nix`：zsh Home Manager 模块，`initExtra` 直接内联 `zsh/shared.zsh`，并在末尾 `source ~/.zshrc.local`。
+- `nix/modules/zsh.nix`：zsh Home Manager 模块，使用 `initContent` 复用 `zsh/shared.zsh`，并在末尾 `source ~/.zshrc.local`。
 
 ### 仍按原方式管理（未下沉到 Nix）
 
@@ -204,7 +204,7 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 - 已通过 `nix flake check`、`darwin-rebuild build --flake .#AresdeMacBook-Air`，并最终完成了 `sudo darwin-rebuild switch --flake .#AresdeMacBook-Air`。
 - 当前 `~/.zshrc` 已由 Home Manager 生成，旧仓库软链接已手动挪到 `~/.zshrc.pre-hm-switch-backup` 作为回退通道。
 - `nix/home/shell-env.nix` 里的 `EDITOR=nvim` / `VISUAL=nvim` / `PAGER=less` 已随 Home Manager 版 zsh 生效。
-- 机器相关片段（例如 OpenClaw completion）已迁到 `~/.zshrc.local`，Home Manager 版 zsh 的 `initExtra` 会在末尾自动 `source` 它。
+- 机器相关片段（例如 OpenClaw completion）已迁到 `~/.zshrc.local`，Home Manager 版 zsh 的 `initContent` 会在末尾自动 `source` 它。
 
 ### Phase 3A 第一版：Homebrew 声明式清单（保守模式，不等于全面接管）
 

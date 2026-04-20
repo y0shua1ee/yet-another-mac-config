@@ -34,12 +34,13 @@ nix/
 - 当前机器的注意事项：
   1. 以后继续迭代 zsh 相关 Nix 变更时，先 `nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air`，再 `sudo darwin-rebuild switch`。
   2. 旧仓库软链接版 zsh 目前保留在 `~/.zshrc.pre-hm-switch-backup`；若想回到旧路径，可人工还原。
-  3. 机器相关或绝对路径的 shell 片段（例如 OpenClaw completion）不应进仓库共享区，而应写入 `~/.zshrc.local`；Home Manager 版 zsh 的 `initExtra` 会在末尾自动 `source` 它。
+  3. 机器相关或绝对路径的 shell 片段（例如 OpenClaw completion）不应进仓库共享区，而应写入 `~/.zshrc.local`；Home Manager 版 zsh 通过 `initContent` 在末尾自动 `source` 它。
   4. 需要回滚时：`sudo darwin-rebuild switch --rollback`，并按需把 `~/.zshrc.pre-hm-switch-backup` 还原为 `~/.zshrc`。
 - 当前阶段仍**不** 触碰：`~/.zshrc.local`、`brew services`、字体、`.hammerspoon`、secrets / 登录态，以及大范围 `system.defaults.*` 迁移。这些继续按原方式管理。
 - Phase 3A 的 Homebrew 模块是“保守首版”：只纳入长期稳定、已在日常使用的少量 formula / cask，未声明的本机 brew 包不会被自动卸载；要追加新条目时，按 `nix/darwin/homebrew.nix` 里的分类说明（服务类 / 字体 / 账号态工具暂不纳入）追加即可，不要开启 `cleanup = "check"` 或 `autoUpdate / upgrade`。
 - Phase 3B 只接管 tmux **运行时**，不重写配置：不要把 `.config/tmux/tmux.conf.local` 迁到 Home Manager `programs.tmux.extraConfig`，也不要替换 oh-my-tmux 或插件体系。tmux 二进制继续由 Homebrew 提供（`/opt/homebrew/bin/tmux`），配置事实源是仓库中的 `.config/tmux/tmux.conf.local` 与本地 oh-my-tmux 软链接。
-- 已知非阻断警告：最近一次 build/switch 会提示 `programs.zsh.initExtraFirst` / `initExtra` 已 deprecated，建议未来改成 `programs.zsh.initContent` + `lib.mkBefore`。这属于 Home Manager 上游的演进，Phase 3B 不顺手处理，留到独立的 zsh 维护 commit 再改。
+- 当前已收掉 Home Manager zsh 的 `initExtraFirst` / `initExtra` deprecated 警告：`nix/modules/zsh.nix` 现改为 `programs.zsh.initContent` + `lib.mkMerge` / `lib.mkBefore`。若之后再改 zsh 初始化顺序，优先继续沿这套写法扩展。
+- 目前剩余的已知非阻断警告主要是 nix-darwin 文档构建阶段的 `builtins.derivation -> options.json` 提示。它来自上游文档/选项 JSON 生成链路，不是当前仓库业务配置出错；除非明确要为了“零 warning”牺牲文档构建，否则先不要用关闭 documentation 的方式去压它。
 - 若要继续推进 Phase 3，请先阅读 `nix/phase-3-plan.md`，不要跳过其中的范围边界与回滚原则。
 
 ## 修改风格

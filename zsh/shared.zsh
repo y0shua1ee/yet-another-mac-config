@@ -8,7 +8,7 @@
 # - 不在这里启用 Oh My Zsh 或 Home Manager 的补全/插件系统（两条路径机制不同，
 #   分别由各自的调用方用各自的原生方式完成）
 # - 不放 `typeset -U PATH`：它必须在一切 PATH 修改之前执行，由调用方在更靠前
-#   的位置保证（zshrc 放文件最上方，Home Manager 放 initExtraFirst）
+#   的位置保证（zshrc 放文件最上方，Home Manager 放 initContent + lib.mkBefore）
 # - 不放 EDITOR / VISUAL / PAGER：运行时与声明式来源目前分阶段处理，避免与
 #   nix/home/shell-env.nix 重复漂移
 # - 机器相关 / 私密内容仍然写入 ~/.zshrc.local 或由调用方在本文件之后追加

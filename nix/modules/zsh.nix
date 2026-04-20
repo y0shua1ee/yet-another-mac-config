@@ -20,19 +20,22 @@
     # autosuggestion 建议策略，保持与常见 oh-my-zsh 默认一致
     autosuggestion.strategy = [ "history" "completion" ];
 
-    # 先于其它初始化：对 PATH 去重
-    initExtraFirst = ''
-      typeset -U PATH
-    '';
+    # 使用 initContent + mkMerge / mkBefore，避免继续依赖已废弃的 initExtra* 选项。
+    initContent = lib.mkMerge [
+      # 先于其它初始化：对 PATH 去重
+      (lib.mkBefore ''
+        typeset -U PATH
+      '')
 
-    # 共享核心逻辑来自 ../../zsh/shared.zsh；
-    # 本地隐私配置仍在这里额外 source，保持与当前 ~/.zshrc 的约定一致。
-    # 注意：
-    #   - 机器相关片段（如 OpenClaw 的绝对路径 completion）不在此处展开
-    #   - EDITOR / VISUAL / PAGER 由 nix/home/shell-env.nix 统一声明，这里不再重复
-    initExtra = (builtins.readFile ../../zsh/shared.zsh) + ''
+      # 共享核心逻辑来自 ../../zsh/shared.zsh；
+      # 本地隐私配置仍在这里额外 source，保持与当前 ~/.zshrc 的约定一致。
+      # 注意：
+      #   - 机器相关片段（如 OpenClaw 的绝对路径 completion）不在此处展开
+      #   - EDITOR / VISUAL / PAGER 由 nix/home/shell-env.nix 统一声明，这里不再重复
+      ((builtins.readFile ../../zsh/shared.zsh) + ''
 
-      [[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
-    '';
+        [[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
+      '')
+    ];
   };
 }
