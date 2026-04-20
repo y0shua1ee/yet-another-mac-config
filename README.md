@@ -155,28 +155,30 @@ nix flake lock
 nix flake check
 ```
 
-**Step 2 — 首次 build（不改系统，只下载依赖并评估）**
+**Step 2 — 首次 build（不改系统，只下载依赖并评估，无需 sudo）**
 
 ```bash
 # 不用 darwin-rebuild（还没装），用 nix run 拉起 nix-darwin
+# build 不写入系统路径，因此保持普通用户身份即可
 nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
   build --flake .#AresdeMacBook-Air
 ```
 
-**Step 3 — 首次激活（真正写入系统状态）**
+**Step 3 — 首次激活（真正写入系统状态，必须 sudo）**
 
 ```bash
-# 第一次必须用 nix run；激活成功后 /run/current-system/sw/bin/darwin-rebuild 才存在
-nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
+# switch 会写入 /run/current-system、/etc/static/* 等，需要 root
+# 首次激活 darwin-rebuild 还没装，用 sudo + nix run 引导
+sudo nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
   switch --flake .#AresdeMacBook-Air
 ```
 
 **Step 4 — 之后的迭代**
 
 ```bash
-# 从第二次起 darwin-rebuild 已在 PATH，先 build 预检再 switch
-darwin-rebuild build  --flake .#AresdeMacBook-Air
-darwin-rebuild switch --flake .#AresdeMacBook-Air
+# 从第二次起 darwin-rebuild 已在 PATH；build 无需 sudo，switch 仍要 sudo
+darwin-rebuild build --flake .#AresdeMacBook-Air
+sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 ```
 
 > **谨慎原则**：

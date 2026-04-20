@@ -30,12 +30,15 @@
     in
     {
       # 用法（详见 README「安全激活步骤」章节）：
+      #   - switch 会写入 /run/current-system 等系统路径，必须 sudo；build 无需 sudo。
       #   - 全新机器首次激活，darwin-rebuild 尚未在 PATH，必须用 nix run 引导：
       #       nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
+      #         build --flake .#AresdeMacBook-Air
+      #       sudo nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
       #         switch --flake .#AresdeMacBook-Air
-      #     （先跑 build 再跑 switch 更稳）
       #   - 从第二次起可直接：
-      #       darwin-rebuild switch --flake .#AresdeMacBook-Air
+      #       darwin-rebuild build --flake .#AresdeMacBook-Air
+      #       sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
       darwinConfigurations.${hostname} = nix-darwin.lib.darwinSystem {
         inherit system;
         specialArgs = { inherit inputs username hostname; };

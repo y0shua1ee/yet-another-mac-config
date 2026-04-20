@@ -35,23 +35,23 @@ nix/
 
 ## 常用命令（需已安装 Determinate Nix）
 
-首次激活 nix-darwin 时系统里还没有 `darwin-rebuild`，必须用 `nix run` 引导；之后才能使用 `darwin-rebuild`。
+首次激活 nix-darwin 时系统里还没有 `darwin-rebuild`，必须用 `nix run` 引导；之后才能使用 `darwin-rebuild`。`switch` 会写入 `/run/current-system`、`/etc/static/*` 等系统路径，必须加 `sudo`；`build` 只在 nix store 里构建，不需要 sudo。
 
 ```bash
-# 静态校验（不执行激活）
+# 静态校验（不执行激活，无需 sudo）
 nix flake check
 
 # —— 首次激活（全新机器上）——
-# build 预检：
+# build 预检（无需 sudo）：
 nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
   build --flake .#AresdeMacBook-Air
-# 正式切换：
-nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
+# 正式切换（必须 sudo）：
+sudo nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
   switch --flake .#AresdeMacBook-Air
 
 # —— 第二次以后 darwin-rebuild 已在 PATH ——
-darwin-rebuild build  --flake .#AresdeMacBook-Air
-darwin-rebuild switch --flake .#AresdeMacBook-Air
+darwin-rebuild build --flake .#AresdeMacBook-Air
+sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 ```
 
 首次 `nix flake lock` / `nix flake check` 会生成 `flake.lock`。它应当纳入版本控制以保证可重现。
