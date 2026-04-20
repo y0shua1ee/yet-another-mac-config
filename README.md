@@ -17,7 +17,7 @@ My Mac config
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
 | `zsh/.zshrc` | Zsh 通用配置（含 `EDITOR=nvim`、bun 等环境变量） |
-| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3A 第一版：`nix/darwin/homebrew.nix` 已启用保守的 Homebrew 声明式清单；Phase 3B：tmux 运行时加入该清单，配置体系保持 oh-my-tmux + `tmux.conf.local` 不变；Phase 3C：`nix/darwin/defaults.nix` 已启用少量稳定的 `system.defaults.*` 试点，写入值与当前机器一致；详见 `nix/phase-3-plan.md`） |
+| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3A 第一版：`nix/darwin/homebrew.nix` 已启用保守的 Homebrew 声明式清单；Phase 3B：tmux 运行时加入该清单，配置体系保持 oh-my-tmux + `tmux.conf.local` 不变；Phase 3C：`nix/darwin/defaults.nix` 已启用少量稳定的 `system.defaults.*` 试点，写入值与当前机器一致；Phase 4 最小版：`brew services` 仅接管 `borders` / `nginx`，并补上 `font-maple-mono-nf`、`hammerspoon` 两个 cask；详见 `nix/phase-3-plan.md` 与下文「渐进式 Nix 迁移」章节） |
 
 ## 使用说明
 
@@ -27,7 +27,7 @@ My Mac config
 4. 如果当前工作区里本地存在 `.codex/config.toml`，脚本会额外询问是否同步到 `~/.codex/config.toml`；该文件默认只保留在本地，不会提交到仓库。
 5. 脚本会询问是否将 `zsh/.zshrc` 软链接到 `~/.zshrc`。通用配置（主题、插件、补全等）存放在此文件中；API 密钥、项目变量等隐私内容应写入 `~/.zshrc.local`（不纳入版本控制），会在 `.zshrc` 末尾自动加载。
 6. 脚本会检测 `.config/tmux` 是否缺少 `tmux.conf`，如果缺少则提示安装 [oh-my-tmux](https://github.com/gpakosz/.tmux)，自动克隆到 `~/.local/share/tmux/oh-my-tmux` 并创建软链接。
-7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`；在此之前请先通过 `brew install --cask hammerspoon` 安装好 Hammerspoon，并根据需要安装 `Ghostty`（例如 `brew install --cask ghostty`）以使用 `Ctrl+Alt+T` 新开 Ghostty 窗口的快捷方式。
+7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`。在此之前请先安装 Hammerspoon：走 Nix 路线时由 `nix/darwin/homebrew.nix` 声明自动安装（Phase 4 最小版已纳入），不走 Nix 时用 `brew install --cask hammerspoon`。同步后仍需手动在「系统设置 → 隐私与安全性 → 辅助功能」授予 Hammerspoon 权限，否则 `init.lua` 里的事件 tap 与快捷键不会生效；`Ctrl+Alt+T` 快捷键还依赖 Ghostty cask，已一并在 Homebrew 清单中声明。完整激活流程见下文「Hammerspoon 激活说明」。
 
 ## Yazi 插件同步
 
@@ -78,13 +78,18 @@ colima delete           # 删除 VM（释放磁盘空间）
 
 以下服务通过 `brew services` 管理：
 
-| 服务 | 说明 | 开机自启 |
-|------|------|----------|
-| borders | JankyBorders 窗口边框 | 是 |
-| nginx | HTTP 服务器（默认端口 8080） | 是 |
-| clouddrive2 | CloudDrive2 云盘挂载 | 是 |
-| unbound | DNS resolver | 否 |
-| colima | Colima 容器运行时（可选） | 否 |
+| 服务 | 说明 | 开机自启 | Nix 声明化 |
+|------|------|----------|------------|
+| borders | JankyBorders 窗口边框 | 是 | ✅ Phase 4 最小版（`start_service = true`） |
+| nginx | HTTP 服务器（默认端口 8080） | 是 | ✅ Phase 4 最小版（`start_service = true`） |
+| clouddrive2 | CloudDrive2 云盘挂载 | 是 | ❌ 未纳入（账号态 / 本地数据） |
+| ollama | 本地 LLM 运行时 | 是 | ❌ 未纳入（本地模型数据） |
+| unbound | DNS resolver | 否 | ❌ 未纳入（非默认开机自启） |
+| colima | Colima 容器运行时（可选） | 否 | ❌ 未纳入（非默认开机自启） |
+
+「Nix 声明化」列说明这台机器如果走 Nix 路线激活时，哪些服务会被 `nix/darwin/homebrew.nix` 自动处理；未纳入的项继续按本节下方的 `brew services` 命令人工管理。
+
+Phase 4 最小版的声明策略是 `start_service = true`：nix-darwin 在 `brew bundle` 阶段**只在服务未运行时**调用 `brew services start`，不会重启或停止已运行服务，因此在当前机器上是幂等 no-op；只有新机器首次 switch 时才会实际把两个服务启动并登记为 login item。
 
 常用命令：
 
@@ -96,6 +101,7 @@ brew services restart <name>    # 重启服务
 ```
 
 > **注意：** nginx 的配置路径为 `/opt/homebrew/etc/nginx/`。
+> **注意：** 即使 `borders` / `nginx` 已由 Nix 声明化，日常重启、停服、查状态仍然使用 `brew services …` 命令；`darwin-rebuild switch` 不会自动重启这两个服务。
 
 ## 本地文件同步约定
 
@@ -250,9 +256,48 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 - 回滚：`sudo darwin-rebuild switch --rollback` 回退到前一代系统；或手动 `defaults write` 覆盖个别 key。
 - 验证：`nix flake check`、`darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行（预期是空变化）。
 
+### Phase 4 最小版：三件事（已落地）
+
+Phase 4 最小版故意把范围收得很紧，只做三件独立、可独立回退的事：
+
+1. **`brew services` 试点，仅接管 `borders` 与 `nginx`**
+   - `nix/darwin/homebrew.nix` 的 `brews` 里以 `{ name = "..."; start_service = true; }` 形式声明。
+   - `start_service = true` 的语义：nix-darwin 在 `brew bundle` 阶段调用 `brew services start`，**仅在服务未运行时启动并登记为 login item**，不会重启或停止已运行服务。
+   - 本机当前两者均已 `started`，首次 switch 是幂等 no-op；新机器首次 switch 会自动补上。
+   - 刻意未用 `restart_service`：避免每次 `darwin-rebuild switch` 都打断长期运行的服务。
+   - 仍未纳入：`clouddrive2`（账号态 / 本地数据）、`ollama`（本地模型数据）、`unbound` / `colima`（非默认开机自启），继续按 `brew services` 命令人工管理。
+
+2. **补上 Ghostty 依赖字体 `font-maple-mono-nf`**
+   - `.config/ghostty/config` 中 `font-family = Maple Mono Normal NF CN` 明确依赖该字体；新机器缺少它会直接 fallback。
+   - 刻意未纳入 `font-hack-nerd-font`：本机虽已安装但未被任何仓库配置引用；本轮字体只补「仓库明确依赖的」，避免“能配就都配”。
+
+3. **把 `hammerspoon` cask 纳入清单**
+   - cask 来源与 `ghostty` 相同（Homebrew 主干）。
+   - 仅纳入 cask 安装层，**不动** `.hammerspoon/init.lua` 自身；配置事实源仍是仓库根目录的 `.hammerspoon/`，通过 `setup_mac.sh` 软链接到 `~/.hammerspoon`。
+   - 新机器激活步骤见下文「Hammerspoon 激活说明」。
+
+验证：`nix flake check`、`darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。
+
+### Hammerspoon 激活说明（新机器）
+
+`hammerspoon` cask 虽已纳入 Nix 清单，但 macOS 的 Accessibility 权限无法由 Nix 或任何脚本自动授予。在一台新 Mac 上完整启用本仓库的 Hammerspoon 自动化，顺序如下：
+
+1. **安装 Hammerspoon app**
+   - 走 Nix 路线：`sudo darwin-rebuild switch --flake .#AresdeMacBook-Air`（Phase 4 最小版起，`hammerspoon` 由 `nix/darwin/homebrew.nix` 自动安装）。
+   - 不走 Nix 路线：`brew install --cask hammerspoon`。
+2. **同步仓库配置**：运行 `./setup_mac.sh`，同意把 `.hammerspoon` 软链接到 `~/.hammerspoon`。
+3. **（关键）授予 Accessibility 权限**
+   - 首次启动 Hammerspoon 时 macOS 会弹窗请求「辅助功能」权限，点击允许；
+   - 如果弹窗被忽略或已拒绝，请手动打开「系统设置 → 隐私与安全性 → 辅助功能」，找到 Hammerspoon 并勾选；
+   - 未授权时，`init.lua` 里的事件 tap（双击 Cmd+W/Q、右 Cmd → F19 等）与大部分热键都会静默失效，且**没有**任何兜底提示。
+4. **确认 Ghostty 已安装**：`Ctrl+Alt+T` 会调用 `hs.application.get("Ghostty")`；Ghostty 本身已在 `nix/darwin/homebrew.nix` 的 `casks` 中声明，走 Nix 路线会被自动安装。
+5. **验证**：触发 `Ctrl+Alt+Cmd+R` 重载 Hammerspoon；`Ctrl+Alt+T` 应该能前台 Ghostty 或新建窗口；双击 `Cmd+W` / `Cmd+Q` 应该能正常工作。
+
+若 Hammerspoon 在 Accessibility 列表里已勾选但仍不生效，常见原因是升级后条目失效：在列表里先**删除** Hammerspoon，再重新添加并重启 Hammerspoon。
+
 ### 后续阶段的路线图
 
-- **Phase 4**：再决定是否扩大 Homebrew / `brew services` / GUI 配置接管范围。
-- **Phase 5**：再讨论字体、更多系统默认项、以及更大范围的本机自动化迁移。
+- **Phase 4（最小版已完成）**：后续是否扩大范围（如更多 `brew services`、更多字体、其它 GUI 自动化 app）继续按「谨慎、可回退、逐项评估」的原则推进，不做扫荡式接管。
+- **Phase 5**：再讨论更大范围的系统默认项、以及更大范围的本机自动化迁移。
 
 每个阶段都应单独一次提交，并更新本章节。

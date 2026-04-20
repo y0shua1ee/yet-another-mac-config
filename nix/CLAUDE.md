@@ -6,7 +6,8 @@
 - **Phase 3A 现状：已引入保守的 Homebrew 声明式清单（`nix/darwin/homebrew.nix`）。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`switch` 已由人工执行成功。onActivation 全部设为 `false` / `"none"`，不自动 update / upgrade / cleanup，也不会卸载任何本机已有的 brew 包。**
 - **Phase 3B 现状：tmux 运行时已纳入 `nix/darwin/homebrew.nix` 的 `brews`，继续使用 Homebrew 提供的 `/opt/homebrew/bin/tmux`，没有转入 Home Manager `home.packages`。现有 oh-my-tmux + `~/.config/tmux/tmux.conf.local` 工作流保持不变；`tmux.conf` 仍是指向本地 oh-my-tmux 克隆的软链接（机器相关，不纳入仓库）。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过。**
 - **Phase 3C 现状：新增 `nix/darwin/defaults.nix`，以保守首版接管少量 `system.defaults.*`。所有写入值均与当前机器 `defaults read` 结果一致（Finder 四项 + Dock `mru-spaces` + NSGlobalDomain 键盘重复两项），首次 switch 预期无可感知行为变化。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。**
-- **Phase 3 计划文档：`nix/phase-3-plan.md`。Phase 3C 已落地，Phase 3 可视为完成；是否进入 Phase 4 后续再评估。**
+- **Phase 4 最小版现状（已落地）：严格三件事——(1) `brew services` 试点：在 `nix/darwin/homebrew.nix` 的 `brews` 里以 `{ name; start_service = true; }` 的形式声明 `borders` 与 `nginx`；`start_service = true` 只在服务未运行时启动，不会重启或停止已运行服务，对本机状态零扰动。(2) 补上 Ghostty 依赖字体 `font-maple-mono-nf`。(3) 把 `hammerspoon` 纳入 `casks`。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。**
+- **Phase 3 计划文档：`nix/phase-3-plan.md`。Phase 3C 已落地，Phase 3 可视为完成；Phase 4 后续如何扩张范围仍按“谨慎、可回退”原则逐项评估，不跳跃式迁移。**
 - 这个仓库仍然是「事实源」，Nix 只是又一种可选的激活方式。当前机器上的旧仓库软链接版 zsh 仍保留在 `~/.zshrc.pre-hm-switch-backup`，便于人工回退。
 
 ## 目录结构
@@ -17,7 +18,7 @@ nix/
 ├── darwin/
 │   ├── default.nix    # nix-darwin 系统层入口
 │   ├── defaults.nix   # Phase 3C：少量稳定的 system.defaults 试点
-│   └── homebrew.nix   # Phase 3A：保守的 Homebrew 声明式清单（Phase 3B 新增 tmux）
+│   └── homebrew.nix   # Homebrew 声明式清单（Phase 3A 首版；3B 加 tmux；Phase 4 最小版加 borders/nginx 服务、font-maple-mono-nf、hammerspoon）
 ├── home/
 │   ├── default.nix    # Home Manager 用户层入口（已 import ../modules/zsh.nix 并实际生效）
 │   ├── packages.nix   # Phase 2A：低风险纯 CLI 工具
@@ -38,8 +39,14 @@ nix/
   2. 旧仓库软链接版 zsh 目前保留在 `~/.zshrc.pre-hm-switch-backup`；若想回到旧路径，可人工还原。
   3. 机器相关或绝对路径的 shell 片段（例如 OpenClaw completion）不应进仓库共享区，而应写入 `~/.zshrc.local`；Home Manager 版 zsh 通过 `initContent` 在末尾自动 `source` 它。
   4. 需要回滚时：`sudo darwin-rebuild switch --rollback`，并按需把 `~/.zshrc.pre-hm-switch-backup` 还原为 `~/.zshrc`。
-- 当前阶段仍**不** 触碰：`~/.zshrc.local`、`brew services`、字体、`.hammerspoon`、secrets / 登录态，以及大范围 `system.defaults.*` 迁移（Phase 3C 仅接管极小子集，见下）。这些继续按原方式管理。
-- Phase 3A 的 Homebrew 模块是“保守首版”：只纳入长期稳定、已在日常使用的少量 formula / cask，未声明的本机 brew 包不会被自动卸载；要追加新条目时，按 `nix/darwin/homebrew.nix` 里的分类说明（服务类 / 字体 / 账号态工具暂不纳入）追加即可，不要开启 `cleanup = "check"` 或 `autoUpdate / upgrade`。
+- 当前阶段仍**不** 触碰：`~/.zshrc.local`、secrets / 登录态，以及大范围 `system.defaults.*` 迁移（Phase 3C 仅接管极小子集）、大范围 `brew services` 接管（Phase 4 最小版只接管 `borders` / `nginx`）、字体的全面纳管（本轮只补 Ghostty 依赖的 `font-maple-mono-nf`，`font-hack-nerd-font` 仍未纳入）、`.hammerspoon` 脚本本身的迁移（Phase 4 最小版只把 `hammerspoon` cask 纳入 Homebrew 清单，不动 `init.lua`）。这些继续按原方式管理。
+- Phase 3A 的 Homebrew 模块是“保守首版”：只纳入长期稳定、已在日常使用的少量 formula / cask，未声明的本机 brew 包不会被自动卸载；要追加新条目时，按 `nix/darwin/homebrew.nix` 里的分类说明追加即可，不要开启 `cleanup = "check"` 或 `autoUpdate / upgrade`。
+- Phase 4 最小版的 `brew services` 试点严格限定在以下边界：
+  - 仅接管 `borders` 与 `nginx`；`clouddrive2` / `colima` / `ollama` / `unbound` 继续按现有 `brew services` 命令人工管理，不纳入。
+  - 策略只用 `start_service = true`（仅未运行时启动，不重启已运行服务），**不要**改用 `restart_service`，否则每次 `darwin-rebuild switch` 都会重启服务，造成不必要中断。
+  - 新增服务条目前先确认：(1) 本机已长期稳定以 `brew services` 运行；(2) 重启代价低；(3) 无账号态或本地数据风险。不满足就继续人工管理。
+- Phase 4 最小版的字体纳管规则：只允许纳入「仓库配置明确引用、缺失会直接影响既有行为」的字体。当前只有 Ghostty 明确依赖 `Maple Mono Normal NF CN`，所以只纳入 `font-maple-mono-nf`。`font-hack-nerd-font` 在本机虽已安装但未被任何仓库配置引用，**不**纳入。
+- Phase 4 最小版的 `hammerspoon` 纳管只是把 cask 加入 Homebrew 清单，配置事实源仍然是仓库根目录的 `.hammerspoon/`。新机器除了 `darwin-rebuild switch` 让 cask 安装到位、用 `setup_mac.sh` 同步 `.hammerspoon` 之外，**还必须人工**在「系统设置 → 隐私与安全性 → 辅助功能（Accessibility）」中勾选 Hammerspoon；同时 `Ctrl+Alt+T` 快捷键依赖 Ghostty cask 已在（同一清单已声明）。详见根 README 的「Hammerspoon 激活说明」。
 - Phase 3B 只接管 tmux **运行时**，不重写配置：不要把 `.config/tmux/tmux.conf.local` 迁到 Home Manager `programs.tmux.extraConfig`，也不要替换 oh-my-tmux 或插件体系。tmux 二进制继续由 Homebrew 提供（`/opt/homebrew/bin/tmux`），配置事实源是仓库中的 `.config/tmux/tmux.conf.local` 与本地 oh-my-tmux 软链接。
 - Phase 3C 的 `nix/darwin/defaults.nix` 也是“保守首版”，严格遵守以下边界：
   - 已纳入：`finder.AppleShowAllExtensions` / `finder.ShowPathbar` / `finder.ShowStatusBar` / `finder.FXPreferredViewStyle`（"Nlsv"）、`dock.mru-spaces`、`NSGlobalDomain.KeyRepeat`、`NSGlobalDomain.InitialKeyRepeat`。
