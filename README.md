@@ -17,7 +17,7 @@ My Mac config
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
 | `zsh/.zshrc` | Zsh 通用配置（含 `EDITOR=nvim`、bun 等环境变量） |
-| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3 具体计划见 `nix/phase-3-plan.md`） |
+| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3A 第一版：`nix/darwin/homebrew.nix` 已启用保守的 Homebrew 声明式清单；详见 `nix/phase-3-plan.md`） |
 
 ## 使用说明
 
@@ -129,7 +129,8 @@ brew services restart <name>    # 重启服务
 
 ### 仍按原方式管理（未下沉到 Nix）
 
-- Homebrew 软件包、`brew services`、系统默认值（`system.defaults.*`）、字体、应用等一律保持现状。
+- `brew services`、系统默认值（`system.defaults.*`）、字体、`.hammerspoon`、GUI 自动化等一律保持现状。
+- Phase 3A 已开启保守的 Homebrew 声明式清单（见下节），但并非全面接管 —— 未声明的本机 brew 包不会被动卸载，仍可按原流程使用。
 - `setup_mac.sh` 仍是首选的初始化方式；Nix 只是额外可选通道。
 
 ### 安全激活步骤
@@ -205,12 +206,21 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 - `nix/home/shell-env.nix` 里的 `EDITOR=nvim` / `VISUAL=nvim` / `PAGER=less` 已随 Home Manager 版 zsh 生效。
 - 机器相关片段（例如 OpenClaw completion）已迁到 `~/.zshrc.local`，Home Manager 版 zsh 的 `initExtra` 会在末尾自动 `source` 它。
 
+### Phase 3A 第一版：Homebrew 声明式清单（保守模式，不等于全面接管）
+
+- `nix/darwin/homebrew.nix` 已引入，并在 `nix/darwin/default.nix` 中 import。
+- 激活参数刻意保守：`onActivation.autoUpdate = false`、`onActivation.upgrade = false`、`onActivation.cleanup = "none"`。也就是说，`darwin-rebuild switch` **不会**自动 `brew update`、`brew upgrade`，也**不会**清理未声明的本机 brew 包。
+- 已声明的首批 inventory（CLI 优先、GUI 只挑仓库已管理其配置的）：
+  - **taps**：`nikitabobko/tap`
+  - **brews**：`ast-grep`、`btop`、`fastfetch`、`fzf`、`gh`、`git`、`lazygit`、`neovim`、`starship`、`wget`、`yazi`、`yt-dlp`、`zsh-completions`
+  - **casks**：`aerospace`、`ghostty`、`typora`、`visual-studio-code`
+- 目前仍不纳入：`tmux`（Phase 3B 再定归属）、服务类 formula（`brew services` 相关，如 `borders` / `nginx` / `unbound` / `colima` / `clouddrive2` / `ollama`）、版本管理器与多语言运行时（`nvm` / `pnpm` / `uv` / `deno` / `python@*` / `go` / `rust` / `llvm` 等）、字体 cask、`hammerspoon` cask、以及含账号态 / 登录态的工具（`1password-cli`、`raycast`、各 IM / 云盘类 app 等）。
+- 要追加条目，请直接编辑 `nix/darwin/homebrew.nix`，遵循同样的保守口径；不要贸然启用 `cleanup = "check"` 或 `autoUpdate / upgrade`。
+
 ### 后续阶段的路线图
 
-- **Phase 3**：已落成具体计划，见 [`nix/phase-3-plan.md`](nix/phase-3-plan.md)。当前约定的默认顺序是：
-  1. Homebrew 清单声明化（保守模式，不做自动清理）
-  2. tmux 运行时声明化（不重写现有 oh-my-tmux + `tmux.conf.local` 体系）
-  3. 少量稳定 `system.defaults.*` 试点
+- **Phase 3B**：tmux 运行时声明化（不重写现有 oh-my-tmux + `tmux.conf.local` 体系）。
+- **Phase 3C**：少量稳定 `system.defaults.*` 试点。
 - **Phase 4**：再决定是否扩大 Homebrew / `brew services` / GUI 配置接管范围。
 - **Phase 5**：再讨论字体、更多系统默认项、以及更大范围的本机自动化迁移。
 
