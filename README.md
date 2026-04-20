@@ -17,7 +17,7 @@ My Mac config
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
 | `zsh/.zshrc` | Zsh 通用配置（含 `EDITOR=nvim`、bun 等环境变量） |
-| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3A 第一版：`nix/darwin/homebrew.nix` 已启用保守的 Homebrew 声明式清单；Phase 3B：tmux 运行时加入该清单，配置体系保持 oh-my-tmux + `tmux.conf.local` 不变；详见 `nix/phase-3-plan.md`） |
+| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3A 第一版：`nix/darwin/homebrew.nix` 已启用保守的 Homebrew 声明式清单；Phase 3B：tmux 运行时加入该清单，配置体系保持 oh-my-tmux + `tmux.conf.local` 不变；Phase 3C：`nix/darwin/defaults.nix` 已启用少量稳定的 `system.defaults.*` 试点，写入值与当前机器一致；详见 `nix/phase-3-plan.md`） |
 
 ## 使用说明
 
@@ -229,9 +229,29 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
   - 不引入 tmux 插件系统重构；现有 `tmux-resurrect` / `tmux-continuum` 的使用方式不变。
 - 验证：`nix flake check`、`darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。
 
+### Phase 3C：少量稳定 `system.defaults.*` 试点（保守首版）
+
+- `nix/darwin/defaults.nix` 已引入，并在 `nix/darwin/default.nix` 中 import。
+- 选型原则：**所有写入值与当前机器 `defaults read` 结果一致**，首次 `switch` 预期无可感知行为变化；只接管「长期几乎不改、改错易人工恢复、不牵涉隐私 / 账号态 / 外设差异」的默认项。
+- **已纳入**：
+  - `system.defaults.finder.AppleShowAllExtensions = true`：始终显示文件扩展名。
+  - `system.defaults.finder.ShowPathbar = true`：Finder 显示路径栏。
+  - `system.defaults.finder.ShowStatusBar = true`：Finder 显示状态栏。
+  - `system.defaults.finder.FXPreferredViewStyle = "Nlsv"`：Finder 默认使用列表视图。
+  - `system.defaults.dock.mru-spaces = false`：关闭 Mission Control 空间按最近使用自动重排。
+  - `system.defaults.NSGlobalDomain.KeyRepeat = 2`、`InitialKeyRepeat = 30`：与当前机器一致的键盘重复速率（tick 单位）。
+- **刻意未纳入**（保留给后续阶段单独评估）：
+  - `NSGlobalDomain.ApplePressAndHoldEnabled`：当前 unset，不做主动置位。
+  - 自动替换 / 自动引号 / 自动破折号 / 拼写纠正等 NSGlobalDomain 开关：当前 unset，不做主动置位。
+  - Dock：`autohide`、`persistent-apps`、`tilesize`、`orientation` 等偏好漂移项。
+  - Finder：`_FXShowPosixPathInTitle`、`ShowHardDrivesOnDesktop` 等非本机常用项。
+  - 触控板 / trackpad、窗口动画、通知中心、loginwindow、软件更新策略、输入法等整类偏好。
+- 追加新项前请在 `nix/darwin/defaults.nix` 注释中先确认三条：(1) 当前机器已经稳定使用该值；(2) 是长期几乎不改的设置；(3) 改错后易人工恢复。不满足就继续延后，不要“能配就都配”。
+- 回滚：`sudo darwin-rebuild switch --rollback` 回退到前一代系统；或手动 `defaults write` 覆盖个别 key。
+- 验证：`nix flake check`、`darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行（预期是空变化）。
+
 ### 后续阶段的路线图
 
-- **Phase 3C**：少量稳定 `system.defaults.*` 试点。
 - **Phase 4**：再决定是否扩大 Homebrew / `brew services` / GUI 配置接管范围。
 - **Phase 5**：再讨论字体、更多系统默认项、以及更大范围的本机自动化迁移。
 

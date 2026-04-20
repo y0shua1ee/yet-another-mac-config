@@ -4,10 +4,12 @@
   # nix-darwin 系统层配置
   #   - Phase 1：骨架
   #   - Phase 3A：引入保守的 Homebrew 声明式清单（见 ./homebrew.nix）
+  #   - Phase 3C：引入少量稳定的 system.defaults 试点（见 ./defaults.nix）
   # =============================================================================
 
   imports = [
     ./homebrew.nix
+    ./defaults.nix
   ];
 
   # 目标平台
@@ -31,5 +33,6 @@
   system.stateVersion = 5;
 
   # Phase 3A 已开始接管：Homebrew 清单（保守模式，见 ./homebrew.nix）。
-  # 仍未接管：`brew services`、`system.defaults.*`、字体、GUI 自动化等，按后续阶段推进。
+  # Phase 3C 已开始接管：少量稳定的 system.defaults 项（见 ./defaults.nix）。
+  # 仍未接管：`brew services`、大范围 `system.defaults.*`、字体、GUI 自动化等，按后续阶段推进。
 }

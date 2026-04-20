@@ -96,32 +96,44 @@ Phase 3 拆成三个连续子阶段，范围从低风险到中低风险递进。
 - [x] 现有 tmux 行为与快捷键不因 Phase 3B 改变（provider 未变）
 - [x] `.config/tmux/CLAUDE.md` 与根 README 文档口径一致
 
-### Phase 3C：少量稳定 `system.defaults.*` 试点
+### Phase 3C：少量稳定 `system.defaults.*` 试点（已完成）
 
 **目标**
 
 只选少量“长期固定、容易验证、回滚成本低”的 macOS 默认项做试点，把系统偏好接管从 0 推进到 1。
 
-**本子阶段要做什么**
+**当前进度（已完成）**
 
-- 新增 `nix/darwin/defaults.nix`
-- 在 `nix/darwin/default.nix` 中显式 import 它
-- 只纳入少量稳定项，优先满足以下条件：
-  - 长期几乎不改
-  - 改错了也容易人工恢复
-  - 不牵涉隐私、账号态、外设硬件差异
-- 每加入一项，都要在 README / `nix/CLAUDE.md` 中说明“已纳入”与“仍未纳入”的边界
+- 已新增 `nix/darwin/defaults.nix`，并在 `nix/darwin/default.nix` 中通过 `imports` 接入。
+- 已纳入（所有写入值与当前机器 `defaults read` 结果一致，首次 switch 预期无可感知行为变化）：
+  - `system.defaults.finder.AppleShowAllExtensions = true`
+  - `system.defaults.finder.ShowPathbar = true`
+  - `system.defaults.finder.ShowStatusBar = true`
+  - `system.defaults.finder.FXPreferredViewStyle = "Nlsv"`（list view）
+  - `system.defaults.dock.mru-spaces = false`
+  - `system.defaults.NSGlobalDomain.KeyRepeat = 2`
+  - `system.defaults.NSGlobalDomain.InitialKeyRepeat = 30`
+- 刻意未纳入（保留给后续阶段单独评估）：
+  - `NSGlobalDomain.ApplePressAndHoldEnabled`：当前 unset，不做主动置位。
+  - 自动替换 / 自动引号 / 自动破折号 / 拼写纠正（`NSAutomaticSpellingCorrectionEnabled` 等）：当前 unset。
+  - Dock：`autohide`、`persistent-apps`、`tilesize`、`orientation` 等偏好漂移项。
+  - Finder：`_FXShowPosixPathInTitle`、`ShowHardDrivesOnDesktop` 等非本机常用项。
+  - 触控板 / trackpad、窗口动画、通知中心、loginwindow、软件更新策略、输入法等整类偏好。
+- 验证：`nix flake check` 通过、`darwin-rebuild build --flake .#AresdeMacBook-Air` 通过；`sudo darwin-rebuild switch` 仍需人工执行（预期是空变化）。
 
 **刻意不做**
 
 - 不把 Finder、Dock、输入法、触控板、通知、窗口动画等大量偏好一口气塞进来
 - 不做“看到能配就都配”的收集式迁移
+- 不主动声明当前处于 unset 状态的 key，避免把未定义行为固化为强意见
 
 **完成标准**
 
-- 只引入少量、经过人工验证的默认项
-- `switch` 后系统行为与预期一致
-- 回滚路径明确，且 README 里写清楚
+- [x] 只引入少量、经过人工验证的默认项
+- [x] `nix flake check` 通过
+- [x] `darwin-rebuild build --flake .#AresdeMacBook-Air` 通过
+- [x] 写入值与当前机器现状一致，`switch` 后无可感知行为变化
+- [x] 已纳入 / 刻意未纳入边界已在 README 与 `nix/CLAUDE.md` 中写清楚
 
 ## 建议执行顺序
 
