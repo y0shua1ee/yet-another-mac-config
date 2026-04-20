@@ -194,6 +194,12 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 
 Phase 2A **仍然不接管** `~/.zshrc`、`~/.zshrc.local`、Homebrew casks、GUI 应用、`.hammerspoon`、`system.defaults.*`、`brew services`、字体等。
 
+### Phase 2B 预备重构（已完成）
+
+- `zsh/shared.zsh`：新增一份共享 shell 片段，承载 `zsh/.zshrc` 与 `nix/modules/zsh.nix` 共同需要的公开、跨机器通用逻辑，减少两边继续漂移。
+- 当前软链接版 `zsh/.zshrc` 仍保留 Oh My Zsh、Homebrew completion 与本机 OpenClaw completion 的调用方职责；未来如果启用 Home Manager 的 `programs.zsh`，`nix/modules/zsh.nix` 会直接复用同一份 `zsh/shared.zsh`。
+- `~/.zshrc.local` 仍保留为私有覆盖入口，未被接管。
+
 ### 后续阶段的路线图（暂定）
 
 - **Phase 2B**：真正启用 `nix/modules/zsh.nix`，替换 `~/.zshrc` 软链接；同步把 Oh My Zsh 主题/插件迁到 Home Manager 原生能力或 `programs.zsh.oh-my-zsh`。届时 `shell-env.nix` 里的 sessionVariables 会生效，可从 `zsh/.zshrc` 中移除对应 `export`。

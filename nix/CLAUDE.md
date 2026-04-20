@@ -20,6 +20,8 @@ nix/
     └── zsh.nix        # 首版 zsh Home Manager 模块（安全/核心子集）
 ```
 
+另有仓库侧共享脚本：`zsh/shared.zsh`。它被 `zsh/.zshrc` 与 `nix/modules/zsh.nix` 共同复用，用来承载公开、跨机器通用的 shell 逻辑。
+
 根目录的 `flake.nix` 通过 `darwinConfigurations.AresdeMacBook-Air` 把上述三层装配起来。
 
 ## 重要约束
@@ -33,6 +35,7 @@ nix/
 ## 修改风格
 - 保持最小改动。任何向系统层下沉（如启用 `homebrew`、`system.defaults`）的变更都应单独成一个 commit，并更新根 README 的「渐进式 Nix 迁移」章节。
 - 新增 Home Manager 模块放在 `modules/`，并在 `home/default.nix` 中显式 import。
+- 如果某段 zsh 逻辑既要被当前软链接版 `.zshrc` 使用、又要被未来 Home Manager zsh 使用，优先考虑放进 `../zsh/shared.zsh`，不要在 `.zshrc` 与 `modules/zsh.nix` 里各写一份。
 - Nix 代码中的注释使用中文（与仓库整体风格一致）。
 
 ## 常用命令（需已安装 Determinate Nix）

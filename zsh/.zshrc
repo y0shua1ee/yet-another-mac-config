@@ -17,19 +17,11 @@ plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
 
 source $ZSH/oh-my-zsh.sh
 
-# 自动建议颜色（适配 Catppuccin Mocha + 半透明背景，提高可读性）
-ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#7f849c'
-
-# Homebrew 环境
-eval "$(/opt/homebrew/bin/brew shellenv)"
-# uv 工具路径置于 Homebrew 之前
-export PATH="$HOME/.local/bin:$PATH"
-
 # 默认编辑器（需先安装 neovim：brew install neovim）
 command -v nvim >/dev/null 2>&1 && export EDITOR=nvim
 
-# Starship 提示符
-eval "$(starship init zsh)"
+# 与 Home Manager 共享的公开、跨机器通用逻辑
+source "$(dirname "$(realpath "$HOME/.zshrc")")/shared.zsh"
 
 # Homebrew 补全
 if type brew &>/dev/null; then
@@ -38,23 +30,6 @@ if type brew &>/dev/null; then
   autoload -Uz compinit
   compinit
 fi
-
-# yazi
-function y() {
-	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
-	command yazi "$@" --cwd-file="$tmp"
-	IFS= read -r -d '' cwd < "$tmp"
-	[ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
-	rm -f -- "$tmp"
-}
-
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-[ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
-
-# Claude Code
-alias c='CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000 claude --dangerously-skip-permissions'
 
 # 加载本地隐私配置（API 密钥、项目变量等）——必须放在最后，以便覆盖上方任何设置
 [[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
