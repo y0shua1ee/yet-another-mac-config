@@ -8,11 +8,12 @@
 
 ## PATH priority
 - Custom PATH must be set **after** `eval "$(brew shellenv)"`, otherwise Homebrew will override it.
+- Current public shell PATH logic now lives primarily in `shared.zsh`, then gets loaded by both `zsh/.zshrc` and `nix/modules/zsh.nix`.
 - Current order: `$HOME/.bun/bin` (bun) > `~/.local/bin` (uv tools) > `/opt/homebrew/bin` (Homebrew).
 - Use `typeset -U PATH` (uppercase) for deduplication. Note: lowercase `typeset -U path` only works on array operations, not on `export PATH=` string assignments.
 
 ## Bun
-- `BUN_INSTALL` and bun completions are configured in `.zshrc`, before the `.zshrc.local` source line.
+- `BUN_INSTALL` and bun completions are currently configured in `shared.zsh`, so they are loaded both by the symlinked `zsh/.zshrc` path and by the Home Manager `nix/modules/zsh.nix` path, and still run before the `~/.zshrc.local` source line.
 - bun is installed via its official installer, not via Homebrew.
 
 ## Python / uv

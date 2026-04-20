@@ -6,7 +6,7 @@
   # - 仅涵盖「安全/核心、跨机器通用」行为
   # - 保留 ~/.zshrc.local 作为私有配置入口（API key、项目变量等）
   # - 启用此模块后，Home Manager 会生成自己的 ~/.zshrc，不再兼容仓库里的软链接
-  # Phase 1 / 2A 默认不在 nix/home/default.nix 里 import 本模块
+  # - 当前仓库在 Phase 2D 以后已由 nix/home/default.nix 正式 import 本模块并完成 switch
   # =============================================================================
 
   programs.zsh = {
