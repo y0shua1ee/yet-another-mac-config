@@ -21,7 +21,7 @@
 - The macOS system Python (`/usr/bin/python3`) is left untouched.
 
 ## Environment variables
-- `EDITOR=nvim`: sets Neovim as default editor; used by yazi, git, etc. Requires `brew install neovim`; if nvim is not installed, the line is a no-op and tools fall back to their own defaults.
+- `EDITOR=nvim`: sets Neovim as default editor; used by yazi, git, etc. In the current Phase 2D+ layout, the declarative source of truth is primarily `nix/home/shell-env.nix`, while the symlinked `zsh/.zshrc` path still acts as the legacy fallback path.
 
 ## Editing rules
 - Never put secrets, tokens, or machine-specific paths into `.zshrc` or `shared.zsh`.

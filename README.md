@@ -16,8 +16,8 @@ My Mac config
 | `.config/yazi` | Yazi 文件管理器及插件 |
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
-| `zsh/.zshrc` | Zsh 通用配置（含 `EDITOR=nvim`、bun 等环境变量） |
-| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3A 第一版：`nix/darwin/homebrew.nix` 已启用保守的 Homebrew 声明式清单；Phase 3B：tmux 运行时加入该清单，配置体系保持 oh-my-tmux + `tmux.conf.local` 不变；Phase 3C：`nix/darwin/defaults.nix` 已启用少量稳定的 `system.defaults.*` 试点，写入值与当前机器一致；Phase 4 最小版：`brew services` 仅接管 `borders` / `nginx`，并补上 `font-maple-mono-nf`、`hammerspoon` 两个 cask；详见 `nix/phase-3-plan.md` 与下文「渐进式 Nix 迁移」章节） |
+| `zsh/.zshrc` | Zsh 通用配置入口（与 `zsh/shared.zsh` 共同提供公开 shell 逻辑；兼容旧软链接回退路径） |
+| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（当前已完成：Home Manager 接管 zsh、保守 Homebrew 清单、tmux 运行时、少量稳定 `system.defaults.*`，以及 Phase 4 最小版的 `borders` / `nginx` 服务、Ghostty 字体、Hammerspoon；细节见下文「渐进式 Nix 迁移」章节） |
 
 ## 使用说明
 
