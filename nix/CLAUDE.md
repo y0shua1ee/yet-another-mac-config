@@ -3,6 +3,7 @@
 ## 目的 / 当前阶段
 - 这是渐进式 Nix 迁移，底层运行时是 [Determinate Nix](https://docs.determinate.systems/)，系统层用 [nix-darwin](https://github.com/nix-darwin/nix-darwin)，用户层用 [Home Manager](https://nix-community.github.io/home-manager/)。
 - **Phase 2D 现状：Home Manager 已接管 `~/.zshrc`。`nix flake check`、`darwin-rebuild build --flake .#AresdeMacBook-Air` 与 `sudo darwin-rebuild switch --flake .#AresdeMacBook-Air` 都已在当前机器跑通。**
+- **Phase 3 已有具体计划文档：`nix/phase-3-plan.md`。默认顺序是：先做 Homebrew 清单声明化，再做 tmux 运行时声明化，最后只试点少量稳定 `system.defaults.*`。**
 - 这个仓库仍然是「事实源」，Nix 只是又一种可选的激活方式。当前机器上的旧仓库软链接版 zsh 仍保留在 `~/.zshrc.pre-hm-switch-backup`，便于人工回退。
 
 ## 目录结构
@@ -32,7 +33,8 @@ nix/
   2. 旧仓库软链接版 zsh 目前保留在 `~/.zshrc.pre-hm-switch-backup`；若想回到旧路径，可人工还原。
   3. 机器相关或绝对路径的 shell 片段（例如 OpenClaw completion）不应进仓库共享区，而应写入 `~/.zshrc.local`；Home Manager 版 zsh 的 `initExtra` 会在末尾自动 `source` 它。
   4. 需要回滚时：`sudo darwin-rebuild switch --rollback`，并按需把 `~/.zshrc.pre-hm-switch-backup` 还原为 `~/.zshrc`。
-- 当前阶段仍**不** 触碰：`~/.zshrc.local`、Homebrew casks / 服务、`system.defaults.*`、字体、`.hammerspoon`。这些继续按原方式管理。
+- 当前阶段仍**不** 触碰：`~/.zshrc.local`、`brew services`、字体、`.hammerspoon`、secrets / 登录态，以及大范围 `system.defaults.*` 迁移。这些继续按原方式管理。
+- 若要开始 Phase 3，请先阅读 `nix/phase-3-plan.md`，不要跳过其中的范围边界与回滚原则。
 
 ## 修改风格
 - 保持最小改动。任何向系统层下沉（如启用 `homebrew`、`system.defaults`）的变更都应单独成一个 commit，并更新根 README 的「渐进式 Nix 迁移」章节。

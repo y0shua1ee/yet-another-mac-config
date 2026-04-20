@@ -1,0 +1,167 @@
+# Phase 3 计划（具体版）
+
+## 背景
+
+Phase 1 到 Phase 2D 已经完成了 Nix 骨架落地、低风险 Home Manager 扩展，以及 `~/.zshrc` 的实际 takeover。下一步不再是“证明这套骨架能跑”，而是把**更多可复现、但风险仍可控**的内容继续纳入声明式管理。
+
+这一阶段继续坚持同一条原则：**优先接管低风险、可验证、易回滚的部分，不做大爆炸迁移。**
+
+## Phase 3 的目标
+
+1. 提高这台机器的可重建性，尤其是包清单与少量稳定系统偏好。
+2. 继续以仓库为事实源，但不强行重写已经稳定工作的本地流。
+3. 保持 `setup_mac.sh` 仍然可用，Nix 只是额外的、更可复现的激活通道。
+4. 每一步都能独立 build、switch、验证、回滚。
+
+## 明确不在本阶段处理的内容
+
+以下内容继续延期，不放进 Phase 3：
+
+- secrets、登录态、设备私有凭据
+- GUI 自动化与 `.hammerspoon` 全量迁移
+- `brew services` 的声明式接管
+- 字体
+- 大范围 `system.defaults.*` 扫荡式迁移
+- 把现有 tmux 配置整体改写成 Home Manager `programs.tmux` 风格
+
+## Phase 3 的拆分
+
+Phase 3 拆成三个连续子阶段，范围从低风险到中低风险递进。
+
+### Phase 3A：Homebrew 清单声明化（首要）
+
+**目标**
+
+把当前“依赖 Homebrew，但主要靠人工记忆或散落文档维护”的状态，推进到“由 nix-darwin 统一声明 Homebrew inventory，但暂不做破坏性清理”。
+
+**本子阶段要做什么**
+
+- 新增 `nix/darwin/homebrew.nix`
+- 在 `nix/darwin/default.nix` 中显式 import 它
+- 先声明一批低风险、长期稳定、已在日常使用中的 Homebrew 项：
+  - `brews`：纯 CLI 或基础工具优先
+  - `casks`：只纳入明确长期保留、不会牵涉复杂账号态的 GUI 应用
+  - `taps`：仅在确有对应 formula/cask 依赖时再声明
+- 激活策略保持保守：
+  - 不做自动 uninstall / cleanup
+  - 不把“本机存在但仓库暂未声明”的包立刻视为待删除对象
+- 根 README 增加一段“Homebrew 现处于声明式清单阶段，但仍非全面接管”说明
+
+**刻意不做**
+
+- 不接管 `brew services`
+- 不做全量盘点后的一次性大迁移
+- 不追求把所有本机 brew 安装项一次录完
+- 不试图让 Nix 立刻替代所有 Homebrew 用途
+
+**完成标准**
+
+- `nix flake check` 通过
+- `darwin-rebuild build --flake .#AresdeMacBook-Air` 通过
+- `sudo darwin-rebuild switch --flake .#AresdeMacBook-Air` 通过
+- 已声明的 Homebrew 包能正常保留/安装
+- 未声明的本机包不会因为这一步被自动清掉
+
+### Phase 3B：tmux 进入“声明式运行时”，但不重写配置体系
+
+**目标**
+
+先把 tmux 从“配置在 repo、运行时依赖靠手工准备”推进到“运行时安装路径更可复现”，但不破坏当前 oh-my-tmux + `tmux.conf.local` 的工作流。
+
+**本子阶段要做什么**
+
+- 评估 tmux 二进制应继续放在 Homebrew 清单里，还是转入 Home Manager `home.packages`
+- 明确并记录 tmux 的事实源边界：
+  - `~/.config/tmux/tmux.conf.local` 继续作为用户自定义入口
+  - `tmux.conf` 继续允许是指向本地 oh-my-tmux 的软链接
+- 若需要，补一层最小文档，说明在 Phase 3 里“声明式”接管的只是运行时与 bootstrap，不是重写 tmux 配置结构
+
+**刻意不做**
+
+- 不把 `.config/tmux/tmux.conf.local` 改写为 Home Manager `programs.tmux.extraConfig`
+- 不替换 oh-my-tmux
+- 不引入 tmux 插件系统重构
+
+**完成标准**
+
+- 新机器按 README + Nix 路线能更稳定地得到 tmux 运行时
+- 现有 tmux 行为与快捷键不因 Phase 3B 改变
+- `.config/tmux/CLAUDE.md` 与根 README 文档口径一致
+
+### Phase 3C：少量稳定 `system.defaults.*` 试点
+
+**目标**
+
+只选少量“长期固定、容易验证、回滚成本低”的 macOS 默认项做试点，把系统偏好接管从 0 推进到 1。
+
+**本子阶段要做什么**
+
+- 新增 `nix/darwin/defaults.nix`
+- 在 `nix/darwin/default.nix` 中显式 import 它
+- 只纳入少量稳定项，优先满足以下条件：
+  - 长期几乎不改
+  - 改错了也容易人工恢复
+  - 不牵涉隐私、账号态、外设硬件差异
+- 每加入一项，都要在 README / `nix/CLAUDE.md` 中说明“已纳入”与“仍未纳入”的边界
+
+**刻意不做**
+
+- 不把 Finder、Dock、输入法、触控板、通知、窗口动画等大量偏好一口气塞进来
+- 不做“看到能配就都配”的收集式迁移
+
+**完成标准**
+
+- 只引入少量、经过人工验证的默认项
+- `switch` 后系统行为与预期一致
+- 回滚路径明确，且 README 里写清楚
+
+## 建议执行顺序
+
+1. **Phase 3A: Homebrew 清单声明化**
+2. **Phase 3B: tmux 运行时声明化**
+3. **Phase 3C: 少量 stable defaults 试点**
+
+如果 3A 做完后发现 Homebrew inventory 的边界仍需大量梳理，可以把 3B 提前，3C 顺延。也就是说，顺序允许微调，但**3A 应始终是默认起点**。
+
+## 建议文件落点
+
+若按本计划推进，预计会新增或更新这些文件：
+
+- `nix/darwin/homebrew.nix`
+- `nix/darwin/defaults.nix`
+- `nix/darwin/default.nix`
+- `nix/home/default.nix`（仅当 tmux 最终放入 Home Manager）
+- `README.md`
+- `nix/CLAUDE.md`
+- `.config/tmux/CLAUDE.md`（如 tmux 阶段需要补充说明）
+
+## 每个子阶段都应遵守的验证流程
+
+```bash
+nix flake check
+darwin-rebuild build --flake .#AresdeMacBook-Air
+sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
+```
+
+必要时再补人工验证，例如：
+
+- `brew list` / 目标 app 是否可启动
+- `tmux -V`、tmux session 是否正常
+- 相关 macOS 默认项是否真的生效
+
+## 回滚原则
+
+- Nix 系统层回退优先用：`sudo darwin-rebuild switch --rollback`
+- 不在 Phase 3 引入“自动清理未声明 Homebrew 项”这类难回退操作
+- 保留现有 repo 结构与本地软链接流作为兜底，不做不可逆迁移
+
+## Phase 3 完成后的状态定义
+
+当以下条件同时满足时，可认为 Phase 3 完成：
+
+- Homebrew 已进入保守的声明式清单管理
+- tmux 运行时的安装/准备路径比现在更可复现
+- 至少有一小组稳定的 `system.defaults.*` 已纳入管理
+- `brew services`、字体、GUI 自动化、secrets 仍明确留在后续阶段
+
+届时再开启下一轮 Phase 4，讨论更大范围的 Homebrew、services、GUI 或系统偏好接管。

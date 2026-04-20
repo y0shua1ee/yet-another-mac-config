@@ -17,7 +17,7 @@ My Mac config
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
 | `zsh/.zshrc` | Zsh 通用配置（含 `EDITOR=nvim`、bun 等环境变量） |
-| `flake.nix` + `nix/` | 渐进式 Nix 迁移骨架（Phase 2C：zsh 模块已纳入 Home Manager 配置图，`nix flake check` / `darwin-rebuild build` 已通过；真正接管 `~/.zshrc` 仍待下一次 `sudo darwin-rebuild switch`） |
+| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（Phase 2D：Home Manager 已实际接管 `~/.zshrc`；Phase 3 具体计划见 `nix/phase-3-plan.md`） |
 
 ## 使用说明
 
@@ -205,10 +205,13 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 - `nix/home/shell-env.nix` 里的 `EDITOR=nvim` / `VISUAL=nvim` / `PAGER=less` 已随 Home Manager 版 zsh 生效。
 - 机器相关片段（例如 OpenClaw completion）已迁到 `~/.zshrc.local`，Home Manager 版 zsh 的 `initExtra` 会在末尾自动 `source` 它。
 
-### 后续阶段的路线图（暂定）
+### 后续阶段的路线图
 
-- **Phase 3**：决定是否继续把 Oh My Zsh 主题 / 插件完全迁到 Home Manager 原生能力（如 `programs.zsh.oh-my-zsh`），并评估仓库 `zsh/.zshrc` 作为长期回退通道还是历史遗留模板保留。
-- **Phase 4**：将更多 Homebrew 软件包迁到 `nix-darwin` 的 `homebrew` 模块（声明式）或继续扩充 Home Manager `home.packages`。
-- **Phase 5**：逐步把 `system.defaults.*`、字体、服务纳入管理。
+- **Phase 3**：已落成具体计划，见 [`nix/phase-3-plan.md`](nix/phase-3-plan.md)。当前约定的默认顺序是：
+  1. Homebrew 清单声明化（保守模式，不做自动清理）
+  2. tmux 运行时声明化（不重写现有 oh-my-tmux + `tmux.conf.local` 体系）
+  3. 少量稳定 `system.defaults.*` 试点
+- **Phase 4**：再决定是否扩大 Homebrew / `brew services` / GUI 配置接管范围。
+- **Phase 5**：再讨论字体、更多系统默认项、以及更大范围的本机自动化迁移。
 
 每个阶段都应单独一次提交，并更新本章节。
