@@ -17,7 +17,12 @@ My Mac config
 | `.hammerspoon` | Hammerspoon 自动化 |
 | `.vscode` | VS Code 项目级设置 |
 | `zsh/.zshrc` | Zsh 通用配置入口（与 `zsh/shared.zsh` 共同提供公开 shell 逻辑；兼容旧软链接回退路径） |
-| `flake.nix` + `nix/` | 渐进式 Nix 迁移配置（当前已完成：Home Manager 接管 zsh、保守 Homebrew 清单、tmux 运行时、少量稳定 `system.defaults.*`，以及 Phase 4 最小版的 `borders` / `nginx` 服务、Ghostty 字体、Hammerspoon；细节见 [`nix/README.md`](nix/README.md)） |
+| `flake.nix` + `nix/` | 可选的渐进式 Nix 路线，用来在新机上更快补齐部分运行时与系统偏好；覆盖范围与启用方式见 [`nix/README.md`](nix/README.md) |
+
+## 前置依赖
+
+- 需要先安装 [Homebrew](https://brew.sh/)；本仓库的各类 app、CLI、后台服务均通过 `brew` 安装。
+- `setup_mac.sh` 只负责在新机器上同步本仓库的配置（建立软链接等），**不会**安装 Homebrew 本身，也不会替你安装具体的 app。
 
 ## 使用说明
 
@@ -39,7 +44,7 @@ My Mac config
 
 脚本可安全重复执行，方便在多台机器间保持插件一致。
 
-## 容器运行环境
+## 容器运行环境（可选）
 
 使用 [Colima](https://github.com/abiosoft/colima) 作为 Docker Desktop 的轻量替代方案，搭配 Homebrew 安装的 `docker` CLI 和 `docker-compose` 插件：
 
@@ -75,6 +80,8 @@ colima delete           # 删除 VM（释放磁盘空间）
 ```
 
 ## 后台服务管理
+
+下表中的 app / 服务需要你自己用 Homebrew 安装（例如 `brew install nginx`、`brew install --cask clouddrive`），`setup_mac.sh` 只负责同步相关配置，不会替你安装这些 app；装好之后再用 `brew services` 接管运行状态。
 
 以下服务通过 `brew services` 管理：
 
