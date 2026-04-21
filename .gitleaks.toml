@@ -1,0 +1,36 @@
+title = "yet-another-mac-config gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore 1Password CLI local state marker in untracked .config/op/config"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^\.config/op/config$''',
+]
+regexTarget = "line"
+regexes = [
+  '''system_auth_latest_signin"\s*:\s*"[A-Z0-9]+"''',
+]
+
+[[allowlists]]
+description = "Ignore historical Raycast extension bundle OAuth client metadata false positives"
+condition = "AND"
+targetRules = ["asana-client-id", "linear-client-secret"]
+paths = [
+  '''^\.config/raycast/extensions/95e41a2e-a943-4d49-b0df-152c3db2f7e0/(extensions|index|install-extension|open-new-window|open-with-vscode)\.js$''',
+]
+
+[[allowlists]]
+description = "Ignore historical opencode manifest filename false positive for gsd-join-discord.md"
+condition = "AND"
+targetRules = ["discord-api-token"]
+paths = [
+  '''^\.config/opencode/gsd-file-manifest\.json$''',
+]
+regexTarget = "match"
+regexes = [
+  '''gsd-join-discord\.md''',
+]

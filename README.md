@@ -223,6 +223,7 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 - 目前仍不纳入：服务类 formula（`brew services` 相关，如 `borders` / `nginx` / `unbound` / `colima` / `clouddrive2` / `ollama`）、版本管理器与多语言运行时（`nvm` / `pnpm` / `uv` / `deno` / `python@*` / `go` / `rust` / `llvm` 等）、字体 cask、`hammerspoon` cask、以及含账号态 / 登录态的工具（`1password-cli`、`raycast`、各 IM / 云盘类 app 等）。
 - 要追加条目，请直接编辑 `nix/darwin/homebrew.nix`，遵循同样的保守口径；不要贸然启用 `cleanup = "check"` 或 `autoUpdate / upgrade`。
 - 当前也已把 `gitleaks` 纳入这份保守清单：它是低风险、稳定的纯 CLI secrets scanner，适合作为日常本机审计工具；但更重、偏专项深扫的 `trufflehog` 仍先保持按需手动使用，不默认纳入。
+- 仓库根目录补了一份 `.gitleaks.toml`，只用于收敛已经复核过的少量误报（例如历史里的 Raycast 扩展 bundle / 已移除的 opencode manifest，以及本机未跟踪的 `1Password CLI` 状态文件标记）；后续手动扫描时默认优先让 gitleaks 读取这份 repo 配置。
 
 ### Phase 3B：tmux 运行时声明化（仅运行时，不重写配置体系）
 
