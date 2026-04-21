@@ -57,6 +57,7 @@
       "fastfetch"       # 系统信息展示
       "fzf"             # 模糊查找器，zsh 交互依赖
       "gh"              # GitHub CLI
+      "gitleaks"        # secrets 扫描，适合提交前/手动审计做轻量防线
       "git"             # 显式声明 brew 版 git，覆盖 macOS 自带版本
       "lazygit"         # Git TUI
       "neovim"          # 主力编辑器（配置已由 .config/nvim 管理）

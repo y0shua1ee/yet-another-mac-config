@@ -218,10 +218,11 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 - 激活参数刻意保守：`onActivation.autoUpdate = false`、`onActivation.upgrade = false`、`onActivation.cleanup = "none"`。也就是说，`darwin-rebuild switch` **不会**自动 `brew update`、`brew upgrade`，也**不会**清理未声明的本机 brew 包。
 - 已声明的 inventory（CLI 优先、GUI 只挑仓库已管理其配置的；`tmux` 在 Phase 3B 纳入）：
   - **taps**：`nikitabobko/tap`
-  - **brews**：`ast-grep`、`btop`、`fastfetch`、`fzf`、`gh`、`git`、`lazygit`、`neovim`、`starship`、`tmux`、`wget`、`yazi`、`yt-dlp`、`zsh-completions`
+  - **brews**：`ast-grep`、`btop`、`fastfetch`、`fzf`、`gh`、`gitleaks`、`git`、`lazygit`、`neovim`、`starship`、`tmux`、`wget`、`yazi`、`yt-dlp`、`zsh-completions`
   - **casks**：`aerospace`、`ghostty`、`typora`、`visual-studio-code`
 - 目前仍不纳入：服务类 formula（`brew services` 相关，如 `borders` / `nginx` / `unbound` / `colima` / `clouddrive2` / `ollama`）、版本管理器与多语言运行时（`nvm` / `pnpm` / `uv` / `deno` / `python@*` / `go` / `rust` / `llvm` 等）、字体 cask、`hammerspoon` cask、以及含账号态 / 登录态的工具（`1password-cli`、`raycast`、各 IM / 云盘类 app 等）。
 - 要追加条目，请直接编辑 `nix/darwin/homebrew.nix`，遵循同样的保守口径；不要贸然启用 `cleanup = "check"` 或 `autoUpdate / upgrade`。
+- 当前也已把 `gitleaks` 纳入这份保守清单：它是低风险、稳定的纯 CLI secrets scanner，适合作为日常本机审计工具；但更重、偏专项深扫的 `trufflehog` 仍先保持按需手动使用，不默认纳入。
 
 ### Phase 3B：tmux 运行时声明化（仅运行时，不重写配置体系）
 
