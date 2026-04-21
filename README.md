@@ -27,7 +27,7 @@ My Mac config
 4. 如果当前工作区里本地存在 `.codex/config.toml`，脚本会额外询问是否同步到 `~/.codex/config.toml`；该文件默认只保留在本地，不会提交到仓库。
 5. 脚本会询问是否将 `zsh/.zshrc` 软链接到 `~/.zshrc`。通用配置（主题、插件、补全等）存放在此文件中；API 密钥、项目变量等隐私内容应写入 `~/.zshrc.local`（不纳入版本控制），会在 `.zshrc` 末尾自动加载。
 6. 脚本会检测 `.config/tmux` 是否缺少 `tmux.conf`，如果缺少则提示安装 [oh-my-tmux](https://github.com/gpakosz/.tmux)，自动克隆到 `~/.local/share/tmux/oh-my-tmux` 并创建软链接。
-7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`。在此之前请先安装 Hammerspoon：走 Nix 路线时由 `nix/darwin/homebrew.nix` 声明自动安装（Phase 4 最小版已纳入），不走 Nix 时用 `brew install --cask hammerspoon`。同步后仍需手动在「系统设置 → 隐私与安全性 → 辅助功能」授予 Hammerspoon 权限，否则 `init.lua` 里的事件 tap 与快捷键不会生效；`Ctrl+Alt+T` 快捷键还依赖 Ghostty cask，已一并在 Homebrew 清单中声明。完整激活流程见 [`nix/README.md`](nix/README.md) 的相关说明。
+7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`。同步前先用 `brew install --cask hammerspoon` 安装 app，同步后仍需在「系统设置 → 隐私与安全性 → 辅助功能」中授予 Hammerspoon 权限，否则 `init.lua` 里的事件 tap 与快捷键不会生效；`Ctrl+Alt+T` 快捷键还依赖 Ghostty。Nix 路线下 cask 与字体已声明化，完整激活流程见 [`nix/README.md`](nix/README.md)。
 
 ## Yazi 插件同步
 
@@ -78,18 +78,14 @@ colima delete           # 删除 VM（释放磁盘空间）
 
 以下服务通过 `brew services` 管理：
 
-| 服务 | 说明 | 开机自启 | Nix 声明化 |
-|------|------|----------|------------|
-| borders | JankyBorders 窗口边框 | 是 | ✅ Phase 4 最小版（`start_service = true`） |
-| nginx | HTTP 服务器（默认端口 8080） | 是 | ✅ Phase 4 最小版（`start_service = true`） |
-| clouddrive2 | CloudDrive2 云盘挂载 | 是 | ❌ 未纳入（账号态 / 本地数据） |
-| ollama | 本地 LLM 运行时 | 是 | ❌ 未纳入（本地模型数据） |
-| unbound | DNS resolver | 否 | ❌ 未纳入（非默认开机自启） |
-| colima | Colima 容器运行时（可选） | 否 | ❌ 未纳入（非默认开机自启） |
-
-「Nix 声明化」列说明这台机器如果走 Nix 路线激活时，哪些服务会被 `nix/darwin/homebrew.nix` 自动处理；未纳入的项继续按本节下方的 `brew services` 命令人工管理。
-
-Phase 4 最小版的声明策略是 `start_service = true`：nix-darwin 在 `brew bundle` 阶段**只在服务未运行时**调用 `brew services start`，不会重启或停止已运行服务，因此在当前机器上是幂等 no-op；只有新机器首次 switch 时才会实际把两个服务启动并登记为 login item。
+| 服务 | 说明 | 开机自启 |
+|------|------|----------|
+| borders | JankyBorders 窗口边框 | 是 |
+| nginx | HTTP 服务器（默认端口 8080） | 是 |
+| clouddrive2 | CloudDrive2 云盘挂载 | 是 |
+| ollama | 本地 LLM 运行时 | 是 |
+| unbound | DNS resolver | 否 |
+| colima | Colima 容器运行时（可选） | 否 |
 
 常用命令：
 
@@ -101,7 +97,7 @@ brew services restart <name>    # 重启服务
 ```
 
 > **注意：** nginx 的配置路径为 `/opt/homebrew/etc/nginx/`。
-> **注意：** 即使 `borders` / `nginx` 已由 Nix 声明化，日常重启、停服、查状态仍然使用 `brew services …` 命令；`darwin-rebuild switch` 不会自动重启这两个服务。
+> **注意：** 走 Nix 路线时，`borders` / `nginx` 的开机自启会在首次 switch 时由 nix-darwin 帮忙拉起（日常 start/stop/restart 仍用上面的 `brew services` 命令）；其余服务继续按本节命令人工管理。详见 [`nix/README.md`](nix/README.md)。
 
 ## 本地文件同步约定
 
@@ -124,47 +120,9 @@ brew services restart <name>    # 重启服务
 
 ## 可选：使用 Nix 激活这份配置
 
-如果你希望在新机器上用 Nix 来补齐这份仓库的部分运行时与系统层配置，可以走仓库内的渐进式 Nix 路线。
+如果你希望在新机器上用 Nix 来补齐这份仓库的部分运行时与系统层配置，可以走仓库内的渐进式 Nix 路线。当前定位是**帮助新 Mac 更快恢复到可用状态**，并不追求 100% 声明式接管：secrets、登录态、大范围 app state 与琐碎系统偏好仍然默认人工处理。
 
-- 面向使用者的说明：[`nix/README.md`](nix/README.md)
-- 面向后续维护 / 约束的说明：[`nix/CLAUDE.md`](nix/CLAUDE.md)
+完整的覆盖范围、激活步骤与回滚方式见：
 
-当前这条 Nix 路线的定位是：**帮助新 Mac 更快恢复到可用状态**，但不追求 100% 声明式接管。像 secrets、登录态、较大范围 app state，以及很多琐碎系统偏好，仍然默认保留人工处理。
-
-### 当前会通过 Nix 补齐什么
-
-- Home Manager 接管的 zsh 入口与少量通用 shell 环境
-- 一份保守的 Homebrew inventory（不会自动 cleanup 未声明条目）
-- `tmux` 运行时
-- 少量稳定的 `system.defaults.*`
-- 最小版 `brew services` 试点：`borders` / `nginx`
-- `Ghostty` 依赖字体 `font-maple-mono-nf`
-- `hammerspoon` cask（但辅助功能权限仍需手动授予）
-
-### 最短激活路径
-
-```bash
-# 1) 安装 Determinate Nix（仅首次）
-curl -fsSL https://install.determinate.systems/nix | sh -s -- install
-
-# 2) 进入仓库，生成 / 检查 flake
-nix flake lock
-nix flake check
-
-# 3) 首次 build（无需 sudo）
-nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
-  build --flake .#AresdeMacBook-Air
-
-# 4) 首次 switch（需要 sudo）
-sudo nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
-  switch --flake .#AresdeMacBook-Air
-```
-
-第二次以后可直接用：
-
-```bash
-darwin-rebuild build --flake .#AresdeMacBook-Air
-sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
-```
-
-> 详细边界、阶段说明、回滚方式与 Hammerspoon / services 的补充说明，见 [`nix/README.md`](nix/README.md)。
+- 面向使用者：[`nix/README.md`](nix/README.md)
+- 面向后续维护 / 约束：[`nix/CLAUDE.md`](nix/CLAUDE.md)
