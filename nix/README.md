@@ -64,9 +64,9 @@
 - 不会清理未声明的本机 brew 包
 - 仍允许平时继续直接 `brew install` / `brew install --cask`
 
-当前已纳入的 inventory 以稳定、低风险条目为主，包括：
+当前已纳入的 inventory 以稳定、低风险条目为主，覆盖范围包括（含 Phase 4B 扩张项，下文单列）：
 
-- taps：`nikitabobko/tap`
+- taps：`nikitabobko/tap`、`felixkratz/formulae`、`antoniorodr/memo`、`steipete/tap`
 - brews：`ast-grep`、`btop`、`fastfetch`、`fzf`、`gh`、`gitleaks`、`git`、`lazygit`、`neovim`、`starship`、`tmux`、`wget`、`yazi`、`yt-dlp`、`zsh-completions`
 - casks：`aerospace`、`ghostty`、`typora`、`visual-studio-code`、`hammerspoon`、`font-maple-mono-nf`
 
@@ -108,8 +108,39 @@
 
 - `clouddrive2`（账号态 / 本地数据）
 - `ollama`（本地模型数据）
-- `unbound`、`colima`（非默认开机自启）
+- `unbound`（非默认开机自启）
 - 更大范围字体或 GUI 自动化 app
+
+### Phase 4B：小幅 Homebrew inventory 扩张
+
+Phase 4B 在 Phase 4 最小版基础上做一次**小步**扩张，目的是把仓库工作流已经长期、稳定使用，但之前没有声明化的少量条目补齐，让新机器在 `darwin-rebuild switch` 之后就直接可用，而不是“装完再缺什么补什么”。
+
+激活策略保持不变：`autoUpdate = false`、`upgrade = false`、`cleanup = "none"`。`brew services` 接管范围仍然只有 `borders` / `nginx`，**不**扩张。
+
+新增的 taps：
+
+- `felixkratz/formulae`：`borders`（JankyBorders）的来源
+- `antoniorodr/memo`：`memo`（Apple Notes CLI）的来源
+- `steipete/tap`：`remindctl`（Apple Reminders CLI）的来源
+
+新增的 brews：
+
+- 容器：`colima`、`docker`、`docker-compose`（仅声明 CLI / 运行时；`colima` **不**纳入 `brew services`，仍按需 `colima start`）
+- Yazi / 媒体 / 文档 helper：`sevenzip`、`imagemagick`、`mpv`、`poppler`、`zoxide`、`media-info`、`exiftool`（多数是 `install_yazi_plugins.sh` 末尾提示过的依赖）
+- Email / 助手类 CLI：`himalaya`、`antoniorodr/memo/memo`、`steipete/tap/remindctl`
+
+新增的 casks：
+
+- `claude-code@latest`：Claude Code CLI（沿用 Homebrew 上游的 `@latest` 版本通道）
+- `codex`：Codex CLI
+- `cc-switch`：Claude Code 切换辅助
+
+Phase 4B **刻意不纳入**的内容（继续延后或永久不纳入）：
+
+- 多语言运行时 / 版本管理器：`go`、`rust`、`nvm`、`pnpm`、`uv`、`deno`、`python@*`、`llvm` 等。这类工具状态管理复杂，且与未来 Home Manager / devshell / `mise` 等方案耦合度高，单独评估，不在本轮一刀切引入。
+- 账号态 / 登录态较重的 GUI app：`raycast`、`telegram`、`discord`、`feishu`、`google-drive`、`tailscale`、`notion`、`spotify`、`zotero`、`jetbrains-toolbox`、`termius` 等。这些 app 的本地数据 / 登录态远比 cask 安装本身更关键，不适合声明式接管。
+- 扩张 `brew services`：`colima`、`clouddrive2`、`ollama`、`unbound` 仍按现有人工 `brew services` 流程管理。
+- 更大范围字体：`font-hack-nerd-font` 等本机已安装但未被仓库配置引用的字体仍不纳入。
 
 ## 安全激活步骤
 

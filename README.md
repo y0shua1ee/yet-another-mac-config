@@ -129,6 +129,8 @@ brew services restart <name>    # 重启服务
 
 如果你希望在新机器上用 Nix 来补齐这份仓库的部分运行时与系统层配置，可以走仓库内的渐进式 Nix 路线。当前定位是**帮助新 Mac 更快恢复到可用状态**，并不追求 100% 声明式接管：secrets、登录态、大范围 app state 与琐碎系统偏好仍然默认人工处理。
 
+当前 Nix 路线除 Home Manager zsh、少量稳定 CLI、保守 Homebrew inventory、`borders` / `nginx` 服务试点与少量 `system.defaults` 外，也已补入 Phase 4B 的小范围 Homebrew 扩张：容器 CLI、Yazi / 媒体 / 文档 helper、Biya/Hermes 常用的 Apple 辅助 CLI，以及 Claude Code / Codex / CC Switch。多语言运行时与账号态较重的 GUI app 仍刻意留待后续单独评估。
+
 完整的覆盖范围、激活步骤与回滚方式见：
 
 - 面向使用者：[`nix/README.md`](nix/README.md)

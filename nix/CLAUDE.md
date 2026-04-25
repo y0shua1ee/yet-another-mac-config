@@ -7,7 +7,8 @@
 - **Phase 3B 现状：tmux 运行时已纳入 `nix/darwin/homebrew.nix` 的 `brews`，继续使用 Homebrew 提供的 `/opt/homebrew/bin/tmux`，没有转入 Home Manager `home.packages`。现有 oh-my-tmux + `~/.config/tmux/tmux.conf.local` 工作流保持不变；`tmux.conf` 仍是指向本地 oh-my-tmux 克隆的软链接（机器相关，不纳入仓库）。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过。**
 - **Phase 3C 现状：新增 `nix/darwin/defaults.nix`，以保守首版接管少量 `system.defaults.*`。所有写入值均与当前机器 `defaults read` 结果一致（Finder 四项 + Dock `mru-spaces` + NSGlobalDomain 键盘重复两项），首次 switch 预期无可感知行为变化。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。**
 - **Phase 4 最小版现状（已落地）：严格三件事——(1) `brew services` 试点：在 `nix/darwin/homebrew.nix` 的 `brews` 里以 `{ name; start_service = true; }` 的形式声明 `borders` 与 `nginx`；`start_service = true` 只在服务未运行时启动，不会重启或停止已运行服务，对本机状态零扰动。(2) 补上 Ghostty 依赖字体 `font-maple-mono-nf`。(3) 把 `hammerspoon` 纳入 `casks`。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。**
-- **Phase 3 计划文档：`nix/phase-3-plan.md`。Phase 3C 已落地，Phase 3 可视为完成；Phase 4 后续如何扩张范围仍按“谨慎、可回退”原则逐项评估，不跳跃式迁移。**
+- **Phase 4B 现状（已纳入仓库，待 switch）：在 Phase 4 最小版基础上做一次小步扩张，仅追加“仓库工作流已经长期使用”的条目，激活策略保持不变（`autoUpdate = false` / `upgrade = false` / `cleanup = "none"`，`brew services` 仍只接管 `borders` / `nginx`）。新增 taps：`felixkratz/formulae`、`antoniorodr/memo`、`steipete/tap`。新增 brews：容器组 `colima` / `docker` / `docker-compose`（`colima` **不**走 `brew services`），Yazi / 媒体 / 文档 helper `sevenzip` / `imagemagick` / `mpv` / `poppler` / `zoxide` / `media-info` / `exiftool`，Email / 助手 CLI `himalaya` / `antoniorodr/memo/memo` / `steipete/tap/remindctl`。新增 casks：`claude-code@latest` / `codex` / `cc-switch`。**故意不纳入**：多语言运行时（`go` / `rust` / `nvm` / `pnpm` / `uv` / `deno` / `python@*` / `llvm` 等）和账号态 / 登录态重的 GUI app（`raycast` / `telegram` / `discord` / `feishu` / `google-drive` / `tailscale` / `notion` / `spotify` / `zotero` / `jetbrains-toolbox` / `termius` 等）。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。**
+- **Phase 3 计划文档：`nix/phase-3-plan.md`。Phase 3C 已落地，Phase 3 可视为完成；Phase 4 / 4B 后续如何继续扩张范围仍按“谨慎、可回退”原则逐项评估，不跳跃式迁移。语言运行时（多版本管理器）方向单独留作未来 Phase 评估，可能会落到 Home Manager / devshell / `mise` 等方案，不直接走 Homebrew。**
 - 这个仓库仍然是「事实源」，Nix 只是又一种可选的激活方式。当前机器上的旧仓库软链接版 zsh 仍保留在 `~/.zshrc.pre-hm-switch-backup`，便于人工回退。
 
 ## 目录结构
@@ -18,7 +19,7 @@ nix/
 ├── darwin/
 │   ├── default.nix    # nix-darwin 系统层入口
 │   ├── defaults.nix   # Phase 3C：少量稳定的 system.defaults 试点
-│   └── homebrew.nix   # Homebrew 声明式清单（Phase 3A 首版；3B 加 tmux；Phase 4 最小版加 borders/nginx 服务、font-maple-mono-nf、hammerspoon）
+│   └── homebrew.nix   # Homebrew 声明式清单（Phase 3A 首版；3B 加 tmux；Phase 4 最小版加 borders/nginx 服务、font-maple-mono-nf、hammerspoon；Phase 4B 小幅扩张容器/Yazi/邮件 helper 与 AI cask）
 ├── home/
 │   ├── default.nix    # Home Manager 用户层入口（已 import ../modules/zsh.nix 并实际生效）
 │   ├── packages.nix   # Phase 2A：低风险纯 CLI 工具
