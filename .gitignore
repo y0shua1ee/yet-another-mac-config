@@ -14,6 +14,9 @@
 .config/op/
 .config/raycast/
 
+# Home Manager / nix-direnv 生成的本机 helper，包含 Nix store 路径，不纳入版本控制
+.config/direnv/lib/hm-nix-direnv.sh
+
 # oh-my-tmux 主配置（软链接到本地安装路径，机器相关）
 .config/tmux/tmux.conf
 # tpm 管理的插件（运行时安装，不纳入版本控制）
