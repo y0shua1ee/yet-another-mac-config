@@ -10,6 +10,11 @@
     ./packages.nix
     ./shell-env.nix
 
+    # Phase 5A：语言 / 工具链管理器入口（mise / uv / rustup + direnv）
+    # - 只负责安装管理器本身，不迁移现有 NVM / Homebrew 语言运行时
+    # - 实际运行时版本由项目内 .mise.toml / uv.lock / rust-toolchain.toml / devShell 声明
+    ./dev-toolchains.nix
+
     # Phase 2D：zsh 模块已完成 switch 并实际接管 ~/.zshrc。
     # 当前机器上：
     #   - Home Manager 正在生成 `~/.zshrc`（内容见 ../modules/zsh.nix + ../../zsh/shared.zsh）。

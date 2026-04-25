@@ -111,6 +111,36 @@
 - `unbound`（非默认开机自启）
 - 更大范围字体或 GUI 自动化 app
 
+### Phase 5A：语言 / 工具链管理器入口
+
+Phase 5A 只往 Home Manager 里加**管理器本体**，不动任何现有语言运行时。
+
+新增模块：`nix/home/dev-toolchains.nix`，并由 `nix/home/default.nix` import。
+
+通过 `home.packages` 引入：
+
+- `mise`：多语言版本编排器，长期作为 NVM 的替代候选（覆盖 Node / Go / Deno / Bun 等）
+- `uv`：Python 项目 / 包 / 虚拟环境管理器
+- `rustup`：Rust 工具链管理器
+
+通过 `programs.direnv` 启用：
+
+- `direnv` + `nix-direnv`，为项目内 `.envrc` / Nix devShell 提供自动加载
+
+Phase 5A **明确不**做的事：
+
+- 不迁移当前活跃 Node：NVM 与 `~/.nvm` 体系保持原状
+- 不删除或替换 Homebrew 中已有的 `go` / `rust` / `nvm` / `pnpm` / `uv` / `deno` / `llvm@21` 等
+- 不在 `nix/darwin/homebrew.nix` 里追加任何语言运行时
+- 不启用 `mise activate zsh` 等 shell 集成，留给 Phase 5B 单独评估
+
+实际项目里的运行时版本约定继续走项目本地文件，不写进本仓库：
+
+- Node / Go / Deno / Bun：项目内 `.mise.toml`
+- Python：`pyproject.toml` + `uv.lock`
+- Rust：`rust-toolchain.toml`
+- 需要系统库 / 编译器的项目：项目内 `flake.nix` 的 devShell
+
 ### Phase 4B：小幅 Homebrew inventory 扩张
 
 Phase 4B 在 Phase 4 最小版基础上做一次**小步**扩张，目的是把仓库工作流已经长期、稳定使用，但之前没有声明化的少量条目补齐，让新机器在 `darwin-rebuild switch` 之后就直接可用，而不是“装完再缺什么补什么”。

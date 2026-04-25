@@ -8,6 +8,7 @@
 - **Phase 3C 现状：新增 `nix/darwin/defaults.nix`，以保守首版接管少量 `system.defaults.*`。所有写入值均与当前机器 `defaults read` 结果一致（Finder 四项 + Dock `mru-spaces` + NSGlobalDomain 键盘重复两项），首次 switch 预期无可感知行为变化。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。**
 - **Phase 4 最小版现状（已落地）：严格三件事——(1) `brew services` 试点：在 `nix/darwin/homebrew.nix` 的 `brews` 里以 `{ name; start_service = true; }` 的形式声明 `borders` 与 `nginx`；`start_service = true` 只在服务未运行时启动，不会重启或停止已运行服务，对本机状态零扰动。(2) 补上 Ghostty 依赖字体 `font-maple-mono-nf`。(3) 把 `hammerspoon` 纳入 `casks`。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。**
 - **Phase 4B 现状（已纳入仓库，待 switch）：在 Phase 4 最小版基础上做一次小步扩张，仅追加“仓库工作流已经长期使用”的条目，激活策略保持不变（`autoUpdate = false` / `upgrade = false` / `cleanup = "none"`，`brew services` 仍只接管 `borders` / `nginx`）。新增 taps：`felixkratz/formulae`、`antoniorodr/memo`、`steipete/tap`。新增 brews：容器组 `colima` / `docker` / `docker-compose`（`colima` **不**走 `brew services`），Yazi / 媒体 / 文档 helper `sevenzip` / `imagemagick` / `mpv` / `poppler` / `zoxide` / `media-info` / `exiftool`，Email / 助手 CLI `himalaya` / `antoniorodr/memo/memo` / `steipete/tap/remindctl`。新增 casks：`claude-code@latest` / `codex` / `cc-switch`。**故意不纳入**：多语言运行时（`go` / `rust` / `nvm` / `pnpm` / `uv` / `deno` / `python@*` / `llvm` 等）和账号态 / 登录态重的 GUI app（`raycast` / `telegram` / `discord` / `feishu` / `google-drive` / `tailscale` / `notion` / `spotify` / `zotero` / `jetbrains-toolbox` / `termius` 等）。`nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air` 均通过；`sudo darwin-rebuild switch` 需人工执行。**
+- **Phase 5A 现状（仅添加入口，待 switch）：新增 `nix/home/dev-toolchains.nix` 并由 `nix/home/default.nix` import。通过 `home.packages` 引入语言/工具链管理器：`mise` / `uv` / `rustup`；通过 `programs.direnv.enable = true` + `programs.direnv.nix-direnv.enable = true` 启用 direnv。**严格边界**：(1) 不迁移当前活跃 Node，NVM 与 `~/.nvm` 保持原状；(2) 不删除或替换 Homebrew 中既有的 `go` / `rust` / `nvm` / `pnpm` / `uv` / `deno` / `llvm@21` 等；(3) 不在 `nix/darwin/homebrew.nix` 里追加任何语言运行时；(4) **不**启用 `mise activate zsh` 或 direnv 之外的 shell 集成，留给 Phase 5B 单独评估。实际运行时版本继续由项目本地文件承担（`.mise.toml` / `pyproject.toml + uv.lock` / `rust-toolchain.toml` / 项目 `flake.nix` 的 devShell），不写进本仓库。`sudo darwin-rebuild switch` 需人工执行。**
 - **Phase 3 计划文档：`nix/phase-3-plan.md`。Phase 3C 已落地，Phase 3 可视为完成；Phase 4 / 4B 后续如何继续扩张范围仍按“谨慎、可回退”原则逐项评估，不跳跃式迁移。语言运行时（多版本管理器）方向单独留作未来 Phase 评估，可能会落到 Home Manager / devshell / `mise` 等方案，不直接走 Homebrew。**
 - 这个仓库仍然是「事实源」，Nix 只是又一种可选的激活方式。当前机器上的旧仓库软链接版 zsh 仍保留在 `~/.zshrc.pre-hm-switch-backup`，便于人工回退。
 
@@ -21,9 +22,10 @@ nix/
 │   ├── defaults.nix   # Phase 3C：少量稳定的 system.defaults 试点
 │   └── homebrew.nix   # Homebrew 声明式清单（Phase 3A 首版；3B 加 tmux；Phase 4 最小版加 borders/nginx 服务、font-maple-mono-nf、hammerspoon；Phase 4B 小幅扩张容器/Yazi/邮件 helper 与 AI cask）
 ├── home/
-│   ├── default.nix    # Home Manager 用户层入口（已 import ../modules/zsh.nix 并实际生效）
-│   ├── packages.nix   # Phase 2A：低风险纯 CLI 工具
-│   └── shell-env.nix  # Phase 2A：通用非私密环境变量（当前机器已随 Home Manager zsh 生效）
+│   ├── default.nix       # Home Manager 用户层入口（已 import ../modules/zsh.nix 并实际生效；Phase 5A 起额外 import dev-toolchains.nix）
+│   ├── packages.nix      # Phase 2A：低风险纯 CLI 工具
+│   ├── shell-env.nix     # Phase 2A：通用非私密环境变量（当前机器已随 Home Manager zsh 生效）
+│   └── dev-toolchains.nix # Phase 5A：语言 / 工具链管理器入口（mise / uv / rustup + direnv，仅入口，不迁移运行时）
 └── modules/
     └── zsh.nix        # zsh Home Manager 模块（当前机器已 takeover 生效）
 ```
@@ -41,6 +43,12 @@ nix/
   3. 机器相关或绝对路径的 shell 片段（例如 OpenClaw completion）不应进仓库共享区，而应写入 `~/.zshrc.local`；Home Manager 版 zsh 通过 `initContent` 在末尾自动 `source` 它。
   4. 需要回滚时：`sudo darwin-rebuild switch --rollback`，并按需把 `~/.zshrc.pre-hm-switch-backup` 还原为 `~/.zshrc`。
 - 当前阶段仍**不** 触碰：`~/.zshrc.local`、secrets / 登录态，以及大范围 `system.defaults.*` 迁移（Phase 3C 仅接管极小子集）、大范围 `brew services` 接管（Phase 4 最小版只接管 `borders` / `nginx`）、字体的全面纳管（本轮只补 Ghostty 依赖的 `font-maple-mono-nf`，`font-hack-nerd-font` 仍未纳入）、`.hammerspoon` 脚本本身的迁移（Phase 4 最小版只把 `hammerspoon` cask 纳入 Homebrew 清单，不动 `init.lua`）。这些继续按原方式管理。
+- Phase 5A 的 `nix/home/dev-toolchains.nix` 严格遵守以下边界：
+  - 仅声明工具链**管理器入口**：`mise` / `uv` / `rustup`，以及 `programs.direnv` + `nix-direnv`。
+  - **不**迁移现有活跃 Node：保留 NVM 与 `~/.nvm`；**不**修改或卸载 Homebrew 中已有的 `go` / `rust` / `nvm` / `pnpm` / `uv` / `deno` / `llvm@21`。
+  - **不**在 `nix/darwin/homebrew.nix` 里追加任何语言运行时（与 Phase 4B 留下的「故意不纳入」一致）。
+  - **不**启用 `mise activate zsh` 等 shell hook，避免与现有 NVM/Bun/uv 行为冲突；该集成留给 Phase 5B 单独评估。
+  - 项目级版本仍由项目内文件承担：Node / Go / Deno / Bun → `.mise.toml`，Python → `pyproject.toml + uv.lock`，Rust → `rust-toolchain.toml`，需要系统库 / 编译器 → 项目 `flake.nix` 的 devShell；这些不进本仓库。
 - Phase 3A 的 Homebrew 模块是“保守首版”：只纳入长期稳定、已在日常使用的少量 formula / cask，未声明的本机 brew 包不会被自动卸载；要追加新条目时，按 `nix/darwin/homebrew.nix` 里的分类说明追加即可，不要开启 `cleanup = "check"` 或 `autoUpdate / upgrade`。
 - Phase 4 最小版的 `brew services` 试点严格限定在以下边界：
   - 仅接管 `borders` 与 `nginx`；`clouddrive2` / `colima` / `ollama` / `unbound` 继续按现有 `brew services` 命令人工管理，不纳入。
