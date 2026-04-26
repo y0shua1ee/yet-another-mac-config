@@ -141,6 +141,22 @@ Phase 5A **明确不**做的事：
 - Rust：`rust-toolchain.toml`
 - 需要系统库 / 编译器的项目：项目内 `flake.nix` 的 devShell
 
+### Phase 5B：Node 从 NVM 迁向 mise
+
+Phase 5B 开始把默认 Node 管理权从 NVM 迁到 mise，但仍保留 NVM 作为回滚 fallback。
+
+已完成的安全前置：
+
+- `mise use -g node@24.11.0` 已生成仓库内 `.config/mise/config.toml`，全局固定 Node `24.11.0`。
+- `mise install` 已安装同版本 Node，`mise exec -- node -v` 返回 `v24.11.0`，`mise exec -- npm -v` 返回 `11.6.1`。
+- `~/Documents/mise-node-pilot/.mise.toml` pilot 验证通过；在 mise Node 下运行最小 Claude Code 任务成功返回 `OK`，说明依赖 `node` 的 Claude/GSD hooks 在该版本下可用。
+
+当前变更：
+
+- `nix/modules/zsh.nix` 在 source `~/.zshrc.local` 之后启用 `mise activate zsh`。
+- 顺序刻意保持为「先 NVM，后 mise」：`~/.zshrc.local` 里的 NVM 仍作为 fallback；下一次 switch 后，默认 `node` / `npm` 应由 mise 全局配置提供。
+- 暂不删除 `~/.nvm`、暂不卸载 Homebrew `nvm`，也暂不清理 NVM 里的旧 Node 版本。NVM 的最终停用和清理放到 Phase 5C 单独确认。
+
 ### Phase 4B：小幅 Homebrew inventory 扩张
 
 Phase 4B 在 Phase 4 最小版基础上做一次**小步**扩张，目的是把仓库工作流已经长期、稳定使用，但之前没有声明化的少量条目补齐，让新机器在 `darwin-rebuild switch` 之后就直接可用，而不是“装完再缺什么补什么”。

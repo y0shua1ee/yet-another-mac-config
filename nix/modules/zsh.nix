@@ -35,6 +35,16 @@
       ((builtins.readFile ../../zsh/shared.zsh) + ''
 
         [[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
+
+        # Phase 5B-3：启用 mise 的 zsh 激活
+        # - 故意放在 ~/.zshrc.local 之后：迁移期 ~/.zshrc.local 仍负责加载 NVM，
+        #   作为 fallback；mise 在其后激活，并以 .config/mise/config.toml 中的
+        #   全局 Node 24.11.0 接管默认 node/npm。若 mise 临时不可用，NVM 仍可回退。
+        # - command -v 守卫：mise 由 Home Manager 提供，但保留守卫以便最小环境
+        #   或回滚场景下静默跳过。
+        if command -v mise >/dev/null 2>&1; then
+          eval "$(mise activate zsh)"
+        fi
       '')
     ];
   };

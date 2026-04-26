@@ -28,3 +28,6 @@
 # Nix 构建产物（`darwin-rebuild build` 会生成 `result` / `result-*` 符号链接）
 /result
 /result-*
+
+# Hermes 本地 planning / state（仅本机调试草稿，不纳入版本控制）
+.hermes/
