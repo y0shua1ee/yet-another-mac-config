@@ -30,10 +30,10 @@ palette = 13=#f5c2e7
 palette = 14=#94e2d5
 palette = 15=#a6adc8
 
-# 背景不透明度（毛玻璃效果）
-background-opacity = 0.65
-# 背景模糊半径
-background-blur = 16
+# 背景不透明度（液态玻璃效果）
+background-opacity = 0.0
+# 背景模糊（macOS 26+ 原生 Liquid Glass）
+background-blur = macos-glass-clear
 
 # 光标
 cursor-style = bar
@@ -50,6 +50,8 @@ window-colorspace = display-p3
 scrollback-limit = 100000
 
 # macOS 相关
+# 透明标题栏，让玻璃背景延伸到窗口顶部
+macos-titlebar-style = transparent
 macos-icon = custom-style
 macos-icon-frame = aluminum
 macos-icon-ghost-color = #FFFFFF
