@@ -16,7 +16,7 @@
   #   - 不做自动 upgrade、autoUpdate、cleanup；未声明的本机 brew 包不会被动掉。
   #   - `brew services` 目前只接管 `borders` 与 `nginx`，策略选 `start_service = true`
   #     （只在服务未运行时启动，不会重启已运行服务），对现状零扰动。
-  #     Phase 4B **不**扩张服务接管范围：colima / clouddrive2 / ollama / unbound
+  #     Phase 4B **不**扩张服务接管范围：colima / clouddrive2 / unbound
   #     仍走人工 `brew services` 流程。
   #   - 仍未纳入的字体：`font-hack-nerd-font`（本机当前虽已安装，但未被仓库配置引用）。
   #     本轮字体只补 Ghostty 明确依赖的一项，避免“能配就都配”。
@@ -53,8 +53,8 @@
     # brew formulae：聚焦于稳定 CLI 工具 + 少量保守接管的服务类
     # 刻意不包含的：
     #   - ripgrep / fd / jq / tree / bat：已由 Home Manager `home.packages` 管理
-    #   - 其它服务类（clouddrive2 / ollama / unbound 等）：
-    #     clouddrive2 / ollama 牵涉账号态与后台数据；unbound 当前不是默认开机自启，
+    #   - 其它服务类（clouddrive2 / unbound 等）：
+    #     clouddrive2 牵涉账号态与后台数据；unbound 当前不是默认开机自启，
     #     本轮仍不纳入服务接管，留给后续阶段单独评估
     #   - 版本管理器 / 多语言运行时（nvm / pnpm / uv / deno / python@* / go / rust / llvm 等）：
     #     状态管理更复杂，且与未来 Home Manager / devshell / mise 等方案耦合度高，
@@ -125,7 +125,7 @@
       #   - 新机器走 Nix 路线 switch 后，会自动安装并登记为 login item。
       #   - 刻意未使用 `restart_service`：任何 `darwin-rebuild switch` 都不应
       #     重启这些长期运行的服务；仍沿用现有 `brew services restart <name>` 人工流程。
-      #   - Phase 4B **不**扩张此名单：colima / clouddrive2 / ollama / unbound
+      #   - Phase 4B **不**扩张此名单：colima / clouddrive2 / unbound
       #     继续按 README 中的人工 `brew services` 流程管理。
       { name = "borders"; start_service = true; }   # JankyBorders 窗口边框（配置：.config/borders）
       { name = "nginx"; start_service = true; }     # 本地 HTTP 服务器（配置路径：/opt/homebrew/etc/nginx/）

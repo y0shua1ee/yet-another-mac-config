@@ -45,7 +45,7 @@ Phase 3 拆成三个连续子阶段，范围从低风险到中低风险递进。
 - 刻意未纳入第一版：
   - 与 Home Manager 已重合的 CLI（`ripgrep` / `fd` / `jq` / `tree` / `bat`）
   - `tmux`（归属由 Phase 3B 决定）
-  - 服务类 formula（`borders` / `nginx` / `unbound` / `colima` / `clouddrive2` / `ollama` 等，与 `brew services` 绑定）
+  - 服务类 formula（`borders` / `nginx` / `unbound` / `colima` / `clouddrive2` 等，与 `brew services` 绑定）
   - 版本管理器 / 运行时（`nvm` / `pnpm` / `uv` / `deno` / `python@*` / `go` / `rust` / `llvm` 等）
   - 媒体 / 构建传递依赖（`ffmpeg` / `imagemagick` 等）
   - 字体 cask、`hammerspoon` cask、含账号态 / 登录态的 cask（`1password-cli`、`raycast`、各 IM / 云盘等）

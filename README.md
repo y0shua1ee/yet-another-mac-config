@@ -91,7 +91,6 @@ colima delete           # 删除 VM（释放磁盘空间）
 | borders | JankyBorders 窗口边框 | 是 |
 | nginx | HTTP 服务器（默认端口 8080） | 是 |
 | clouddrive2 | CloudDrive2 云盘挂载 | 是 |
-| ollama | 本地 LLM 运行时 | 是 |
 | unbound | DNS resolver | 否 |
 | colima | Colima 容器运行时（可选） | 否 |
 

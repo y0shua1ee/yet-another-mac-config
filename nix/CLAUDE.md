@@ -52,7 +52,7 @@ nix/
   - 其它项目级版本仍由项目内文件承担：Node / Go / Deno / Bun → `.mise.toml`，Python → `pyproject.toml + uv.lock`，Rust → `rust-toolchain.toml`，需要系统库 / 编译器 → 项目 `flake.nix` 的 devShell；这些不进本仓库。
 - Phase 3A 的 Homebrew 模块是“保守首版”：只纳入长期稳定、已在日常使用的少量 formula / cask，未声明的本机 brew 包不会被自动卸载；要追加新条目时，按 `nix/darwin/homebrew.nix` 里的分类说明追加即可，不要开启 `cleanup = "check"` 或 `autoUpdate / upgrade`。
 - Phase 4 最小版的 `brew services` 试点严格限定在以下边界：
-  - 仅接管 `borders` 与 `nginx`；`clouddrive2` / `colima` / `ollama` / `unbound` 继续按现有 `brew services` 命令人工管理，不纳入。
+-  - 仅接管 `borders` 与 `nginx`；`clouddrive2` / `colima` / `unbound` 继续按现有 `brew services` 命令人工管理，不纳入。
   - 策略只用 `start_service = true`（仅未运行时启动，不重启已运行服务），**不要**改用 `restart_service`，否则每次 `darwin-rebuild switch` 都会重启服务，造成不必要中断。
   - 新增服务条目前先确认：(1) 本机已长期稳定以 `brew services` 运行；(2) 重启代价低；(3) 无账号态或本地数据风险。不满足就继续人工管理。
 - Phase 4 最小版的字体纳管规则：只允许纳入「仓库配置明确引用、缺失会直接影响既有行为」的字体。当前只有 Ghostty 明确依赖 `Maple Mono Normal NF CN`，所以只纳入 `font-maple-mono-nf`。`font-hack-nerd-font` 在本机虽已安装但未被任何仓库配置引用，**不**纳入。

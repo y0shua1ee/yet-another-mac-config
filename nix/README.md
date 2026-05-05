@@ -107,7 +107,6 @@
 当前仍未纳入：
 
 - `clouddrive2`（账号态 / 本地数据）
-- `ollama`（本地模型数据）
 - `unbound`（非默认开机自启）
 - 更大范围字体或 GUI 自动化 app
 
@@ -185,7 +184,7 @@ Phase 4B **刻意不纳入**的内容（继续延后或永久不纳入）：
 
 - 多语言运行时 / 版本管理器：`go`、`rust`、`nvm`、`pnpm`、`uv`、`deno`、`python@*`、`llvm` 等。这类工具状态管理复杂，且与未来 Home Manager / devshell / `mise` 等方案耦合度高，单独评估，不在本轮一刀切引入。
 - 账号态 / 登录态较重的 GUI app：`raycast`、`telegram`、`discord`、`feishu`、`google-drive`、`tailscale`、`notion`、`spotify`、`zotero`、`jetbrains-toolbox`、`termius` 等。这些 app 的本地数据 / 登录态远比 cask 安装本身更关键，不适合声明式接管。
-- 扩张 `brew services`：`colima`、`clouddrive2`、`ollama`、`unbound` 仍按现有人工 `brew services` 流程管理。
+- 扩张 `brew services`：`colima`、`clouddrive2`、`unbound` 仍按现有人工 `brew services` 流程管理。
 - 更大范围字体：`font-hack-nerd-font` 等本机已安装但未被仓库配置引用的字体仍不纳入。
 
 ## 安全激活步骤
