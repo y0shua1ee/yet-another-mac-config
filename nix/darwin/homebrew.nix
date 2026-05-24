@@ -7,7 +7,7 @@
   #   - Phase 4 最小版：新增 `brew services` 试点（仅 `borders` / `nginx`），
   #     并补上 Ghostty 所需字体 `font-maple-mono-nf` 与 `hammerspoon` cask。
   #   - Phase 4B 小幅扩张：补齐已被仓库工作流长期使用的少量 CLI helper，
-  #     以及三款已稳定使用的 AI / 助手类 cask。仍刻意不引入语言运行时与
+  #     以及已稳定使用的 AI / 助手 / X 工具类 cask。仍刻意不引入语言运行时与
   #     账号态重的 GUI app（详见下方“刻意不纳入”小节）。
   # =============================================================================
   #
@@ -48,6 +48,8 @@
       "antoniorodr/memo"
       # Apple 助手 CLI（`remindctl`）的来源
       "steipete/tap"
+      # X API 官方 CLI（`xurl` cask）的来源
+      "xdevplatform/tap"
     ];
 
     # brew formulae：聚焦于稳定 CLI 工具 + 少量保守接管的服务类
@@ -156,16 +158,18 @@
       "hammerspoon"        # 自动化与快捷键（配置由 .hammerspoon 管理；需人工授予 Accessibility 权限）
 
       # -----------------------------------------------------------------
-      # Phase 4B：AI / 助手类 cask
+      # Phase 4B：AI / 助手 / X 工具类 cask
       # -----------------------------------------------------------------
-      # 这三款 app 长期被本机日常使用，不依赖账号导入 / 同步即可起步，
+      # 这些工具长期被本机日常使用，不依赖账号导入 / 同步即可起步，
       # 因此适合纳入声明式清单，方便新机器一键安装到位：
       #   - claude-code@latest：Claude Code CLI（沿用 Homebrew 上游的 @latest 版本通道）
       #   - codex：Codex CLI
       #   - cc-switch：Claude Code 模型 / 账号切换辅助
+      #   - xurl：X API 官方 CLI；凭据仍由本机 ~/.xurl 管理，不进仓库
       "claude-code@latest" # Claude Code CLI（@latest 版本通道）
       "codex"              # Codex CLI
       "cc-switch"          # Claude Code 切换辅助
+      "xurl"               # X API 官方 CLI（凭据保留在本机 ~/.xurl）
     ];
   };
 }
