@@ -118,7 +118,7 @@ imports = [
 **Verification:**
 
 ```bash
-cd /Users/areslee/Documents/yet-another-mac-config
+cd /Users/areslee/Documents/dev/config/yet-another-mac-config
 nix flake check
 darwin-rebuild build --flake .#AresdeMacBook-Air
 git diff --check
@@ -222,7 +222,7 @@ Recommended defaults:
 If Phase 5A causes trouble:
 
 ```bash
-cd /Users/areslee/Documents/yet-another-mac-config
+cd /Users/areslee/Documents/dev/config/yet-another-mac-config
 git revert <phase-5a-commit>
 sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 ```
