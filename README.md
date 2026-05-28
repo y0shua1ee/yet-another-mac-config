@@ -11,7 +11,7 @@ My Mac config
 | `.config/btop` | btop 系统监控 |
 | `.config/ghostty` | Ghostty 终端 |
 | `.config/mise` | mise 全局工具链配置（当前用于固定 Node `24.11.0`，是 Phase 5B 起 Node 从 NVM 迁向 mise 的全局 fallback） |
-| `.config/nvim` | Neovim（基于 LazyVim） |
+| `.config/nvim` | Neovim（基于 AstroNvim） |
 | `.config/tmux` | tmux（基于 oh-my-tmux） |
 | `.config/typora` | Typora 自定义主题 |
 | `.config/yazi` | Yazi 文件管理器及插件 |
@@ -34,6 +34,16 @@ My Mac config
 5. 脚本会询问是否将 `zsh/.zshrc` 软链接到 `~/.zshrc`。通用配置（主题、插件、补全等）存放在此文件中；API 密钥、项目变量等隐私内容应写入 `~/.zshrc.local`（不纳入版本控制），会在 `.zshrc` 末尾自动加载。
 6. 脚本会检测 `.config/tmux` 是否缺少 `tmux.conf`，如果缺少则提示安装 [oh-my-tmux](https://github.com/gpakosz/.tmux)，自动克隆到 `~/.local/share/tmux/oh-my-tmux` 并创建软链接。
 7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`。同步前先用 `brew install --cask hammerspoon` 安装 app，同步后仍需在「系统设置 → 隐私与安全性 → 辅助功能」中授予 Hammerspoon 权限，否则 `init.lua` 里的事件 tap 与快捷键不会生效；`Ctrl+Alt+T` 快捷键还依赖 Ghostty。Nix 路线下 cask 与字体已声明化，完整激活流程见 [`nix/README.md`](nix/README.md)。
+
+## Neovim / AstroNvim
+
+`.config/nvim` 基于 [AstroNvim template](https://github.com/AstroNvim/template)。新机器建议先补齐运行时依赖：
+
+```bash
+brew install neovim tree-sitter-cli
+```
+
+首次启动 `nvim` 会自动 bootstrap `lazy.nvim` 与 AstroNvim 插件。常用维护命令：`:Lazy`、`:AstroUpdate`、`:LspInstall <server>`、`:TSInstall <language>`。
 
 ## Yazi 插件同步
 
@@ -129,7 +139,7 @@ brew services restart <name>    # 重启服务
 
 如果你希望在新机器上用 Nix 来补齐这份仓库的部分运行时与系统层配置，可以走仓库内的渐进式 Nix 路线。当前定位是**帮助新 Mac 更快恢复到可用状态**，并不追求 100% 声明式接管：secrets、登录态、大范围 app state 与琐碎系统偏好仍然默认人工处理。
 
-当前 Nix 路线除 Home Manager zsh、少量稳定 CLI、保守 Homebrew inventory、`borders` / `nginx` 服务试点与少量 `system.defaults` 外，也已补入 Phase 4B 的小范围 Homebrew 扩张：容器 CLI、Yazi / 媒体 / 文档 helper、Biya/Hermes 常用的 Apple 辅助 CLI、X/Twitter 工具 `xurl`，以及 Claude Code / Codex / CC Switch。账号态较重的 GUI app 仍刻意留待后续单独评估。
+当前 Nix 路线除 Home Manager zsh、少量稳定 CLI、保守 Homebrew inventory、`borders` / `nginx` 服务试点与少量 `system.defaults` 外，也已补入 Phase 4B 的小范围 Homebrew 扩张：容器 CLI、Yazi / 媒体 / 文档 helper、Neovim / AstroNvim 运行时 helper、Biya/Hermes 常用的 Apple 辅助 CLI、X/Twitter 工具 `xurl`，以及 Claude Code / Codex / CC Switch。账号态较重的 GUI app 仍刻意留待后续单独评估。
 
 Phase 5A 起，Home Manager 还会装好语言 / 工具链管理器**入口**：`mise` / `uv` / `rustup`，并启用 `direnv` + `nix-direnv`；但**不**迁移现有 Homebrew 上的 `go` / `rust` / `pnpm` / `deno` / `llvm@21` 等运行时。各项目实际运行时版本仍走项目本地的 `.mise.toml` / `pyproject.toml + uv.lock` / `rust-toolchain.toml` / 项目 `flake.nix` devShell，不进本仓库。
 

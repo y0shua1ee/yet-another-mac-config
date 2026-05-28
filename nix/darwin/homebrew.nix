@@ -71,6 +71,7 @@
       "git"             # 显式声明 brew 版 git，覆盖 macOS 自带版本
       "lazygit"         # Git TUI
       "neovim"          # 主力编辑器（配置已由 .config/nvim 管理）
+      "tree-sitter-cli" # AstroNvim / Treesitter CLI 依赖
       "starship"        # 跨 shell 提示符，shell 共享逻辑中已引用
       # Phase 3B：tmux 运行时声明化。
       # 选择继续放在 Homebrew 而不是 Home Manager `home.packages`，理由：
