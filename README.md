@@ -9,7 +9,7 @@ My Mac config
 | `.config/aerospace` | AeroSpace 窗口管理器 |
 | `.config/borders` | JankyBorders 窗口边框 |
 | `.config/btop` | btop 系统监控 |
-| `.config/ghostty` | Ghostty 终端 |
+| `.config/ghostty` | Ghostty 终端（含 custom shader collection） |
 | `.config/mise` | mise 全局工具链配置（当前用于固定 Node `24.11.0`，是 Phase 5B 起 Node 从 NVM 迁向 mise 的全局 fallback） |
 | `.config/nvim` | Neovim（基于 LazyVim） |
 | `.config/tmux` | tmux（基于 oh-my-tmux） |
@@ -34,6 +34,23 @@ My Mac config
 5. 脚本会询问是否将 `zsh/.zshrc` 软链接到 `~/.zshrc`。通用配置（主题、插件、补全等）存放在此文件中；API 密钥、项目变量等隐私内容应写入 `~/.zshrc.local`（不纳入版本控制），会在 `.zshrc` 末尾自动加载。
 6. 脚本会检测 `.config/tmux` 是否缺少 `tmux.conf`，如果缺少则提示安装 [oh-my-tmux](https://github.com/gpakosz/.tmux)，自动克隆到 `~/.local/share/tmux/oh-my-tmux` 并创建软链接。
 7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`。同步前先用 `brew install --cask hammerspoon` 安装 app，同步后仍需在「系统设置 → 隐私与安全性 → 辅助功能」中授予 Hammerspoon 权限，否则 `init.lua` 里的事件 tap 与快捷键不会生效；`Ctrl+Alt+T` 快捷键还依赖 Ghostty。Nix 路线下 cask 与字体已声明化，完整激活流程见 [`nix/README.md`](nix/README.md)。
+
+## Ghostty
+
+`.config/ghostty` 管理 Ghostty 主配置与 custom shader collection。当前 shader collection 来自 [`0xhckr/ghostty-shaders`](https://github.com/0xhckr/ghostty-shaders)，已把上游顶层 `*.glsl` 文件 vendored 到 `.config/ghostty/shaders/`。
+
+当前默认启用轻量光标拖尾：
+
+```ini
+custom-shader = ~/.config/ghostty/shaders/cursor_blaze.glsl
+custom-shader-animation = true
+```
+
+切换效果时只需要改 `custom-shader` 指向的文件名，然后运行：
+
+```bash
+/Applications/Ghostty.app/Contents/MacOS/ghostty +validate-config --config-file="$HOME/.config/ghostty/config"
+```
 
 ## Neovim / LazyVim
 

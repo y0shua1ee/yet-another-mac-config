@@ -35,6 +35,10 @@ background-opacity = 0.75
 # 背景模糊（macOS 26+ 原生 Liquid Glass）
 background-blur = macos-glass-clear
 
+# 自定义 Shader（来自 0xhckr/ghostty-shaders；默认启用轻量光标拖尾）
+custom-shader = ~/.config/ghostty/shaders/cursor_blaze.glsl
+custom-shader-animation = true
+
 # 光标
 cursor-style = bar
 cursor-style-blink = true
