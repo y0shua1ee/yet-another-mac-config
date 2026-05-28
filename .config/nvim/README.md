@@ -1,32 +1,54 @@
-# AstroNvim
+# Neovim / LazyVim
 
-This directory stores Yoshua's Neovim configuration based on the official [AstroNvim template](https://github.com/AstroNvim/template).
+This directory contains Yoshua's Neovim configuration based on the official [LazyVim starter](https://github.com/LazyVim/starter).
 
-## 本机依赖
+## Layout
 
-- Neovim 0.11+（当前由 Homebrew `neovim` 提供）
-- `tree-sitter-cli`（AstroNvim / Treesitter 运行时依赖，当前由 Homebrew 提供）
-- Nerd Font（Ghostty 当前字体使用 Maple Mono NF）
-- 可选但常用：`ripgrep`、`lazygit`、Python、Node、C compiler
+- `init.lua` bootstraps `lua/config/lazy.lua`.
+- `lua/config/` stores core LazyVim bootstrap, options, keymaps, and autocmds.
+- `lua/plugins/` stores local plugin specs and LazyVim extras imports.
+- Runtime data lives in the standard XDG Neovim directories: `~/.local/share/nvim`, `~/.local/state/nvim`, and `~/.cache/nvim`.
 
-## 常用命令
+## Prerequisites
+
+```bash
+brew install neovim tree-sitter-cli
+```
+
+Useful optional CLI tools already expected in Yoshua's environment:
+
+```bash
+brew install ripgrep fd fzf lazygit
+```
+
+## First run / maintenance
 
 ```bash
 nvim
 ```
 
-在 Neovim 内：
+Inside Neovim, common commands are:
 
-```vim
-:Lazy
-:AstroUpdate
-:LspInstall <server>
-:TSInstall <language>
-:DapInstall <debugger>
+- `:Lazy` — plugin manager UI
+- `:LazyExtras` — enable or inspect LazyVim extras
+- `:checkhealth lazy` — lazy.nvim health
+- `:Mason` — language server/tool installer UI
+- `:checkhealth` — Neovim health report
+
+Headless verification:
+
+```bash
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
+nvim --headless "+Lazy! sync" +qa
+nvim --headless "+checkhealth lazy" +qa
+nvim --headless "+checkhealth vim.treesitter" +qa
+nvim --headless +qa
+git diff --check
 ```
 
-## 维护约定
+## Enabled LazyVim Extras
 
-- 本目录只保存可版本化配置。
-- 插件下载、Mason 包、会话、缓存等运行时状态放在 `~/.local/share/nvim`、`~/.local/state/nvim` 和 `~/.cache/nvim`。
-- 本配置来自 AstroNvim template；本地扩展优先放在 `lua/plugins/`、`lua/community.lua` 或 `lua/polish.lua`。
+Local extras are declared in `lua/plugins/extras.lua`:
+
+- Languages: TypeScript, JSON, Markdown, Python, Rust, Go, Tailwind CSS
+- Tooling: ESLint, Prettier

@@ -1,5 +1,8 @@
-# 忽略 Neovim 运行时状态，只保留配置文件和 lazy-lock.json
-/spell/
-/plugin/packer_compiled.lua
-/luarc.json
-/.neoconf.json
+tt.*
+.tests
+doc/tags
+debug
+.repro
+foo.*
+*.log
+data

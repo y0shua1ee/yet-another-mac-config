@@ -1,15 +1,17 @@
-# Neovim / AstroNvim 配置指南（面向 agents）
+# Neovim / LazyVim 配置指南（面向 agents）
 
 ## Introduction and Structure
-- This folder contains Yoshua's Neovim configuration, based on the official AstroNvim template.
-- `init.lua` bootstraps `lazy.nvim`, then loads `lua/lazy_setup.lua` and `lua/polish.lua`.
-- `lua/community.lua` stores AstroCommunity imports.
-- `lua/plugins/` stores local AstroNvim plugin specs such as `astrocore.lua`, `astrolsp.lua`, `astroui.lua`, `mason.lua`, `none-ls.lua`, `treesitter.lua`, and `user.lua`.
-- `README.md` records the local setup and recovery notes for this configuration.
+
+- This folder contains Yoshua's Neovim configuration, based on the official LazyVim starter.
+- `init.lua` bootstraps `lazy.nvim`, LazyVim, and local plugin specs through `lua/config/lazy.lua`.
+- `lua/config/` stores core LazyVim bootstrap, options, keymaps, and autocmds.
+- `lua/plugins/` stores local plugin specs and LazyVim extras imports. `lua/plugins/extras.lua` is the main language/tooling extras entry.
+- `README.md` records setup, maintenance, and verification for this configuration.
 
 ## Workflow
-- Consult the AstroNvim documentation and the relevant plugin documentation before changing plugin specs.
-- Prefer small, targeted changes under `lua/plugins/`, `lua/community.lua`, or `lua/polish.lua`.
+
+- Consult the LazyVim documentation and relevant plugin documentation before changing plugin specs.
+- Prefer small, targeted changes under `lua/plugins/`, `lua/config/options.lua`, `lua/config/keymaps.lua`, or `lua/config/autocmds.lua`.
 - Keep machine-specific state, caches, sessions, and plugin downloads out of this folder and out of Git. Runtime state belongs in `~/.local/share/nvim`, `~/.local/state/nvim`, and `~/.cache/nvim`.
 - When adding a dependency that must exist outside Mason, update the root README, `nix/darwin/homebrew.nix`, and `nix/README.md` as needed.
 - After config changes, run a headless Neovim check and repo checks before committing.
@@ -19,15 +21,13 @@
 ```bash
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 nvim --headless "+Lazy! sync" +qa
+nvim --headless "+checkhealth lazy" +qa
 nvim --headless "+checkhealth vim.treesitter" +qa
 nvim --headless +qa
 git diff --check
 ```
 
-## Enabled AstroCommunity Packs (lua/community.lua)
-- **Languages:** lua, typescript-all-in-one, json, markdown, python, rust, go, bash
-- **Web/formatting:** tailwindcss, eslint, prettier
+## Enabled LazyVim Extras (`lua/plugins/extras.lua`)
 
-## Migration Notes
-- The previous LazyVim starter config was replaced by the AstroNvim template.
-- Before replacement, the old config and runtime folders were backed up under `~/.hermes/backups/nvim-astronvim-*`.
+- **Languages:** TypeScript, JSON, Markdown, Python, Rust, Go, Tailwind CSS
+- **Tooling:** ESLint, Prettier
