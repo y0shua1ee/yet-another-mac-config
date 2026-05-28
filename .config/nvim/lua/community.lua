@@ -13,6 +13,8 @@ return {
   { import = "astrocommunity.pack.prettier" },
   { import = "astrocommunity.pack.markdown" },
   { import = "astrocommunity.pack.python" },
+  { import = "astrocommunity.pack.rust" },
+  { import = "astrocommunity.pack.go" },
   { import = "astrocommunity.pack.bash" },
   -- import/override with your plugins folder
 }

@@ -24,6 +24,10 @@ nvim --headless +qa
 git diff --check
 ```
 
+## Enabled AstroCommunity Packs (lua/community.lua)
+- **Languages:** lua, typescript-all-in-one, json, markdown, python, rust, go, bash
+- **Web/formatting:** tailwindcss, eslint, prettier
+
 ## Migration Notes
 - The previous LazyVim starter config was replaced by the AstroNvim template.
 - Before replacement, the old config and runtime folders were backed up under `~/.hermes/backups/nvim-astronvim-*`.
