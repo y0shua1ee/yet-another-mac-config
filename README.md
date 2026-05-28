@@ -162,7 +162,7 @@ brew services restart <name>    # 重启服务
 
 Phase 5A 起，Home Manager 还会装好语言 / 工具链管理器**入口**：`mise` / `uv` / `rustup`，并启用 `direnv` + `nix-direnv`；实际运行时版本优先由项目本地的 `.mise.toml` / `pyproject.toml + uv.lock` / `rust-toolchain.toml` / 项目 `flake.nix` devShell 管理；仓库内 `.config/mise/config.toml` 只保存少量全局 fallback。
 
-Phase 5B 起，开始把默认 Node 从 NVM 迁到 mise：仓库内的 `.config/mise/config.toml` 已固定全局 Node 为 `24.11.0`，并额外固定全局 Go 为 `1.26.3`；pilot 项目验证通过后 `nix/modules/zsh.nix` 已在 `~/.zshrc.local` 之后启用 `mise activate zsh`。当前意图是 Node 长期由 mise 管理；下一次 Home Manager / nix-darwin switch 后，默认 `node` / `npm` 应由 mise 的全局配置提供。**NVM 仍保留作为 fallback、暂不卸载**：`~/.zshrc.local` 中的 NVM 加载、Homebrew 中的 `nvm` 与 `~/.nvm` 都保持原状；NVM 的最终停用、旧版本删除与 Homebrew `nvm` 清理由后续阶段单独评估。
+Phase 5B 已完成 switch 与 post-check：默认 Node / npm 已从 NVM 迁到 mise，仓库内的 `.config/mise/config.toml` 固定全局 Node `24.11.0` 与 Go `1.26.3`；登录 zsh 中 `node` / `npm` / `go` 会解析到 `~/.local/share/mise/installs/...` 下的版本。`nix/modules/zsh.nix` 在 `~/.zshrc.local` 之后启用 `mise activate zsh`，迁移期仍保留 NVM 作为 fallback；Homebrew `nvm`、`~/.nvm` 与旧 Node 版本清理由后续 Phase 5C 单独评估。
 
 完整的覆盖范围、激活步骤与回滚方式见：
 

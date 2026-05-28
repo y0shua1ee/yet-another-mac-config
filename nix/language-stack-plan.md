@@ -22,8 +22,8 @@ Installed language/toolchain-related tools observed locally:
 
 - Homebrew leaves include language/runtime-adjacent tools such as `go`, `rust`, `nvm`, `pnpm`, `uv`, `llvm@21`, plus build-adjacent tools such as `graphviz`.
 - Phase 5A has switched successfully: `mise`, `rustup`, and `direnv` resolve from `/etc/profiles/per-user/areslee/bin`.
-- Before Phase 5B switch, login zsh still resolves active Node from NVM: `~/.nvm/versions/node/v24.11.0/bin/node`.
-- Phase 5B has prepared mise Node: `.config/mise/config.toml` pins global `node = "24.11.0"`; `mise exec -- node -v` returns `v24.11.0`, and `mise exec -- npm -v` returns `11.6.1`.
+- Phase 5B has switched successfully: login zsh resolves active Node and Go from mise installs under `~/.local/share/mise/installs/`.
+- `.config/mise/config.toml` pins global `node = "24.11.0"` and `go = "1.26.3"`; post-check shows `node -v` returns `v24.11.0`, `npm -v` returns `11.6.1`, and `go version` returns `go1.26.3 darwin/arm64`.
 - A pilot project at `~/Documents/mise-node-pilot` verified mise Node with a minimal Claude Code run; Claude/GSD hooks that call `node` worked under mise Node.
 - Current active Python path is affected by Hermes virtualenv, while `python3.13` / `python3.12` exist under `~/.local/bin`, likely uv-managed standalone Python installs.
 - Current active Rust is still Homebrew `rustc` / `cargo` in login zsh until intentionally migrated.
@@ -157,7 +157,7 @@ Implemented / current changes:
 - Global mise config pins Node to the known-working NVM version: `.config/mise/config.toml` contains `node = "24.11.0"`.
 - `mise install` has installed that version; `mise exec -- node -v` and `mise exec -- npm -v` match the existing NVM runtime (`v24.11.0` / `11.6.1`).
 - Pilot project `~/Documents/mise-node-pilot` verified `.mise.toml` with Node `24.11.0` and a minimal Claude Code run under mise Node.
-- `nix/modules/zsh.nix` enables `mise activate zsh` after sourcing `~/.zshrc.local`, so NVM remains loaded first as fallback and mise then takes over default `node` / `npm`.
+- `nix/modules/zsh.nix` enables `mise activate zsh` after sourcing `~/.zshrc.local`, so NVM remains loaded first as fallback and mise then takes over default `node` / `npm` / `go`.
 - Keep current `zsh/shared.zsh` Bun PATH block initially; remove only after Bun is intentionally managed via mise.
 - Do not delete NVM, Homebrew `nvm`, or Homebrew `pnpm` yet.
 
@@ -169,7 +169,7 @@ if command -v mise >/dev/null 2>&1; then
 fi
 ```
 
-Put this in `nix/modules/zsh.nix` after the `~/.zshrc.local` source line. Avoid putting it in `zsh/shared.zsh`: the Home Manager route can be switched/rolled back more cleanly, and the ordering relative to NVM is intentional.
+This now lives in `nix/modules/zsh.nix` after the `~/.zshrc.local` source line. Keep it out of `zsh/shared.zsh`: the Home Manager route can be switched/rolled back more cleanly, and the ordering relative to NVM is intentional.
 
 ## Phase 5C — Gradually migrate runtimes
 
@@ -210,7 +210,7 @@ Recommended defaults:
 
 1. Use Home Manager for `mise`, `uv`, `rustup`, and `direnv`/`nix-direnv`.
 2. Use mise as the long-term default Node manager; keep the global Node pinned to `24.11.0` until there is a separate reason to upgrade.
-3. Keep NVM installed as fallback until the `mise activate zsh` switch has been applied and verified in daily use.
+3. Keep NVM installed as fallback during daily-use observation after the `mise activate zsh` switch.
 4. Do not immediately remove Homebrew `go`, `rust`, `pnpm`, `deno`, `llvm@21`.
 5. Add docs first, then switch, then test real projects.
 6. Keep project-specific toolchain pinning out of this Mac config repo unless the project itself lives in this repo.
