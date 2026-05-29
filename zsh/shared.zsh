@@ -5,8 +5,8 @@
 #
 # 取舍原则：
 # - 只放「公开、非私密、跨机器通用」的逻辑
-# - 不在这里启用 Oh My Zsh 或 Home Manager 的补全/插件系统（两条路径机制不同，
-#   分别由各自的调用方用各自的原生方式完成）
+# - 补全/插件系统由调用方负责：Home Manager 版在 nix/modules/zsh.nix，
+#   备用软链接版在 zsh/.zshrc
 # - 不放 `typeset -U PATH`：它必须在一切 PATH 修改之前执行，由调用方在更靠前
 #   的位置保证（zshrc 放文件最上方，Home Manager 放 initContent + lib.mkBefore）
 # - 不放 EDITOR / VISUAL / PAGER：运行时与声明式来源目前分阶段处理，避免与
@@ -15,7 +15,7 @@
 # =============================================================================
 
 # 自动建议颜色（适配 Catppuccin Mocha + 半透明背景，提高可读性）
-# 同时适用于 oh-my-zsh 的 zsh-autosuggestions 插件与 Home Manager 原生 autosuggestion
+# Home Manager 与备用 zsh/.zshrc 的 zsh-autosuggestions 均读取这个变量
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#7f849c'
 
 # Homebrew 环境（加存在性守卫，方便未装 Homebrew 的最小环境静默跳过）

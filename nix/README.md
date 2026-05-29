@@ -48,7 +48,7 @@
 - Home Manager 版 zsh
 - `zsh/shared.zsh` 作为仓库共享 shell 逻辑事实源
 
-当前状态：Home Manager 已实际接管 `~/.zshrc`；机器相关或私密片段继续放在 `~/.zshrc.local`。
+当前状态：Home Manager 已实际接管 `~/.zshrc`；机器相关或私密片段继续放在 `~/.zshrc.local`。仓库里的 `zsh/.zshrc` 只作为非 Nix / Home Manager 场景的备用软链接入口。
 
 ### Phase 3A：保守 Homebrew inventory
 

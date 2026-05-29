@@ -11,7 +11,7 @@
 - **Phase 5A 现状（已 switch，入口已生效，post-check 完成）：新增 `nix/home/dev-toolchains.nix` 并由 `nix/home/default.nix` import。通过 `home.packages` 引入语言/工具链管理器：`mise` / `uv` / `rustup`；通过 `programs.direnv.enable = true` + `programs.direnv.nix-direnv.enable = true` 启用 direnv。该阶段严格只加入口，不迁移运行时；`sudo darwin-rebuild switch --flake .#AresdeMacBook-Air` 已在当前机器执行成功。Post-check：`mise` / `rustup` / `direnv` 均解析到 `/etc/profiles/per-user/areslee/bin/`，`node` 仍由 NVM 提供，证明 Phase 5A 没有抢占现有 Node。**
 - **Phase 5B 现状（已 switch，post-check 完成）：默认 Node / npm 已从 NVM 迁到 mise。`.config/mise/config.toml` 固定全局 `node = "24.11.0"` 与 `go = "1.26.3"`；`mise install` 与 pilot 项目 `~/Documents/mise-node-pilot` 均验证通过，`mise exec -- node -v` 为 `v24.11.0`、`mise exec -- npm -v` 为 `11.6.1`，最小 Claude Code 任务在 mise Node 下成功返回 `OK`，说明依赖 PATH 中 `node` 的 Claude/GSD hooks 可用。`nix/modules/zsh.nix` 已在 `~/.zshrc.local` 之后启用 `mise activate zsh`；post-check 显示登录 zsh 中 `node` / `npm` / `go` 均解析到 `~/.local/share/mise/installs/...`。NVM、Homebrew `nvm` 与 `~/.nvm` 作为 fallback 留到 Phase 5C 清理。**
 - **Phase 3 计划文档：`nix/phase-3-plan.md`。Phase 3C 已落地，Phase 3 可视为完成；Phase 4 / 4B 后续如何继续扩张范围仍按“谨慎、可回退”原则逐项评估，不跳跃式迁移。语言运行时（多版本管理器）方向单独留作未来 Phase 评估，可能会落到 Home Manager / devshell / `mise` 等方案，不直接走 Homebrew。**
-- 这个仓库仍然是「事实源」，Nix 只是又一种可选的激活方式。当前机器上的旧仓库软链接版 zsh 仍保留在 `~/.zshrc.pre-hm-switch-backup`，便于人工回退。
+- 这个仓库仍然是「事实源」，Nix 是当前机器的 zsh 激活方式。仓库里的 `zsh/.zshrc` 保留为非 Nix / Home Manager 场景的备用软链接入口。
 
 ## 目录结构
 ```
@@ -33,16 +33,16 @@ nix/
 
 另有仓库侧共享脚本：`zsh/shared.zsh`。它被 `zsh/.zshrc` 与 `nix/modules/zsh.nix` 共同复用，用来承载公开、跨机器通用的 shell 逻辑。
 
-根目录的 `flake.nix` 通过 `darwinConfigurations.AresdeMacBook-Air` 把上述三层装配起来，并开启 `home-manager.backupFileExtension = "hm-backup"`，用于 switch 时备份会冲突的 home-manager 目标文件。当前机器上 `~/.zshenv` 已自动备份为 `~/.zshenv.hm-backup`；`~/.zshrc` 则因本地软链接冲突，实际采用了手动先挪到 `~/.zshrc.pre-hm-switch-backup` 再 switch 的方式完成 takeover。
+根目录的 `flake.nix` 通过 `darwinConfigurations.AresdeMacBook-Air` 把上述三层装配起来，并开启 `home-manager.backupFileExtension = "hm-backup"`，用于 switch 时备份会冲突的 home-manager 目标文件。当前机器上 `~/.zshenv` 已自动备份为 `~/.zshenv.hm-backup`；`~/.zshrc` 已由 Home Manager 生成并接管。
 
 ## 重要约束
 - `darwin/default.nix` 里 `nix.enable = false;` —— Determinate Nix 自己管理 nix 守护进程，nix-darwin **不得**再接管，否则会互相覆盖。
 - `home/default.nix` 现在**确实 import** 了 `modules/zsh.nix`，而且本机 switch 已经完成，所以 Home Manager 正在直接生成并管理 `~/.zshrc`。
 - 当前机器的注意事项：
   1. 以后继续迭代 zsh 相关 Nix 变更时，先 `nix flake check` 与 `darwin-rebuild build --flake .#AresdeMacBook-Air`，再 `sudo darwin-rebuild switch`。
-  2. 旧仓库软链接版 zsh 目前保留在 `~/.zshrc.pre-hm-switch-backup`；若想回到旧路径，可人工还原。
+  2. 备用软链接入口位于仓库 `zsh/.zshrc`；需要回到非 Home Manager 路线时可人工链接到 `~/.zshrc`。
   3. 机器相关或绝对路径的 shell 片段（例如 OpenClaw completion）不应进仓库共享区，而应写入 `~/.zshrc.local`；Home Manager 版 zsh 通过 `initContent` 在末尾自动 `source` 它。
-  4. 需要回滚时：`sudo darwin-rebuild switch --rollback`，并按需把 `~/.zshrc.pre-hm-switch-backup` 还原为 `~/.zshrc`。
+  4. 需要回滚时：`sudo darwin-rebuild switch --rollback`，并按需人工切换到仓库 `zsh/.zshrc` 备用入口。
 - 当前阶段仍**不** 触碰：`~/.zshrc.local`、secrets / 登录态，以及大范围 `system.defaults.*` 迁移（Phase 3C 仅接管极小子集）、大范围 `brew services` 接管（Phase 4 最小版只接管 `borders` / `nginx`）、字体的全面纳管（本轮只补 Ghostty 依赖的 `font-maple-mono-nf`，`font-hack-nerd-font` 仍未纳入）、`.hammerspoon` 脚本本身的迁移（Phase 4 最小版只把 `hammerspoon` cask 纳入 Homebrew 清单，不动 `init.lua`）。这些继续按原方式管理。
 - Phase 5A / 5B 的语言栈边界：
   - `nix/home/dev-toolchains.nix` 只声明工具链**管理器入口**：`mise` / `uv` / `rustup`，以及 `programs.direnv` + `nix-direnv`；不把具体语言运行时写进 Homebrew 清单。

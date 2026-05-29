@@ -12,12 +12,12 @@
   programs.zsh = {
     enable = true;
 
-    # Home Manager 原生实现，等价于现有 oh-my-zsh 两个插件 + compinit 流程
+    # Home Manager 原生实现：补全、自动建议、语法高亮
     enableCompletion = true;
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
 
-    # autosuggestion 建议策略，保持与常见 oh-my-zsh 默认一致
+    # autosuggestion 建议策略：同时使用历史记录与补全候选
     autosuggestion.strategy = [ "history" "completion" ];
 
     # 使用 initContent + mkMerge / mkBefore，避免继续依赖已废弃的 initExtra* 选项。

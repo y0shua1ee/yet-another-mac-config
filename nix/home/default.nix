@@ -18,7 +18,7 @@
     # Phase 2D：zsh 模块已完成 switch 并实际接管 ~/.zshrc。
     # 当前机器上：
     #   - Home Manager 正在生成 `~/.zshrc`（内容见 ../modules/zsh.nix + ../../zsh/shared.zsh）。
-    #   - 旧仓库软链接已手动保留为 `~/.zshrc.pre-hm-switch-backup`，便于人工回退。
+    #   - 仓库 `zsh/.zshrc` 保留为非 Nix / Home Manager 场景的备用软链接入口。
     #   - 机器相关片段（如 OpenClaw 绝对路径 completion）应放到 `~/.zshrc.local`，
     #     它会在 home-manager 版 zsh 末尾被自动 source，不进仓库。
     ../modules/zsh.nix
