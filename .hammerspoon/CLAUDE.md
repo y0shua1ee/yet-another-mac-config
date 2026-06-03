@@ -3,6 +3,7 @@
 ## Introduction and Structure
 - This folder contains the Hammerspoon automation synced to the system `~/.hammerspoon` directory.
 - `init.lua` is the main entry point and currently contains the active hotkeys and automation logic.
+- `init.lua` loads `hs.ipc`, so the bundled `hs` CLI can run commands such as `hs -c 'hs.reload()'` after Hammerspoon is running.
 
 ## External dependencies (must be satisfied on any new Mac)
 - **Hammerspoon app itself** — installed via the `hammerspoon` cask. From Phase 4 minimum onward this cask is declared in `nix/darwin/homebrew.nix`, so `darwin-rebuild switch` will install it. On machines that don't use Nix, install manually with `brew install --cask hammerspoon`.
@@ -12,6 +13,8 @@
 
 ## Workflow
 - Also consult the Hammerspoon API reference for the specific modules involved.
+- After changing `init.lua`, verify CLI IPC with `/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs -q -c 'return hs.configdir'` from an interactive user shell. Hermes LaunchAgent shells should run the same command inside the Aqua bootstrap: `launchctl asuser "$(id -u)" /Applications/Hammerspoon.app/Contents/Frameworks/hs/hs -q -c 'return hs.configdir'`.
+- Reload with `launchctl asuser "$(id -u)" /Applications/Hammerspoon.app/Contents/Frameworks/hs/hs -q -c 'hs.reload()'`, then verify again with `return hs.configdir`. The reload command can exit with a transport error because the message port is invalidated during reload.
 - Keep hotkeys, event taps, and automation behavior explicit and easy to trace, because conflicts and recursive triggers are easy to introduce here.
 - If a change depends on an external application or macOS permission, keep the dependency clear and update the project README + this file when needed. The root `README.md` has a dedicated "Hammerspoon 激活说明" section describing the full activation flow on a fresh Mac.
 - Prefer low-noise automation and avoid adding unnecessary alerts, logs, or background behavior unless the feature clearly needs them.

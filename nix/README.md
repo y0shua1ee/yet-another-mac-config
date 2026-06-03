@@ -246,6 +246,7 @@ sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
 2. 运行仓库根目录的 `./setup_mac.sh`，把 `.hammerspoon` 同步到 `~/.hammerspoon`
 3. 在「系统设置 → 隐私与安全性 → 辅助功能」里给 Hammerspoon 授权
 4. 确认 Ghostty 已安装，因为当前 `Ctrl+Alt+T` 快捷键依赖它
+5. Hammerspoon 启动后，当前配置已加载 `hs.ipc`，可用 `/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs -c 'hs.reload()'` 远程刷新配置
 
 如果权限列表里已勾选但仍不生效，常见处理是：先删除 Hammerspoon 条目，再重新添加并重启 Hammerspoon。
 

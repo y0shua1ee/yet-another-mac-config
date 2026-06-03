@@ -2,6 +2,9 @@
 --
 -- 通过尽量少的提示与日志来降低事件 tap 被系统停用的概率。
 
+-- 启用 hs CLI 远程控制，便于用 `hs -c 'hs.reload()'` 热重载配置。
+require("hs.ipc")
+
 -- 辅助：Ctrl+Alt+Cmd+R 快速重载配置
 hs.hotkey.bind({"cmd", "alt", "ctrl"}, "R", function()
   hs.reload()
