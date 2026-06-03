@@ -94,6 +94,11 @@ automatically-unhide-macos-hidden-apps = false
     if.app-id = 'com.openai.codex'
     run = 'layout floating'
 
+# Hermes Desktop floating
+[[on-window-detected]]
+    if.app-id = 'com.nousresearch.hermes'
+    run = 'layout floating'
+
 # Ghostty floating
 [[on-window-detected]]
     if.app-id = 'com.mitchellh.ghostty'
