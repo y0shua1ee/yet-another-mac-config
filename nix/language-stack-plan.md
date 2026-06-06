@@ -20,7 +20,7 @@ Repo status:
 
 Installed language/toolchain-related tools observed locally:
 
-- Homebrew leaves include language/runtime-adjacent tools such as `go`, `rust`, `nvm`, `pnpm`, `uv`, `llvm@21`, plus build-adjacent tools such as `graphviz`.
+- Homebrew leaves include language/runtime-adjacent tools such as `rust`, `nvm`, `pnpm`, `uv`, `llvm@21`, plus build-adjacent tools such as `graphviz`. Homebrew `go` has been removed (2026-06-06), replaced by mise-managed `go 1.26.3`.
 - Phase 5A has switched successfully: `mise`, `rustup`, and `direnv` resolve from `/etc/profiles/per-user/areslee/bin`.
 - Phase 5B has switched successfully: login zsh resolves active Node and Go from mise installs under `~/.local/share/mise/installs/`.
 - `.config/mise/config.toml` pins global `node = "24.11.0"` and `go = "1.26.3"`; post-check shows `node -v` returns `v24.11.0`, `npm -v` returns `11.6.1`, and `go version` returns `go1.26.3 darwin/arm64`.
@@ -175,22 +175,28 @@ This now lives in `nix/modules/zsh.nix` after the `~/.zshrc.local` source line. 
 
 **Objective:** Move from global Homebrew/NVM runtimes to project-pinned versions without breakage.
 
-Order:
+Progress as of 2026-06-06:
+
+- **NVM old versions cleaned:** Removed `v16.20.2` (96MB), `v18.20.8` (149MB), `v20.20.0` (154MB). NVM retains only `v24.11.0` (~195MB) as emergency fallback; active `node` / `npm` already resolve from mise.
+- **Homebrew `go` removed:** Uninstalled `go 1.26.2` (228.5MB); mise-managed `go 1.26.3` is the sole Go runtime.
+- **Total freed: ~628MB.**
+- **NVM and Homebrew `nvm` remain installed** as rollback safety net for a few more weeks. Removing them is Phase 5D.
+- **Homebrew `rust` / `pnpm` / `deno` / `llvm@21` untouched** — still in use or not evaluated for migration yet.
+
+Order for remaining Phase 5C items:
 
 1. Node:
+   - ✅ NVM old versions cleaned.
    - Start new projects with `.mise.toml`.
    - Prefer Corepack-managed package managers over global Homebrew `pnpm` when possible.
-   - Keep NVM until all frequently used projects are verified.
+   - Keep NVM and Homebrew `nvm` until all frequently used projects are verified.
 2. Python:
    - Standardize on `uv` for new Python projects.
    - Avoid globally declaring `python@*` unless a system-level CLI needs it.
 3. Rust:
    - Move from Homebrew `rust` to `rustup` when comfortable.
    - Use `rust-toolchain.toml` for pinned project toolchains.
-4. Go:
-   - If a single latest Go is enough, current Homebrew Go can remain manual temporarily.
-   - If multi-version Go matters, move Go under mise per project.
-5. Deno / Bun:
+4. Deno / Bun:
    - If used as general app runtimes, manage with mise per project.
    - Keep direct Bun install path until migration is tested.
 
@@ -198,7 +204,9 @@ Order:
 
 Only after Phase 5C has been tested in real projects:
 
-- Consider removing or no longer installing Homebrew `rust`, `go`, `pnpm`, `deno`, `nvm`, `llvm@21` if they are no longer needed.
+- ✅ Homebrew `go` removed (2026-06-06). Mise `go 1.26.3` is the sole Go runtime.
+- Consider removing or no longer installing Homebrew `rust`, `pnpm`, `deno`, `nvm`, `llvm@21` if they are no longer needed.
+- Remove NVM (`~/.nvm` + Homebrew `nvm`) once confident no project still relies on it.
 - Do **not** use Homebrew cleanup automation yet; keep `cleanup = "none"`.
 - Remove one global runtime at a time, with rollback notes.
 
@@ -211,7 +219,7 @@ Recommended defaults:
 1. Use Home Manager for `mise`, `uv`, `rustup`, and `direnv`/`nix-direnv`.
 2. Use mise as the long-term default Node manager; keep the global Node pinned to `24.11.0` until there is a separate reason to upgrade.
 3. Keep NVM installed as fallback during daily-use observation after the `mise activate zsh` switch.
-4. Do not immediately remove Homebrew `go`, `rust`, `pnpm`, `deno`, `llvm@21`.
+4. Homebrew `go` has been removed; do not immediately remove Homebrew `rust`, `pnpm`, `deno`, `llvm@21`.
 5. Add docs first, then switch, then test real projects.
 6. Keep project-specific toolchain pinning out of this Mac config repo unless the project itself lives in this repo.
 
