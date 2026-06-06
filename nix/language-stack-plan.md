@@ -202,12 +202,19 @@ Order for remaining Phase 5C items:
 
 ## Phase 5D — Cleanup old global runtimes only after adoption
 
-Only after Phase 5C has been tested in real projects:
+✅ **Completed 2026-06-06.** All old global runtimes verified and cleaned:
 
-- ✅ Homebrew `go` removed (2026-06-06). Mise `go 1.26.3` is the sole Go runtime.
-- Consider removing or no longer installing Homebrew `rust`, `pnpm`, `deno`, `nvm`, `llvm@21` if they are no longer needed.
-- Remove NVM (`~/.nvm` + Homebrew `nvm`) once confident no project still relies on it.
-- Do **not** use Homebrew cleanup automation yet; keep `cleanup = "none"`.
+- ✅ NVM old versions v16 / v18 / v20 removed (Phase 5C, ~400MB).
+- ✅ Homebrew go 1.26.2 removed (Phase 5C, 228MB). Mise go 1.26.3 is the sole Go runtime.
+- ✅ Homebrew nvm uninstalled (Phase 5D, 214KB).
+- ✅ ~/.nvm backed up to ~/.hermes/backups/ and deleted (Phase 5D, 304MB with v24.11.0).
+- ✅ ~/.zshrc.local NVM loading lines commented out.
+- Total freed: ~932MB. Node / Go completely managed by mise.
+
+Remaining items for future consideration:
+
+- Consider removing or no longer installing Homebrew rust, pnpm, deno, llvm@21 if they are no longer needed.
+- Do not use Homebrew cleanup automation yet; keep cleanup = "none".
 - Remove one global runtime at a time, with rollback notes.
 
 ---
@@ -218,7 +225,7 @@ Recommended defaults:
 
 1. Use Home Manager for `mise`, `uv`, `rustup`, and `direnv`/`nix-direnv`.
 2. Use mise as the long-term default Node manager; keep the global Node pinned to `24.11.0` until there is a separate reason to upgrade.
-3. Keep NVM installed as fallback during daily-use observation after the `mise activate zsh` switch.
+3. NVM → mise migration complete (Phase 5D, 2026-06-06). Node / Go fully managed by mise. No NVM fallback remains.
 4. Homebrew `go` has been removed; do not immediately remove Homebrew `rust`, `pnpm`, `deno`, `llvm@21`.
 5. Add docs first, then switch, then test real projects.
 6. Keep project-specific toolchain pinning out of this Mac config repo unless the project itself lives in this repo.
