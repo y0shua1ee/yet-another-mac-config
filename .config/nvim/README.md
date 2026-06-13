@@ -6,7 +6,7 @@ This directory contains Yoshua's Neovim configuration based on the official [Laz
 
 - `init.lua` bootstraps `lua/config/lazy.lua`.
 - `lua/config/` stores core LazyVim bootstrap, options, keymaps, and autocmds.
-- `lua/plugins/` stores local plugin specs and LazyVim extras imports.
+- `lua/plugins/` stores local plugin specs. LazyVim extras are imported in `lua/config/lazy.lua` before local specs.
 - Runtime data lives in the standard XDG Neovim directories: `~/.local/share/nvim`, `~/.local/state/nvim`, and `~/.cache/nvim`.
 
 ## Prerequisites
@@ -48,7 +48,7 @@ git diff --check
 
 ## Enabled LazyVim Extras
 
-Local extras are declared in `lua/plugins/extras.lua`:
+Local extras are declared in `lua/config/lazy.lua` before `{ import = "plugins" }`:
 
 - Languages: TypeScript, JSON, Markdown, Python, Rust, Go, Tailwind CSS
 - Tooling: ESLint, Prettier
