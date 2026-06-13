@@ -122,7 +122,6 @@ automatically-unhide-macos-hidden-apps = false
 
 # mpv floating
 [[on-window-detected]]
-    if.app-id = 'io.mpv'
     if.app-name-regex-substring = 'mpv'
     if.during-aerospace-startup = false
     run = 'layout floating'

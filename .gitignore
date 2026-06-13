@@ -17,6 +17,12 @@
 # GitHub CLI 登录态在部分机器可能包含 OAuth token
 .config/gh/hosts.yml
 
+# Himalaya 邮箱配置包含账号地址与 app password，仅保留本机
+.config/himalaya/
+
+# mpv 观看进度属于本地播放状态，可能暴露媒体历史
+.config/mpv/watch_later/
+
 # Home Manager / nix-direnv 生成的本机 helper，包含 Nix store 路径，不纳入版本控制
 .config/direnv/lib/hm-nix-direnv.sh
 

@@ -12,6 +12,7 @@ My Mac config
 | `.config/ghostty` | Ghostty 终端（含 custom shader collection） |
 | `.config/gh` | GitHub CLI 共享偏好（凭据状态保留在本机 `hosts.yml`） |
 | `.config/mise` | mise 全局工具链配置（当前固定 Node `24.11.0` 与 Go `1.26.3` 作为全局 fallback） |
+| `.config/mpv` | mpv 播放器主配置（播放进度状态保留在本机） |
 | `.config/nvim` | Neovim（基于 LazyVim） |
 | `.config/tmux` | tmux（基于 oh-my-tmux） |
 | `.config/typora` | Typora 自定义主题 |
@@ -141,6 +142,8 @@ brew services restart <name>    # 重启服务
 - `.codex/`：Codex 本地配置。
 - `.claude/`：Claude Code 的项目级状态（worktrees、settings.local.json 等）。
 - `.config/gh/hosts.yml`：GitHub CLI 登录 / 凭据状态，部分环境会写入 OAuth token。
+- `.config/himalaya/`：Himalaya 邮箱账号配置，包含邮箱地址与 app password。
+- `.config/mpv/watch_later/`：mpv 本地观看进度，可能暴露媒体历史。
 - `.config/op/`：1Password CLI 的本地设备信息。
 - `.config/linearmouse/`：鼠标与触控板的本机硬件配置。
 - `.config/mole/`：清理工具运行日志与本地运行状态。
