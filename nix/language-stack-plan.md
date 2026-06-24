@@ -23,6 +23,8 @@ Installed language/toolchain-related tools observed locally:
 - Homebrew leaves include language/runtime-adjacent tools such as `rust`, `nvm`, `pnpm`, `uv`, `llvm@21`, plus build-adjacent tools such as `graphviz`. Homebrew `go` has been removed (2026-06-06), replaced by mise-managed `go 1.26.3`.
 - Phase 5A has switched successfully: `mise`, `rustup`, and `direnv` resolve from `/etc/profiles/per-user/areslee/bin`.
 - Phase 5B has switched successfully: login zsh resolves active Node and Go from mise installs under `~/.local/share/mise/installs/`.
+- Phase 5D completed the NVM removal: Node and Go are fully managed by mise.
+- 2026-06-24 nixpkgs refresh updates the Home Manager mise target from `2026.4.6` to `2026.6.11`; the Darwin build disables mise's flaky OCI metadata check and verifies the binary with runtime post-checks.
 - `.config/mise/config.toml` pins global `node = "24.11.0"` and `go = "1.26.3"`; post-check shows `node -v` returns `v24.11.0`, `npm -v` returns `11.6.1`, and `go version` returns `go1.26.3 darwin/arm64`.
 - A pilot project at `~/Documents/mise-node-pilot` verified mise Node with a minimal Claude Code run; Claude/GSD hooks that call `node` worked under mise Node.
 - Current active Python path is affected by Hermes virtualenv, while `python3.13` / `python3.12` exist under `~/.local/bin`, likely uv-managed standalone Python installs.

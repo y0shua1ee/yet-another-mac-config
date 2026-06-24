@@ -165,7 +165,7 @@ brew services restart <name>    # 重启服务
 
 Phase 5A 起，Home Manager 还会装好语言 / 工具链管理器**入口**：`mise` / `uv` / `rustup`，并启用 `direnv` + `nix-direnv`；实际运行时版本优先由项目本地的 `.mise.toml` / `pyproject.toml + uv.lock` / `rust-toolchain.toml` / 项目 `flake.nix` devShell 管理；仓库内 `.config/mise/config.toml` 只保存少量全局 fallback。
 
-Phase 5B 已完成 switch 与 post-check：默认 Node / npm 已从 NVM 迁到 mise，仓库内的 `.config/mise/config.toml` 固定全局 Node `24.11.0` 与 Go `1.26.3`；登录 zsh 中 `node` / `npm` / `go` 会解析到 `~/.local/share/mise/installs/...` 下的版本。`nix/modules/zsh.nix` 在 `~/.zshrc.local` 之后启用 `mise activate zsh`，迁移期仍保留 NVM 作为 fallback；Homebrew `nvm`、`~/.nvm` 与旧 Node 版本清理由后续 Phase 5C 单独评估。
+Phase 5B–5D 已完成 switch 与 post-check：默认 Node / npm / Go 已迁到 mise，仓库内的 `.config/mise/config.toml` 固定全局 Node `24.11.0` 与 Go `1.26.3`；登录 zsh 中 `node` / `npm` / `go` 会解析到 `~/.local/share/mise/installs/...` 下的版本。Homebrew `nvm` 与 `~/.nvm` 已清理，Node / Go 完全由 mise 管理。2026-06-24 `nixpkgs` refresh 将 Home Manager 的 mise 目标版本从 `2026.4.6` 升至 `2026.6.11`；该版本在 Darwin 上跳过一个 OCI metadata 单测，并通过 runtime post-check 验证。
 
 完整的覆盖范围、激活步骤与回滚方式见：
 

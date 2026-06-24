@@ -12,6 +12,7 @@
 - **Phase 5B 现状（已 switch，post-check 完成）：默认 Node / npm 已从 NVM 迁到 mise。`.config/mise/config.toml` 固定全局 `node = "24.11.0"` 与 `go = "1.26.3"`；`mise install` 与 pilot 项目 `~/Documents/mise-node-pilot` 均验证通过，`mise exec -- node -v` 为 `v24.11.0`、`mise exec -- npm -v` 为 `11.6.1`，最小 Claude Code 任务在 mise Node 下成功返回 `OK`，说明依赖 PATH 中 `node` 的 Claude/GSD hooks 可用。`nix/modules/zsh.nix` 已在 `~/.zshrc.local` 之后启用 `mise activate zsh`；post-check 显示登录 zsh 中 `node` / `npm` / `go` 均解析到 `~/.local/share/mise/installs/...`。NVM、Homebrew `nvm` 与 `~/.nvm` 作为 fallback 留到 Phase 5C 清理。**
 - **Phase 5C 现状（进行中，2026-06-06）：NVM 旧版本 `v16.20.2` / `v18.20.8` / `v20.20.0` 已清理（释放 ~400MB）；Homebrew `go 1.26.2` 已卸载（释放 228MB）；mise `go 1.26.3` 为唯一 Go 运行时。NVM 保留 `v24.11.0` + Homebrew `nvm` 作为紧急 fallback，Phase 5D 再彻底移除。累计释放 ~628MB。**
 - **Phase 5D 现状（已完成，2026-06-06）：Homebrew `nvm` 已卸载；`~/.nvm`（含 `v24.11.0`，304MB）已备份至 `~/.hermes/backups/` 并删除；`~/.zshrc.local` 中 NVM 加载已注释。Node / Go 完全由 mise 管理。NVM → mise 迁移全部完成。累计释放 ~932MB。**
+- **mise 维护记录（2026-06-24）：`nixpkgs` input 从 `b86751b` 更新到 `b3c092d`，Home Manager 的 mise 目标版本从 `2026.4.6` 升至 `2026.6.11`；该 nixpkgs 版本在 Darwin 上有一个 OCI metadata 单测失败，flake overlay 对 mise 关闭 `doCheck`，并用 `mise current` / Node / npm / Go runtime post-check 验证。**
 - **Phase 3 计划文档：`nix/phase-3-plan.md`。Phase 3C 已落地，Phase 3 可视为完成；Phase 4 / 4B 后续如何继续扩张范围仍按“谨慎、可回退”原则逐项评估，不跳跃式迁移。语言运行时（多版本管理器）方向单独留作未来 Phase 评估，可能会落到 Home Manager / devshell / `mise` 等方案，不直接走 Homebrew。**
 - 这个仓库仍然是「事实源」，Nix 是当前机器的 zsh 激活方式。仓库里的 `zsh/.zshrc` 保留为非 Nix / Home Manager 场景的备用软链接入口。
 
