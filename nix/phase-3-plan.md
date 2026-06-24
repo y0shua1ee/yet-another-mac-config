@@ -41,7 +41,7 @@ Phase 3 拆成三个连续子阶段，范围从低风险到中低风险递进。
 - 已声明的首批 inventory（仍属第一版，不是全面接管）：
   - **taps**：`nikitabobko/tap`（供 `aerospace` cask）
   - **brews**：`ast-grep`、`btop`、`fastfetch`、`fzf`、`gh`、`gitleaks`、`git`、`lazygit`、`neovim`、`starship`、`wget`、`yazi`、`yt-dlp`、`zsh-completions`
-  - **casks**：`aerospace`、`ghostty`、`typora`、`visual-studio-code`
+  - **casks**：`aerospace`、`ghostty`、`typora`
 - 刻意未纳入第一版：
   - 与 Home Manager 已重合的 CLI（`ripgrep` / `fd` / `jq` / `tree` / `bat`）
   - `tmux`（归属由 Phase 3B 决定）

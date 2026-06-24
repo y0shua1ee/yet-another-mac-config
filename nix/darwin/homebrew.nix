@@ -145,7 +145,6 @@
       "aerospace"          # 窗口管理器（配置由 .config/aerospace 管理）
       "ghostty"            # 主力终端（配置由 .config/ghostty 管理）
       "typora"             # Markdown 编辑器（主题由 .config/typora 管理）
-      "visual-studio-code" # 编辑器（项目级设置由 .vscode 管理）
 
       # -----------------------------------------------------------------
       # Phase 4 最小版：补上 Ghostty 依赖字体 + Hammerspoon

@@ -18,7 +18,6 @@ My Mac config
 | `.config/typora` | Typora 自定义主题 |
 | `.config/yazi` | Yazi 文件管理器及插件 |
 | `.hammerspoon` | Hammerspoon 自动化（含 `hs.ipc` CLI 控制） |
-| `.vscode` | VS Code 项目级设置 |
 | `zsh/.zshrc` | Zsh 备用软链接入口（当前主路径由 Home Manager 的 `nix/modules/zsh.nix` 接管；二者共享 `zsh/shared.zsh`） |
 | `flake.nix` + `nix/` | 可选的渐进式 Nix 路线，用来在新机上更快补齐部分运行时与系统偏好；覆盖范围与启用方式见 [`nix/README.md`](nix/README.md) |
 

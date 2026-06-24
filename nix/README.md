@@ -68,7 +68,7 @@
 
 - taps：`nikitabobko/tap`、`felixkratz/formulae`、`antoniorodr/memo`、`steipete/tap`、`xdevplatform/tap`
 - brews：`ast-grep`、`btop`、`fastfetch`、`fzf`、`gh`、`gitleaks`、`git`、`lazygit`、`neovim`、`tree-sitter-cli`、`starship`、`tmux`、`wget`、`yazi`、`yt-dlp`、`zsh-completions`
-- casks：`aerospace`、`ghostty`、`typora`、`visual-studio-code`、`hammerspoon`、`font-maple-mono-nf`、`claude-code@latest`、`codex`、`cc-switch`、`xurl`
+- casks：`aerospace`、`ghostty`、`typora`、`hammerspoon`、`font-maple-mono-nf`、`claude-code@latest`、`codex`、`cc-switch`、`xurl`
 
 ### Phase 3B：tmux 运行时声明化
 
