@@ -1,6 +1,15 @@
 # Place a copy of this config to ~/.aerospace.toml
 # After that, you can edit ~/.aerospace.toml to your liking
 
+# Config version for compatibility and deprecations.
+# Version 2 requires persistent workspaces to be declared explicitly.
+config-version = 2
+
+# Keep numbered workspaces visible even when they contain no windows.
+persistent-workspaces = [
+    '1', '2', '3', '4', '5', '6', '7', '8', '9',
+]
+
 # You can use it to add commands that run after AeroSpace startup.
 # Available commands : https://nikitabobko.github.io/AeroSpace/commands
 after-startup-command = []
