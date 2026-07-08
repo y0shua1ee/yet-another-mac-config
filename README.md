@@ -67,6 +67,8 @@ brew install neovim tree-sitter-cli
 
 `install_yazi_plugins.sh` 用来在新环境里批量安装/更新 `package.toml` 中锁定的所有 Yazi 插件，并按需设置部分环境变量（比如 `LG_CONFIG_FILE`，确保 `lazygit.yazi` 能工作）。使用方式：
 
+当前 Yazi 配置使用 v26+ 的 opener 占位符（如 `%s` / `%s1` / `%d1`）。`l` 键由 `smart-enter.yazi` 接管：目录会进入，文件会走 `[opener].edit`，默认用 `$EDITOR`（当前为 `nvim`）打开选中文件。
+
 1. 确认 `ya` CLI 已安装：`brew install yazi`。
 2. 可选：指定配置目录，例如 `./install_yazi_plugins.sh --config-dir "$HOME/.config/yazi"`；若不传参数脚本会优先使用 `XDG_CONFIG_HOME/yazi`，否则回退到仓库内 `.config/yazi`。
 3. 等待脚本自动执行 `ya pkg install`，输出当前生效的插件列表，并提示缺失的依赖工具（如 `git`、`starship`、`lazygit`、`7zz`、`magick` 等）。

@@ -6,3 +6,5 @@
 
 ## Workflow
 - After configuration, write the steps required by the plugin into the `install_yazi_plugins.sh` script in the project root.
+- Yazi v26+ opener commands use `%s`, `%s1`, and `%d1` placeholders for selected files and parent directories. Do not use legacy shell positional arguments like `"$@"` or `"$1"` in `[opener]`; Yazi no longer supplies those, so editors such as `nvim` may open without the hovered file.
+- The `l` key is bound to `smart-enter.yazi`: directories use `enter`, files use `open`, and text files should reach `[opener].edit` as `${EDITOR:-vi} %s`.
