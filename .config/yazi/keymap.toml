@@ -57,17 +57,6 @@ on   = "("
 run  = "plugin zoom -1"
 desc = "Zoom out hovered file"
 
-# git.yazi
-[[plugin.prepend_fetchers]]
-id   = "git"
-name = "*"
-run  = "git"
-
-[[plugin.prepend_fetchers]]
-id   = "git"
-name = "*/"
-run  = "git"
-
 [mgr]
 
 keymap = [
