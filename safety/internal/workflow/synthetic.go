@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"example.invalid/yamc/safety/internal/artifact"
+	"example.invalid/yamc/safety/internal/contract"
 	"example.invalid/yamc/safety/internal/privacy"
 	"example.invalid/yamc/safety/internal/sentinel"
 )
@@ -80,6 +81,21 @@ func RunSynthetic(options Options) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
+	policyDecision, err := contract.Phase1Policy().Evaluate(contract.PolicyRequest{
+		SchemaVersion: contract.PolicySchemaVersion,
+		Provenance:    "synthetic",
+		Intent:        contract.IntentSyntheticFixture,
+		Status:        contract.StatusSyntheticFixture,
+		Operations: []contract.Operation{{
+			Kind:   contract.OperationFixtureFakeWrite,
+			Target: input.OperationID,
+			Mode:   "synthetic",
+		}},
+	})
+	if err != nil || len(policyDecision.Operations) != 1 {
+		return Summary{}, errors.New("synthetic operation policy rejected")
+	}
+	operationID := policyDecision.Operations[0].Target
 	surfacesBytes, err := readBounded(surfacesPath)
 	if err != nil {
 		return Summary{}, err
@@ -127,7 +143,7 @@ func RunSynthetic(options Options) (Summary, error) {
 		ObservedDigest               string   `json:"observed_digest"`
 		ExpectedPostconditionsDigest string   `json:"expected_postconditions_digest"`
 		OperationIDs                 []string `json:"operation_ids"`
-	}{desired.envelope.ContentDigest, observed.envelope.ContentDigest, expectedDigest, []string{input.OperationID}})
+	}{desired.envelope.ContentDigest, observed.envelope.ContentDigest, expectedDigest, []string{operationID}})
 	if err != nil {
 		return Summary{}, err
 	}
@@ -136,7 +152,7 @@ func RunSynthetic(options Options) (Summary, error) {
 		Mode         string   `json:"mode"`
 		OperationIDs []string `json:"operation_ids"`
 		Outcome      string   `json:"outcome"`
-	}{plan.envelope.ContentDigest, "synthetic", []string{input.OperationID}, "fixture:outcome/completed"})
+	}{plan.envelope.ContentDigest, "synthetic", []string{operationID}, "fixture:outcome/completed"})
 	if err != nil {
 		return Summary{}, err
 	}

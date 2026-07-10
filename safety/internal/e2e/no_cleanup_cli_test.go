@@ -1,0 +1,260 @@
+package e2e
+
+import (
+	"bytes"
+	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+
+	"example.invalid/yamc/safety/internal/contract"
+)
+
+func TestNoCleanupCLI(t *testing.T) {
+	t.Run("round trips unmanaged status with no operation", testReportOnlyPolicyCLI)
+	t.Run("rejects destructive policy before output or state", testDestructivePolicyCLI)
+	t.Run("keeps the only receipt synthetic and fixture scoped", testSyntheticFixtureReceipt)
+	t.Run("has no mutable command or shell dispatch edge", testNoMutableProductionRoute)
+	t.Run("binds exact task pairs and fixed fresh-root wave", testNoCleanupRunnerContract)
+}
+
+func testReportOnlyPolicyCLI(t *testing.T) {
+	safetyRoot, _ := projectRoots(t)
+	for _, status := range []contract.PolicyStatus{contract.StatusExtra, contract.StatusUnmanagedPresent} {
+		request := contract.PolicyRequest{
+			SchemaVersion: contract.PolicySchemaVersion,
+			Provenance:    "synthetic",
+			Intent:        contract.IntentReportOnly,
+			Status:        status,
+			Operations:    []contract.Operation{},
+		}
+		contractPath := writePolicyContract(t, request)
+		stdout, stderr, err := runCLI(safetyRoot, "validate", "policy", "--contract", contractPath)
+		if err != nil || len(stderr) != 0 {
+			t.Fatal("report-only policy CLI failed")
+		}
+		var decision contract.PolicyDecision
+		decodeStrict(t, stdout, &decision)
+		if decision.Status != status || decision.Operations == nil || len(decision.Operations) != 0 {
+			t.Fatal("unmanaged status gained an operation")
+		}
+		if bytes.Contains(stdout, []byte(contractPath)) || bytes.Contains(stderr, []byte(contractPath)) {
+			t.Fatal("policy CLI rendered a physical input path")
+		}
+	}
+}
+
+func testDestructivePolicyCLI(t *testing.T) {
+	safetyRoot, _ := projectRoots(t)
+	request := contract.PolicyRequest{
+		SchemaVersion: contract.PolicySchemaVersion,
+		Provenance:    "synthetic",
+		Intent:        contract.IntentSyntheticFixture,
+		Status:        contract.StatusSyntheticFixture,
+		Operations: []contract.Operation{{
+			Kind:   contract.OperationKind("destructive-convergence"),
+			Target: "fixture:operation/rejected",
+			Mode:   "synthetic",
+		}},
+	}
+	base := t.TempDir()
+	contractPath := filepath.Join(base, "policy.json")
+	data, err := json.Marshal(request)
+	if err != nil || os.WriteFile(contractPath, data, 0o600) != nil {
+		t.Fatal("destructive policy fixture unavailable")
+	}
+	before, err := os.ReadDir(base)
+	if err != nil || len(before) != 1 {
+		t.Fatal("destructive policy fixture root changed before validation")
+	}
+	stdout, stderr, err := runCLI(safetyRoot, "validate", "policy", "--contract", contractPath)
+	if err == nil || len(stdout) != 0 || len(stderr) == 0 || len(stderr) > maxCLIOutput {
+		t.Fatal("destructive policy did not fail closed")
+	}
+	after, err := os.ReadDir(base)
+	if err != nil || len(after) != 1 || after[0].Name() != "policy.json" {
+		t.Fatal("rejected policy created state before validation")
+	}
+	if bytes.Contains(stderr, []byte(contractPath)) || bytes.Contains(stderr, []byte("destructive-convergence")) {
+		t.Fatal("policy rejection reflected caller input")
+	}
+
+	stdout, stderr, err = runCLI(safetyRoot, "apply")
+	if err == nil || len(stdout) != 0 || len(stderr) == 0 || len(stderr) > maxCLIOutput {
+		t.Fatal("CLI exposed an apply route")
+	}
+}
+
+func testSyntheticFixtureReceipt(t *testing.T) {
+	safetyRoot, repositoryRoot := projectRoots(t)
+	externalBase := t.TempDir()
+	fixtureRoot := filepath.Join(externalBase, "fixture")
+	storeRoot := filepath.Join(externalBase, "store")
+	blueprintPath := filepath.Join(safetyRoot, "testdata", "blueprints", "walking-skeleton", "input.json")
+	surfacesPath := filepath.Join(safetyRoot, "testdata", "blueprints", "walking-skeleton", "protected-surfaces.json")
+	stdout, stderr, err := runCLI(safetyRoot, fixtureArgs(blueprintPath, surfacesPath, fixtureRoot, storeRoot, repositoryRoot, "synthetic")...)
+	if err != nil || len(stderr) != 0 {
+		t.Fatal("synthetic fixture receipt run failed")
+	}
+	var summary runSummary
+	decodeStrict(t, stdout, &summary)
+	artifacts := readStoredArtifacts(t, storeRoot)
+	receipt := summaryArtifact(t, artifacts, summary, "applied-receipt")
+	payload := payloadMap(t, receipt)
+	operationIDs, ok := payload["operation_ids"].([]any)
+	if payload["mode"] != "synthetic" || !ok || len(operationIDs) != 1 {
+		t.Fatal("receipt escaped the synthetic fixture boundary")
+	}
+	operationID, ok := operationIDs[0].(string)
+	if !ok || !strings.HasPrefix(operationID, "fixture:") {
+		t.Fatal("receipt operation is not fixture scoped")
+	}
+
+	rejectedStore := filepath.Join(externalBase, "live-store")
+	stdout, stderr, err = runCLI(safetyRoot, fixtureArgs(blueprintPath, surfacesPath, filepath.Join(externalBase, "live-fixture"), rejectedStore, repositoryRoot, "live")...)
+	if err == nil || len(stdout) != 0 || len(stderr) == 0 {
+		t.Fatal("live receipt mode did not fail closed")
+	}
+	if _, statErr := os.Lstat(rejectedStore); !os.IsNotExist(statErr) {
+		t.Fatal("live receipt mode wrote before rejection")
+	}
+}
+
+func testNoMutableProductionRoute(t *testing.T) {
+	safetyRoot, _ := projectRoots(t)
+	fileSet := token.NewFileSet()
+	allowedExecImports := map[string]struct{}{
+		filepath.Join("internal", "privacy", "capture.go"): {},
+		filepath.Join("internal", "sentinel", "real.go"):   {},
+	}
+	forbiddenRoutes := map[string]struct{}{
+		"apply": {}, "cleanup": {}, "uninstall": {}, "zap": {}, "runtime-delete": {},
+		"prune": {}, "trust": {}, "download": {}, "upgrade": {}, "switch": {},
+		"service": {}, "defaults": {}, "link": {}, "shell": {}, "command": {},
+	}
+	mainPath := filepath.Join(safetyRoot, "cmd", "yamc-safety", "main.go")
+	err := filepath.WalkDir(safetyRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if strings.EqualFold(entry.Name(), "executor") {
+				t.Fatal("production graph contains an executor package")
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") || (!strings.Contains(path, string(filepath.Separator)+"internal"+string(filepath.Separator)) && path != mainPath) {
+			return nil
+		}
+		relative, relErr := filepath.Rel(safetyRoot, path)
+		if relErr != nil {
+			return relErr
+		}
+		parsed, parseErr := parser.ParseFile(fileSet, path, nil, 0)
+		if parseErr != nil {
+			return parseErr
+		}
+		for _, imported := range parsed.Imports {
+			value, unquoteErr := strconv.Unquote(imported.Path.Value)
+			if unquoteErr != nil {
+				return unquoteErr
+			}
+			if strings.Contains(value, "executor") {
+				t.Fatalf("production import reaches an executor: %s", relative)
+			}
+			if value == "os/exec" {
+				if _, ok := allowedExecImports[relative]; !ok {
+					t.Fatalf("unexpected command-capable import: %s", relative)
+				}
+			}
+		}
+		ast.Inspect(parsed, func(node ast.Node) bool {
+			literal, ok := node.(*ast.BasicLit)
+			if ok && literal.Kind == token.STRING {
+				value, unquoteErr := strconv.Unquote(literal.Value)
+				if unquoteErr == nil {
+					switch value {
+					case "sh", "bash", "zsh", "/bin/sh", "/bin/bash", "/bin/zsh", "/usr/bin/env sh", "/usr/bin/env bash":
+						t.Fatalf("production source exposes shell dispatch: %s", relative)
+					}
+				}
+			}
+			return true
+		})
+		if path == mainPath {
+			ast.Inspect(parsed, func(node ast.Node) bool {
+				clause, ok := node.(*ast.CaseClause)
+				if !ok {
+					return true
+				}
+				for _, expression := range clause.List {
+					literal, ok := expression.(*ast.BasicLit)
+					if !ok || literal.Kind != token.STRING {
+						continue
+					}
+					value, unquoteErr := strconv.Unquote(literal.Value)
+					if unquoteErr == nil {
+						if _, forbidden := forbiddenRoutes[value]; forbidden {
+							t.Fatalf("CLI dispatch exposes a mutable route: %s", value)
+						}
+					}
+				}
+				return true
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("production graph scan failed: %v", err)
+	}
+}
+
+func testNoCleanupRunnerContract(t *testing.T) {
+	safetyRoot, _ := projectRoots(t)
+	data, err := os.ReadFile(filepath.Join(safetyRoot, "scripts", "test.sh"))
+	if err != nil {
+		t.Fatal("runner source unavailable")
+	}
+	text := string(data)
+	for _, required := range []string{
+		"'./internal/contract'", "'^TestNoDestructiveDefaults$'", "'TestNoDestructiveDefaults'",
+		"'./internal/e2e'", "'^TestNoCleanupCLI$'", "'TestNoCleanupCLI'",
+		"run_wave_child controlplane-contract", "run_wave_child no-destructive-defaults",
+		"task:no-destructive-defaults)", "wave:controlplane)",
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("no-cleanup fixed runner contract missing: %s", required)
+		}
+	}
+	if strings.Count(text, "task:no-destructive-defaults)") != 1 || strings.Count(text, "wave:controlplane)") != 1 {
+		t.Fatal("no-cleanup task or control-plane wave label is not unique")
+	}
+	waveStart := strings.Index(text, "run_controlplane_wave()")
+	if waveStart < 0 {
+		t.Fatal("control-plane wave function is unavailable")
+	}
+	waveEnd := strings.Index(text[waveStart:], "\n}\n")
+	if waveEnd < 0 || strings.Contains(text[waveStart:waveStart+waveEnd], "run_with_runner_deadline /bin/bash") {
+		t.Fatal("control-plane wave added a nested process-group wrapper")
+	}
+	assertLiteralDispatchLabels(t, text)
+}
+
+func writePolicyContract(t *testing.T, request contract.PolicyRequest) string {
+	t.Helper()
+	data, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal("policy contract encode failed")
+	}
+	path := filepath.Join(t.TempDir(), "policy.json")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal("policy contract write failed")
+	}
+	return path
+}

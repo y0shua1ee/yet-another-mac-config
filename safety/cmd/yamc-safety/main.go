@@ -44,6 +44,10 @@ type controlPlaneValidateFlags struct {
 	contractPath string
 }
 
+type policyValidateFlags struct {
+	contractPath string
+}
+
 type storeFlags struct {
 	mode              string
 	storeRoot         string
@@ -388,6 +392,9 @@ func runValidate(arguments []string, stdout, stderr io.Writer) int {
 	if len(arguments) > 0 && arguments[0] == "controlplane" {
 		return runValidateControlPlane(arguments[1:], stdout, stderr)
 	}
+	if len(arguments) > 0 && arguments[0] == "policy" {
+		return runValidatePolicy(arguments[1:], stdout, stderr)
+	}
 	parsed, err := parseValidateFlags(arguments)
 	if err != nil || !knownKind(artifact.Kind(parsed.expectedKind)) {
 		writeSafeError(stderr, "VALIDATE_ARGUMENTS_REJECTED")
@@ -417,6 +424,34 @@ func runValidate(arguments []string, stdout, stderr io.Writer) int {
 		Digest string        `json:"digest"`
 	}{Status: "valid", Kind: envelope.Kind, Digest: envelope.ContentDigest}
 	if err := renderSafe(stdout, result); err != nil {
+		writeSafeError(stderr, "OUTPUT_REJECTED")
+		return 70
+	}
+	return 0
+}
+
+func runValidatePolicy(arguments []string, stdout, stderr io.Writer) int {
+	parsed, err := parsePolicyValidateFlags(arguments)
+	if err != nil {
+		writeSafeError(stderr, "POLICY_ARGUMENTS_REJECTED")
+		return 64
+	}
+	data, err := readBoundedArtifact(parsed.contractPath)
+	if err != nil {
+		writeSafeError(stderr, "POLICY_READ_REJECTED")
+		return 2
+	}
+	request, err := contract.ParsePolicy(data)
+	if err != nil {
+		writeSafeError(stderr, "POLICY_VALIDATION_REJECTED")
+		return 2
+	}
+	decision, err := contract.Phase1Policy().Evaluate(request)
+	if err != nil {
+		writeSafeError(stderr, "POLICY_VALIDATION_REJECTED")
+		return 2
+	}
+	if err := renderSafe(stdout, decision); err != nil {
 		writeSafeError(stderr, "OUTPUT_REJECTED")
 		return 70
 	}
@@ -533,6 +568,17 @@ func parseControlPlaneValidateFlags(arguments []string) (controlPlaneValidateFla
 	flags.StringVar(&parsed.contractPath, "contract", "", "")
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.contractPath == "" {
 		return controlPlaneValidateFlags{}, errors.New("arguments rejected")
+	}
+	return parsed, nil
+}
+
+func parsePolicyValidateFlags(arguments []string) (policyValidateFlags, error) {
+	var parsed policyValidateFlags
+	flags := flag.NewFlagSet("validate-policy", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&parsed.contractPath, "contract", "", "")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.contractPath == "" {
+		return policyValidateFlags{}, errors.New("arguments rejected")
 	}
 	return parsed, nil
 }

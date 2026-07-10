@@ -715,6 +715,58 @@ run_controlplane_contract() {
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"controlplane-contract"}'
 }
 
+run_no_destructive_defaults() {
+  local contract_status=0
+  local e2e_status=0
+  local contract_output=''
+  local e2e_output=''
+
+  run_exact_go_suite \
+    './internal/contract' \
+    '^TestNoDestructiveDefaults$' \
+    'TestNoDestructiveDefaults' \
+    'no-destructive-defaults-unit' \
+    'EXPECTED_RED: destructive-policy-behavior-missing' >/dev/null 2>&1 || contract_status=$?
+  contract_output="${TEST_OUTPUT:-}"
+
+  run_exact_go_suite \
+    './internal/e2e' \
+    '^TestNoCleanupCLI$' \
+    'TestNoCleanupCLI' \
+    'no-destructive-defaults-e2e' \
+    'EXPECTED_RED: destructive-policy-behavior-missing' >/dev/null 2>&1 || e2e_status=$?
+  e2e_output="${TEST_OUTPUT:-}"
+
+  if [[ "${contract_status}" -eq 124 || "${e2e_status}" -eq 124 ]]; then
+    print_runner_deadline 'no-destructive-defaults'
+    return 124
+  fi
+  if [[ "${contract_status}" -eq 70 || "${e2e_status}" -eq 70 ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"no-destructive-defaults-selection-failed"}' >&2
+    return 70
+  fi
+  if [[ "${contract_status}" -ne 0 && "${contract_output}" != *'EXPECTED_RED: destructive-policy-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"no-destructive-defaults-unit-failed"}' >&2
+    return 1
+  fi
+  if [[ "${e2e_status}" -ne 0 && "${e2e_output}" != *'EXPECTED_RED: destructive-policy-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"no-destructive-defaults-e2e-failed"}' >&2
+    return 1
+  fi
+  if [[ "${contract_status}" -ne 0 || "${e2e_status}" -ne 0 ]]; then
+    printf '%s\n' '{"status":"expected-red-observed","suite":"no-destructive-defaults"}' >&2
+    return 1
+  fi
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"no-destructive-defaults"}'
+}
+
+run_controlplane_wave() {
+  # 两个已完成 handler 分别使用新的外部根，不共享 fixture、store 或 cache。
+  run_wave_child controlplane-contract
+  run_wave_child no-destructive-defaults
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"controlplane"}'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -752,6 +804,9 @@ case "${SCOPE}:${SUITE}" in
   task:controlplane-contract)
     run_controlplane_contract
     ;;
+  task:no-destructive-defaults)
+    run_no_destructive_defaults
+    ;;
   wave:skeleton)
     run_green_walking_skeleton
     ;;
@@ -766,6 +821,9 @@ case "${SCOPE}:${SUITE}" in
     ;;
   wave:sentinels)
     run_sentinels_wave
+    ;;
+  wave:controlplane)
+    run_controlplane_wave
     ;;
   *)
     printf '%s\n' '{"status":"harness-error","reason":"unsupported-suite"}' >&2
