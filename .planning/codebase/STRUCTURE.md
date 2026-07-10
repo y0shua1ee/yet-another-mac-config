@@ -20,6 +20,11 @@ yet-another-mac-config/
 │   └── yazi/                      # Yazi config, keymaps, theme, and plugins
 ├── .hammerspoon/                 # macOS hotkeys and event automation
 ├── .planning/codebase/           # Generated GSD codebase maps
+├── safety/                        # Offline safety CLI, typed artifacts, fixtures, and tests
+│   ├── cmd/yamc-safety/           # Closed local operator CLI entrypoint
+│   ├── internal/                  # Artifact, workflow, and sentinel implementation
+│   ├── scripts/                   # Stable task/wave/phase test runner
+│   └── testdata/                  # Public synthetic blueprints only
 ├── nix/                          # Declarative macOS and Home Manager configuration
 │   ├── darwin/                    # System, Homebrew, service, and defaults modules
 │   ├── home/                      # User packages, environment, and tool managers
@@ -114,6 +119,11 @@ The versioned application set is the set of top-level app directories represente
 - Contains: Uppercase Markdown reference documents under `.planning/codebase/`.
 - Key files: `.planning/codebase/ARCHITECTURE.md`, `.planning/codebase/STRUCTURE.md`
 
+**Safety Control Plane (`safety/`):**
+- Purpose: Provides a dependency-free, offline-first CLI and test boundary for typed recovery artifacts, external synthetic fixtures, and scoped sentinel evidence without exposing a real apply route.
+- Contains: The Go module in `safety/go.mod`, CLI entrypoint under `safety/cmd/`, implementation packages under `safety/internal/`, the strict runner at `safety/scripts/test.sh`, and logical-only fixtures under `safety/testdata/`.
+- Key files: `safety/cmd/yamc-safety/main.go`, `safety/internal/artifact/envelope.go`, `safety/internal/artifact/store.go`, `safety/internal/workflow/synthetic.go`, `safety/internal/sentinel/synthetic.go`, `safety/internal/e2e/walking_skeleton_test.go`
+
 ## Key File Locations
 
 **Entry Points:**
@@ -124,6 +134,8 @@ The versioned application set is the set of top-level app directories represente
 - `nix/home/default.nix`: User-layer module entry imported by `flake.nix`.
 - `nix/modules/zsh.nix`: Primary Home Manager shell entry imported by `nix/home/default.nix`.
 - `zsh/.zshrc`: Fallback shell entry offered by `setup_mac.sh`.
+- `safety/cmd/yamc-safety/main.go`: Closed local safety CLI; Phase 1 initially exposes only the isolated `fixture run` route.
+- `safety/scripts/test.sh`: Offline task/wave/phase test entry with external HOME, XDG, temporary, cache, and manager roots.
 - `.config/nvim/init.lua`: Neovim/LazyVim runtime entry.
 - `.config/yazi/init.lua`: Yazi plugin initialization entry.
 - `.hammerspoon/init.lua`: Hammerspoon runtime and IPC entry.
@@ -148,6 +160,8 @@ The versioned application set is the set of top-level app directories represente
 - `.config/aerospace/aerospace.toml`: Window-rule and keybinding behavior.
 
 **Testing:**
+- `safety/scripts/test.sh`: Repository-owned offline runner for Go standard-library tests and external synthetic fixtures; missing local Go is `manual-required` and never triggers bootstrap.
+- `safety/internal/e2e/walking_skeleton_test.go`: End-to-end RED→GREEN contract for six digest-addressed artifact kinds, exact lineage, containment, and the synthetic claim ceiling.
 - `nix/CLAUDE.md`: Prescribes flake evaluation, Darwin build, switch, rollback, and post-check commands; no separate automated test tree is present.
 - `.config/nvim/CLAUDE.md`: Prescribes headless LazyVim synchronization and health checks.
 - `.config/ghostty/CLAUDE.md`: Prescribes Ghostty config validation and Git whitespace/status checks.
@@ -205,6 +219,7 @@ The versioned application set is the set of top-level app directories represente
 **Utilities:**
 - Shared helpers: Keep repository bootstrap helpers in the relevant root script (`setup_mac.sh` or `install_yazi_plugins.sh`) rather than adding an unreferenced utility directory.
 - Shared shell helpers: Place shell functions used by both shell routes in `zsh/shared.zsh`.
+- Safety/test behavior: Extend the focused package beneath `safety/internal/`, add synthetic inputs beneath `safety/testdata/`, and route automated sampling through `safety/scripts/test.sh`; do not import live setup or activation scripts.
 
 ## Special Directories
 
@@ -242,6 +257,11 @@ The versioned application set is the set of top-level app directories represente
 - Purpose: Stores generated GSD architecture, stack, quality, testing, integration, and concern maps under `.planning/codebase/`.
 - Generated: Yes; the GSD mapper produces `.planning/codebase/*.md`.
 - Committed: Intended to be version-controlled as the durable GSD reference set after generation.
+
+**`safety/`:**
+- Purpose: Stores the repository-owned safety control plane and its entirely synthetic tracked test inputs.
+- Generated: No; runtime fixture, HOME, cache, and artifact-store data are created only under fresh external temporary roots.
+- Committed: Yes; source, contracts, and synthetic blueprints are tracked, while run output never belongs in the worktree.
 
 **Ignored Local App State Under `.config/`:**
 - Purpose: Keeps authentication, device state, caches, playback history, generated helpers, and machine-specific links outside the tracked app sources listed by `README.md` and `.gitignore`.

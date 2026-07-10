@@ -9,6 +9,7 @@
 - Bash and Zsh (versions supplied by macOS/Homebrew, not pinned) - Drive interactive setup, Yazi plugin synchronization, the fallback shell entrypoint, shared shell behavior, and the JankyBorders launcher in `setup_mac.sh`, `install_yazi_plugins.sh`, `zsh/.zshrc`, `zsh/shared.zsh`, and `.config/borders/bordersrc`.
 
 **Secondary:**
+- Go `1.26.0` module contract (local compiler currently supplied outside this subsystem) - Implements the dependency-free safety CLI, content-addressed artifact store, synthetic workflow, sentinel adapter, and standard-library tests under `safety/`; the runner forces `GOTOOLCHAIN=local` and disables dependency network access.
 - Lua (hosted runtime versions not pinned) - Configures Neovim/LazyVim, Yazi plugins, and Hammerspoon automation in `.config/nvim/init.lua`, `.config/nvim/lua/config/lazy.lua`, `.config/yazi/init.lua`, `.config/yazi/plugins/`, and `.hammerspoon/init.lua`.
 - TOML, YAML, JSON, and application-specific key/value formats - Configure AeroSpace, mise, Yazi, GitHub CLI, Ghostty, mpv, btop, and tmux in `.config/aerospace/aerospace.toml`, `.config/mise/config.toml`, `.config/yazi/`, `.config/gh/config.yml`, `.config/ghostty/config`, `.config/mpv/mpv.conf`, `.config/btop/btop.conf`, and `.config/tmux/tmux.conf.local`.
 - GLSL (Ghostty shader dialect; language version not declared) - Supplies the vendored animated terminal effects under `.config/ghostty/shaders/`, with `cursor_blaze.glsl` selected by `.config/ghostty/config`.
@@ -48,7 +49,8 @@
 - oh-my-tmux supplies the base tmux configuration and plugin loader; the tracked override enables tmux-resurrect and tmux-continuum in `.config/tmux/tmux.conf.local`, while `setup_mac.sh` installs the upstream base.
 
 **Testing:**
-- No unit-test runner or assertion framework is part of this configuration repository; system-level validation is `nix flake check` followed by `darwin-rebuild build --flake .#AresdeMacBook-Air`, documented in `nix/README.md` and `nix/CLAUDE.md`.
+- The repository now has a focused Go standard-library test boundary at `safety/scripts/test.sh`; it runs fixed task/wave suites from an empty allowlisted environment with external HOME, XDG, temporary, cache, manager, fixture, and artifact roots. It has no third-party test dependency and returns `manual-required` when local Go is absent.
+- System-level validation remains separate: `nix flake check` followed by `darwin-rebuild build --flake .#AresdeMacBook-Air`, documented in `nix/README.md` and `nix/CLAUDE.md`; these commands are not part of the safety runner and build does not imply activation.
 - Neovim uses headless sync and health checks (`Lazy! sync`, `checkhealth lazy`, `checkhealth vim.treesitter`, and a clean headless start) documented in `.config/nvim/README.md` and `.config/nvim/CLAUDE.md`.
 - Ghostty configuration validation uses its bundled `+validate-config` command documented in `.config/ghostty/CLAUDE.md` and `.config/ghostty/shaders/README.md`.
 - Hammerspoon uses its bundled `hs` IPC client for config-directory checks and reload smoke tests documented in `.hammerspoon/CLAUDE.md`.
@@ -64,6 +66,7 @@
 ## Key Dependencies
 
 **Critical:**
+- The `safety/` module intentionally has no third-party Go requirements. Its only execution precondition is an already installed compatible local Go toolchain; the runner disables toolchain/module download and never invokes another manager to supply it.
 - `nixpkgs`, `nix-darwin`, and `home-manager` are the reproducibility and activation backbone; all three are declared in `flake.nix` and pinned in `flake.lock`.
 - Homebrew is required for macOS-native applications, formulae, fonts, and the two managed services; its conservative activation policy disables automatic update, upgrade, and cleanup in `nix/darwin/homebrew.nix`.
 - Home Manager's stable CLI layer installs ripgrep, fd, jq, tree, and bat in `nix/home/packages.nix`, while its toolchain layer installs mise, uv, rustup, direnv, and nix-direnv in `nix/home/dev-toolchains.nix`.
