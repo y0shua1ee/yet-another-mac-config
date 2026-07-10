@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-07-10T14:15:40.345Z"
+last_updated: "2026-07-10T15:24:49.536Z"
 last_activity: 2026-07-10
 progress:
   total_phases: 13
   completed_phases: 0
   total_plans: 7
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 ## Current Position
 
 Phase: 01 (safety-privacy-and-state-foundation) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-07-10
 
-Progress: [█░░░░░░░░░] 14%
+Progress: [███░░░░░░░] 29%
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Progress: [█░░░░░░░░░] 14%
 - Trend: No execution data
 
 | Phase 01 P01 | 11 min | 2 tasks | 10 files |
+| Phase 01 P02 | 40 min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Claim ceiling: current-host evidence can prove only `recovery-ready-on-current-host`.
 - [Phase 01]: Persist the post-receipt fresh observation as a digested record inside verification evidence so the store keeps exactly six top-level artifact kinds. — This satisfies both the fresh-observation evidence requirement and the exactly-six distinct top-level artifact contract.
 - [Phase 01]: Keep synthetic CLI routing closed and deny-by-default; only synthetic-sentinel-passed can be rendered on this path. — Synthetic evidence must never emit a real-surface, whole-Mac, current-host, multi-host, or fresh-install claim.
+- [Phase 01]: Supersede the Plan 01 embedded fresh-record compromise: keep six closed kinds but store seven apply-path instances, with fresh observation as a second full observed-state envelope. — A compact evidence descriptor cannot replace a separately validated and pinned post-receipt observation.
+- [Phase 01]: Persist plan transitions and rebuild the validated digest-reference graph when Store reopens. — Terminal state, snapshot expiry, and transitive pins must survive process boundaries without trusting run IDs, mtimes, filenames, or latest aliases.
+- [Phase 01]: Preflight the complete graph before immutable writes and roll back only objects created by a failed graph write. — Invalid or colliding late nodes must not leave a partially persisted graph.
 
 ### Pending Todos
 
@@ -81,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-10T14:14:42.857Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-07-10T15:24:49.531Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
