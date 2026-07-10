@@ -225,6 +225,22 @@ run_artifact_kinds() {
     'EXPECTED_RED: artifact-kind-behavior-missing'
 }
 
+run_artifact_lineage() {
+  run_exact_go_suite \
+    './internal/e2e' \
+    '^TestArtifactLineage$' \
+    'TestArtifactLineage' \
+    'artifact-lineage' \
+    'EXPECTED_RED: artifact-lineage-behavior-missing'
+}
+
+run_artifact_contracts_wave() {
+  # 每个 task 由新的子 runner 建立独立外部根，禁止复用 fixture 或 store。
+  /bin/bash "${SCRIPT_DIR}/test.sh" task artifact-kinds >/dev/null
+  /bin/bash "${SCRIPT_DIR}/test.sh" task artifact-lineage >/dev/null
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"artifact-contracts"}'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -235,8 +251,14 @@ case "${SCOPE}:${SUITE}" in
   task:artifact-kinds)
     run_artifact_kinds
     ;;
+  task:artifact-lineage)
+    run_artifact_lineage
+    ;;
   wave:skeleton)
     run_green_walking_skeleton
+    ;;
+  wave:artifact-contracts)
+    run_artifact_contracts_wave
     ;;
   *)
     printf '%s\n' '{"status":"harness-error","reason":"unsupported-suite"}' >&2

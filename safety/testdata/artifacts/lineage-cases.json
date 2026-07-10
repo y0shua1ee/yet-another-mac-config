@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "cases": [
+    { "name": "valid-apply", "mode": "apply", "valid": true },
+    { "name": "valid-read-only", "mode": "read-only", "valid": true },
+    { "name": "invalid-wrong-kind", "mode": "apply", "valid": false },
+    { "name": "invalid-substituted-digest", "mode": "apply", "valid": false },
+    { "name": "invalid-stale-edge", "mode": "apply", "valid": false },
+    { "name": "invalid-missing-edge", "mode": "apply", "valid": false },
+    { "name": "invalid-missing-fresh-observation", "mode": "apply", "valid": false },
+    { "name": "invalid-extra-edge", "mode": "read-only", "valid": false },
+    { "name": "invalid-substituted-fresh-observation", "mode": "apply", "valid": false },
+    { "name": "invalid-reordered-edge", "mode": "apply", "valid": false },
+    { "name": "invalid-reused-pre-apply-observation", "mode": "apply", "valid": false },
+    { "name": "invalid-missing-postconditions", "mode": "apply", "valid": false },
+    { "name": "invalid-latest-selection", "mode": "apply", "valid": false },
+    { "name": "invalid-run-id-only-repair", "mode": "apply", "valid": false },
+    { "name": "invalid-report-extra-evidence", "mode": "apply", "valid": false }
+  ]
+}

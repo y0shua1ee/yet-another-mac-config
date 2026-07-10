@@ -53,19 +53,6 @@ type preparedArtifact struct {
 	envelope  artifact.Envelope
 }
 
-type freshObservedCore struct {
-	Scope               string `json:"scope"`
-	State               string `json:"state"`
-	SourceReceiptDigest string `json:"source_receipt_digest"`
-}
-
-type freshObserved struct {
-	Scope               string `json:"scope"`
-	State               string `json:"state"`
-	SourceReceiptDigest string `json:"source_receipt_digest"`
-	ContentDigest       string `json:"content_digest"`
-}
-
 func RunSynthetic(options Options) (Summary, error) {
 	if options.Mode != "synthetic" {
 		return Summary{}, errors.New("synthetic mode required")
@@ -147,35 +134,33 @@ func RunSynthetic(options Options) (Summary, error) {
 	if err := runFakeAdapter(fixtureRoot, input.OperationID); err != nil {
 		return Summary{}, err
 	}
-	freshCore := freshObservedCore{
-		Scope:               "fixture:scope/walking-skeleton",
-		State:               "fixture:observation/fresh-declared",
-		SourceReceiptDigest: receipt.envelope.ContentDigest,
-	}
-	freshDigest, err := artifact.DigestValue(freshCore)
+	freshObservedArtifact, err := makeArtifact(artifact.ObservedState, run, []string{receipt.envelope.ContentDigest}, struct {
+		Scope string `json:"scope"`
+		Facts []fact `json:"facts"`
+	}{"fixture:scope/walking-skeleton", input.ExpectedPostconditions})
 	if err != nil {
 		return Summary{}, err
 	}
-	fresh := freshObserved{
-		Scope:               freshCore.Scope,
-		State:               freshCore.State,
-		SourceReceiptDigest: freshCore.SourceReceiptDigest,
-		ContentDigest:       freshDigest,
+	fresh := artifact.FreshObserved{
+		Scope:               "fixture:scope/walking-skeleton",
+		State:               input.ExpectedPostconditions[0].State,
+		SourceReceiptDigest: receipt.envelope.ContentDigest,
+		ContentDigest:       freshObservedArtifact.envelope.ContentDigest,
 	}
 	after, err := sentinel.ObserveSynthetic(manifest, fixtureRoot)
 	if err != nil || !sentinel.Equal(before, after) {
 		return Summary{}, errors.New("synthetic sentinel rejected run")
 	}
-	evidence, err := makeArtifact(artifact.VerificationEvidence, run, []string{plan.envelope.ContentDigest, receipt.envelope.ContentDigest, expectedDigest, freshDigest}, struct {
-		PlanDigest                   string        `json:"plan_digest"`
-		ReceiptDigest                string        `json:"receipt_digest"`
-		ExpectedPostconditionsDigest string        `json:"expected_postconditions_digest"`
-		FreshObservedDigest          string        `json:"fresh_observed_digest"`
-		FreshObserved                freshObserved `json:"fresh_observed"`
-		ManifestDigest               string        `json:"manifest_digest"`
-		SentinelBeforeDigest         string        `json:"sentinel_before_digest"`
-		SentinelAfterDigest          string        `json:"sentinel_after_digest"`
-	}{plan.envelope.ContentDigest, receipt.envelope.ContentDigest, expectedDigest, freshDigest, fresh, manifest.Digest, before.StateDigest, after.StateDigest})
+	evidence, err := makeArtifact(artifact.VerificationEvidence, run, []string{plan.envelope.ContentDigest, receipt.envelope.ContentDigest, expectedDigest, freshObservedArtifact.envelope.ContentDigest}, struct {
+		PlanDigest                   string                 `json:"plan_digest"`
+		ReceiptDigest                string                 `json:"receipt_digest"`
+		ExpectedPostconditionsDigest string                 `json:"expected_postconditions_digest"`
+		FreshObservedDigest          string                 `json:"fresh_observed_digest"`
+		FreshObserved                artifact.FreshObserved `json:"fresh_observed"`
+		ManifestDigest               string                 `json:"manifest_digest"`
+		SentinelBeforeDigest         string                 `json:"sentinel_before_digest"`
+		SentinelAfterDigest          string                 `json:"sentinel_after_digest"`
+	}{plan.envelope.ContentDigest, receipt.envelope.ContentDigest, expectedDigest, freshObservedArtifact.envelope.ContentDigest, fresh, manifest.Digest, before.StateDigest, after.StateDigest})
 	if err != nil {
 		return Summary{}, err
 	}
@@ -191,19 +176,28 @@ func RunSynthetic(options Options) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
-	artifacts := []preparedArtifact{desired, observed, plan, receipt, evidence, report}
-	digests := make(map[string]string, len(artifacts))
-	for _, prepared := range artifacts {
-		digest, writeErr := store.Write(prepared.canonical)
-		if writeErr != nil || digest != prepared.envelope.ContentDigest {
-			return Summary{}, errors.New("artifact store write rejected")
-		}
-		digests[string(prepared.envelope.Kind)] = digest
+	graph := artifact.LineageGraph{
+		Desired:                      desired.canonical,
+		Observed:                     observed.canonical,
+		Plan:                         plan.canonical,
+		Receipt:                      receipt.canonical,
+		FreshObserved:                freshObservedArtifact.canonical,
+		Evidence:                     evidence.canonical,
+		Report:                       report.canonical,
+		ExpectedPostconditionsDigest: expectedDigest,
+	}
+	digests, err := store.WriteGraph(artifact.LineageApply, graph)
+	if err != nil || len(digests) != 7 || digests[artifact.FreshObservedKey] != freshObservedArtifact.envelope.ContentDigest {
+		return Summary{}, errors.New("artifact store write rejected")
+	}
+	kinds := map[artifact.Kind]struct{}{}
+	for _, prepared := range []preparedArtifact{desired, observed, plan, receipt, freshObservedArtifact, evidence, report} {
+		kinds[prepared.envelope.Kind] = struct{}{}
 	}
 	return Summary{
 		State:          successState,
-		ArtifactCount:  len(artifacts),
-		KindCount:      len(digests),
+		ArtifactCount:  len(digests),
+		KindCount:      len(kinds),
 		ManifestDigest: manifest.Digest,
 		Artifacts:      digests,
 	}, nil

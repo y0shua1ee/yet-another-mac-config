@@ -84,8 +84,8 @@ func TestWalkingSkeletonContract(t *testing.T) {
 	if summary.State != wantSuccessState {
 		t.Fatalf("unexpected synthetic success state")
 	}
-	if summary.ArtifactCount != 6 || summary.KindCount != 6 || len(summary.Artifacts) != 6 {
-		t.Fatalf("expected exactly six distinct artifact kinds")
+	if summary.ArtifactCount != 7 || summary.KindCount != 6 || len(summary.Artifacts) != 7 {
+		t.Fatalf("expected seven artifacts across exactly six distinct kinds")
 	}
 	if summary.ManifestDigest == "" {
 		t.Fatalf("missing protected-surface manifest digest")
@@ -94,7 +94,7 @@ func TestWalkingSkeletonContract(t *testing.T) {
 
 	artifacts := readStoredArtifacts(t, storeRoot)
 	assertSixKindsAndStoreKeys(t, artifacts, summary)
-	assertExactLineage(t, artifacts, summary.ManifestDigest)
+	assertExactLineage(t, artifacts, summary, summary.ManifestDigest)
 	assertNegativeRoutes(t, safetyRoot, repoRoot, blueprintPath, surfacesPath, externalBase)
 }
 
@@ -166,8 +166,8 @@ func readStoredArtifacts(t *testing.T, storeRoot string) map[string]envelope {
 	if err != nil {
 		t.Fatalf("artifact store unavailable")
 	}
-	if len(entries) != 6 {
-		t.Fatalf("expected six content-addressed objects")
+	if len(entries) != 7 {
+		t.Fatalf("expected seven content-addressed objects")
 	}
 	result := make(map[string]envelope, len(entries))
 	for _, entry := range entries {
@@ -186,49 +186,84 @@ func readStoredArtifacts(t *testing.T, storeRoot string) map[string]envelope {
 		if _, err := hex.DecodeString(entry.Name()); err != nil || len(entry.Name()) != sha256.Size*2 {
 			t.Fatalf("invalid digest-addressed store key")
 		}
-		result[artifact.Kind] = artifact
+		if _, exists := result[artifact.ContentDigest]; exists {
+			t.Fatalf("duplicate content digest collapsed a stored artifact")
+		}
+		result[artifact.ContentDigest] = artifact
 	}
 	return result
 }
 
 func assertSixKindsAndStoreKeys(t *testing.T, artifacts map[string]envelope, summary runSummary) {
 	t.Helper()
-	wantKinds := []string{
-		"desired-state",
-		"observed-state",
-		"generated-plan",
+	wantSummaryKeys := []string{
 		"applied-receipt",
-		"verification-evidence",
+		"desired-state",
+		"fresh-observed-state",
+		"generated-plan",
+		"observed-state",
 		"readiness-report",
+		"verification-evidence",
 	}
-	sort.Strings(wantKinds)
-	gotKinds := make([]string, 0, len(artifacts))
-	for kind, artifact := range artifacts {
-		gotKinds = append(gotKinds, kind)
+	sort.Strings(wantSummaryKeys)
+	gotSummaryKeys := make([]string, 0, len(summary.Artifacts))
+	seenDigests := make(map[string]struct{}, len(summary.Artifacts))
+	for label, digest := range summary.Artifacts {
+		gotSummaryKeys = append(gotSummaryKeys, label)
+		artifact, exists := artifacts[digest]
+		if !exists {
+			t.Fatalf("summary references an artifact absent from the exact store key")
+		}
 		if artifact.SchemaVersion != "1.0.0" {
 			t.Fatalf("unexpected schema version")
 		}
-		if summary.Artifacts[kind] != artifact.ContentDigest {
+		if digest != artifact.ContentDigest {
 			t.Fatalf("summary digest does not match stored artifact")
 		}
+		if _, duplicate := seenDigests[digest]; duplicate {
+			t.Fatalf("two summary keys alias the same stored artifact")
+		}
+		seenDigests[digest] = struct{}{}
 	}
-	sort.Strings(gotKinds)
-	if strings.Join(gotKinds, "\n") != strings.Join(wantKinds, "\n") {
+	sort.Strings(gotSummaryKeys)
+	if strings.Join(gotSummaryKeys, "\n") != strings.Join(wantSummaryKeys, "\n") || len(seenDigests) != len(artifacts) {
+		t.Fatalf("summary artifact keys are incomplete or non-exact")
+	}
+
+	wantKindCounts := map[string]int{
+		"desired-state":         1,
+		"observed-state":        2,
+		"generated-plan":        1,
+		"applied-receipt":       1,
+		"verification-evidence": 1,
+		"readiness-report":      1,
+	}
+	gotKindCounts := make(map[string]int, len(wantKindCounts))
+	for _, artifact := range artifacts {
+		gotKindCounts[artifact.Kind]++
+	}
+	if len(gotKindCounts) != len(wantKindCounts) {
 		t.Fatalf("artifact kind registry is incomplete or open")
+	}
+	for kind, wantCount := range wantKindCounts {
+		if gotKindCounts[kind] != wantCount {
+			t.Fatalf("artifact kind multiplicity is invalid")
+		}
 	}
 }
 
-func assertExactLineage(t *testing.T, artifacts map[string]envelope, manifestDigest string) {
+func assertExactLineage(t *testing.T, artifacts map[string]envelope, summary runSummary, manifestDigest string) {
 	t.Helper()
-	desired := artifacts["desired-state"]
-	observed := artifacts["observed-state"]
-	plan := artifacts["generated-plan"]
-	receipt := artifacts["applied-receipt"]
-	evidence := artifacts["verification-evidence"]
-	report := artifacts["readiness-report"]
+	desired := summaryArtifact(t, artifacts, summary, "desired-state")
+	plan := summaryArtifact(t, artifacts, summary, "generated-plan")
+	receipt := summaryArtifact(t, artifacts, summary, "applied-receipt")
+	evidence := summaryArtifact(t, artifacts, summary, "verification-evidence")
+	report := summaryArtifact(t, artifacts, summary, "readiness-report")
 
 	planPayload := payloadMap(t, plan)
-	if planPayload["desired_digest"] != desired.ContentDigest || planPayload["observed_digest"] != observed.ContentDigest {
+	observedDigest, ok := planPayload["observed_digest"].(string)
+	observed, observedExists := artifacts[observedDigest]
+	if planPayload["desired_digest"] != desired.ContentDigest || !ok || !observedExists || observed.Kind != "observed-state" || summary.Artifacts["observed-state"] != observedDigest {
 		t.Fatalf("plan does not bind exact desired and observed digests")
 	}
 	expectedPostconditionsDigest, ok := planPayload["expected_postconditions_digest"].(string)
@@ -249,12 +284,37 @@ func assertExactLineage(t *testing.T, artifacts map[string]envelope, manifestDig
 		t.Fatalf("verification evidence lineage is incomplete")
 	}
 	freshDigest, ok := evidencePayload["fresh_observed_digest"].(string)
-	if !ok || freshDigest == "" {
-		t.Fatalf("fresh observation digest is missing")
+	freshObservedArtifact, freshExists := artifacts[freshDigest]
+	if !ok || !freshExists || freshObservedArtifact.Kind != "observed-state" || summary.Artifacts["fresh-observed-state"] != freshDigest || freshDigest == observed.ContentDigest {
+		t.Fatalf("evidence does not bind the separately stored fresh observation")
 	}
 	freshObserved, ok := evidencePayload["fresh_observed"].(map[string]any)
 	if !ok || freshObserved["content_digest"] != freshDigest {
-		t.Fatalf("fresh observation is not stored and referenced")
+		t.Fatalf("fresh observation descriptor does not reference the stored object")
+	}
+	if len(freshObserved) != 4 {
+		t.Fatalf("embedded fresh observation descriptor is not reference-only metadata")
+	}
+	for key := range freshObserved {
+		switch key {
+		case "scope", "state", "source_receipt_digest", "content_digest":
+		default:
+			t.Fatalf("embedded fresh observation descriptor contains payload data")
+		}
+	}
+	if freshObserved["source_receipt_digest"] != receipt.ContentDigest {
+		t.Fatalf("fresh observation descriptor does not reference the exact receipt")
+	}
+	if scope, ok := freshObserved["scope"].(string); !ok || scope == "" {
+		t.Fatalf("fresh observation descriptor is missing its logical scope")
+	}
+	if state, ok := freshObserved["state"].(string); !ok || state == "" {
+		t.Fatalf("fresh observation descriptor is missing its normalized state")
+	}
+	freshProvenance := provenanceMap(t, freshObservedArtifact)
+	inputs, ok := freshProvenance["input_digests"].([]any)
+	if !ok || len(inputs) != 1 || inputs[0] != receipt.ContentDigest {
+		t.Fatalf("fresh observed artifact provenance does not bind exactly the receipt")
 	}
 	if evidencePayload["sentinel_before_digest"] != evidencePayload["sentinel_after_digest"] {
 		t.Fatalf("synthetic protected surface changed during the window")
@@ -273,6 +333,28 @@ func payloadMap(t *testing.T, artifact envelope) map[string]any {
 		t.Fatalf("artifact payload is not structured JSON")
 	}
 	return payload
+}
+
+func provenanceMap(t *testing.T, artifact envelope) map[string]any {
+	t.Helper()
+	var provenance map[string]any
+	if err := json.Unmarshal(artifact.Provenance, &provenance); err != nil {
+		t.Fatalf("artifact provenance is not structured JSON")
+	}
+	return provenance
+}
+
+func summaryArtifact(t *testing.T, artifacts map[string]envelope, summary runSummary, label string) envelope {
+	t.Helper()
+	digest, ok := summary.Artifacts[label]
+	if !ok || digest == "" {
+		t.Fatalf("summary artifact key is missing")
+	}
+	artifact, ok := artifacts[digest]
+	if !ok {
+		t.Fatalf("summary artifact digest is absent from the store")
+	}
+	return artifact
 }
 
 func assertNegativeRoutes(t *testing.T, safetyRoot, repoRoot, blueprintPath, surfacesPath, externalBase string) {
