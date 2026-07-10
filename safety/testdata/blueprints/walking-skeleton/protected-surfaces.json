@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "manifest_id": "fixture:manifest/walking-skeleton",
+  "surfaces": [
+    {
+      "id": "fixture:surface/protected-config",
+      "logical_ref": "fixture:protected/config",
+      "seed": "synthetic-stable-v1"
+    }
+  ]
+}
