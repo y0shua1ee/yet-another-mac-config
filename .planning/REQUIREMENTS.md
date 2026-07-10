@@ -13,7 +13,7 @@
 - [x] **SAFE-04**：操作者可以在隔离 fixture 中验证配置；fixture 使用独立 HOME、XDG 和工具专用配置、数据、缓存、trust 及运行时根目录，不读取真实项目或真实全局状态。
 - [x] **SAFE-05**：自动测试默认关闭网络、自动安装、自动下载、自动修复和 trust mutation；只有明确 opt-in 的隔离 integration test 才能在临时根目录内产生状态。
 - [x] **SAFE-06**：live probe 只有在当前官方语义和隔离负路径测试都证明其不会写入、安装、下载或执行任意配置后才能进入 allowlist；否则不执行并返回 `unknown` 或 `manual-required`。
-- [ ] **SAFE-07**：测试 harness 在执行前后使用 sentinel 证明真实 HOME、全局工具状态、worktree、服务和仓库外状态未发生未授权变化。
+- [x] **SAFE-07**：测试 harness 在执行前后使用 sentinel 证明真实 HOME、全局工具状态、worktree、服务和仓库外状态未发生未授权变化。
 - [ ] **SAFE-08**：默认策略只报告 extra 或 unmanaged state，不自动执行 Homebrew cleanup/uninstall/zap、runtime 删除或其他 destructive convergence。
 
 ### 工具所有权与执行来源检查
@@ -200,7 +200,7 @@
 | SAFE-04 | Phase 1 | Complete |
 | SAFE-05 | Phase 1 | Complete |
 | SAFE-06 | Phase 1 | Complete |
-| SAFE-07 | Phase 1 | Pending |
+| SAFE-07 | Phase 1 | Complete |
 | SAFE-08 | Phase 1 | Pending |
 | OWN-01 | Phase 2 | Pending |
 | OWN-02 | Phase 2 | Pending |

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-07-10T16:35:44.355Z"
+last_updated: "2026-07-10T18:49:19.121Z"
 last_activity: 2026-07-10
 progress:
   total_phases: 13
   completed_phases: 0
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 ## Current Position
 
 Phase: 01 (safety-privacy-and-state-foundation) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-07-10
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [██████░░░░] 57%
 | Phase 01 P02 | 40 min | 2 tasks | 13 files |
 | Phase 01 P03 | 17 min | 2 tasks | 11 files |
 | Phase 01 P04 | 21 min | 2 tasks | 10 files |
+| Phase 01 P05 | 2h 3m | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,11 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Materialize the current synthetic executable inside fixture:path/bin and pass the tracked raw sample only through fixed in-memory child environment data. — This provides a real os/exec boundary without a shell, arbitrary argv, inherited environment, or raw temp file.
 - [Phase 01]: Require a frozen primary verdict before exact marker-owned fixture teardown or retention. — This keeps cleanup independent and monotonic: teardown ambiguity cannot turn any non-pass into pass.
 - [Phase 01]: Keep network and live capability validation-only in Phase 1, even when exact metadata is valid. — No HTTP, DNS, socket, cache-miss, shell, or live command executor exists; uncertainty remains manual-required or unknown in the requested tier.
+- [Phase 01]: Allow only the exact six logical refs across five closed domains; freeze manifest policy before observation and render only logical refs plus per-run opaque tokens. — This keeps protected scope closed, bounded, and free of physical identity or path disclosure.
+- [Phase 01]: Reserve covered-surfaces-unchanged-for-run for complete real evidence; synthetic evidence is structurally limited to synthetic-sentinel-passed. — A test double must never be able to manufacture a claim about actual host surfaces.
+- [Phase 01]: Require a private registry-issued source-bound capability plus current implementation and negative-suite digests before a real adapter can run. — Proof metadata alone can drift or be forged and therefore cannot authorize host observation.
+- [Phase 01]: Keep the tracked launchctl proof explicitly missing and return indeterminate/manual-required with exit 32 before any adapter or workload call. — Available public Apple material does not establish current no-side-effect semantics strongly enough for the required proof.
+- [Phase 01]: Deliver the controlled real-envelope mechanism in Plan 01-05 and leave complete phase-runner outer-envelope wiring to Plan 01-07. — This preserves the approved vertical plan boundary and prevents the standalone proof gate from being misrepresented as final phase wiring.
 
 ### Pending Todos
 
@@ -92,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-10T16:35:44.350Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-07-10T18:49:19.118Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
