@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-07-10T15:46:33.644Z"
+last_updated: "2026-07-10T16:35:44.355Z"
 last_activity: 2026-07-10
 progress:
   total_phases: 13
   completed_phases: 0
   total_plans: 7
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 ## Current Position
 
 Phase: 01 (safety-privacy-and-state-foundation) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-07-10
 
-Progress: [████░░░░░░] 43%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [████░░░░░░] 43%
 | Phase 01 P01 | 11 min | 2 tasks | 10 files |
 | Phase 01 P02 | 40 min | 2 tasks | 13 files |
 | Phase 01 P03 | 17 min | 2 tasks | 11 files |
+| Phase 01 P04 | 21 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Keep privacy independent of artifact internals and gate already schema-validated canonical candidates immediately before writes and renders. — This avoids an artifact/privacy import cycle while preserving the single pre-output gate.
 - [Phase 01]: Keep sentinel surface domains separate from the six persistent logical namespaces; physical resolver roots remain process-local. — This preserves D-08 and prevents stable machine identity or physical paths from entering public artifacts.
 - [Phase 01]: Materialize the current synthetic executable inside fixture:path/bin and pass the tracked raw sample only through fixed in-memory child environment data. — This provides a real os/exec boundary without a shell, arbitrary argv, inherited environment, or raw temp file.
+- [Phase 01]: Require a frozen primary verdict before exact marker-owned fixture teardown or retention. — This keeps cleanup independent and monotonic: teardown ambiguity cannot turn any non-pass into pass.
+- [Phase 01]: Keep network and live capability validation-only in Phase 1, even when exact metadata is valid. — No HTTP, DNS, socket, cache-miss, shell, or live command executor exists; uncertainty remains manual-required or unknown in the requested tier.
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-10T15:46:33.639Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-07-10T16:35:44.350Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
