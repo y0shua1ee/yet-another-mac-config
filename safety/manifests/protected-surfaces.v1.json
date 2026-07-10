@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "suite_id": "phase-1-default",
-  "test_id": "phase-1-safety",
+  "test_id": "phase-1-real-envelope",
   "surfaces": [
     {
       "surface_id": "worktree-tracked",

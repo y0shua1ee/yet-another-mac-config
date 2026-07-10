@@ -14,6 +14,38 @@ manual_required() {
   exit 32
 }
 
+run_with_deadline() {
+  local seconds="$1"
+  shift
+  /usr/bin/perl -MPOSIX=':sys_wait_h' -e '
+    use strict;
+    use warnings;
+    my $seconds = shift @ARGV;
+    my $pid = fork();
+    exit 70 unless defined $pid;
+    if ($pid == 0) {
+      setpgrp(0, 0);
+      exec @ARGV;
+      exit 127;
+    }
+    my $timed_out = 0;
+    $SIG{ALRM} = sub {
+      $timed_out = 1;
+      kill "TERM", -$pid;
+      select undef, undef, undef, 0.2;
+      kill "KILL", -$pid;
+    };
+    alarm $seconds;
+    waitpid($pid, 0);
+    my $status = $?;
+    alarm 0;
+    exit 124 if $timed_out;
+    exit WEXITSTATUS($status) if WIFEXITED($status);
+    exit 128 + WTERMSIG($status) if WIFSIGNALED($status);
+    exit 70;
+  ' "${seconds}" "$@"
+}
+
 if [[ $# -lt 1 ]]; then
   usage
   exit 64
@@ -42,6 +74,25 @@ case "${SCOPE}" in
     exit 64
     ;;
 esac
+
+# task 与 wave 各自共享一个外层 wall deadline；编译、list、测试及子 runner 都计入同一预算。
+readonly RUNNER_STARTED_SECONDS="${SECONDS}"
+if [[ "${SCOPE}" == 'task' ]]; then
+  readonly RUNNER_BUDGET_SECONDS=9
+elif [[ "${SCOPE}" == 'wave' ]]; then
+  readonly RUNNER_BUDGET_SECONDS=29
+else
+  readonly RUNNER_BUDGET_SECONDS=60
+fi
+
+run_with_runner_deadline() {
+  local elapsed=$((SECONDS - RUNNER_STARTED_SECONDS))
+  local remaining=$((RUNNER_BUDGET_SECONDS - elapsed))
+  if [[ "${remaining}" -le 0 ]]; then
+    return 124
+  fi
+  run_with_deadline "${remaining}" "$@"
+}
 
 if ! command -v go >/dev/null 2>&1; then
   manual_required
@@ -142,7 +193,7 @@ run_go_suite() {
   local output=''
   local status=0
 
-  output="$(cd -- "${SAFETY_ROOT}" && "${OFFLINE_ENV[@]}" "${GO_BIN}" test -count=1 -run "${test_pattern}" "${package_path}" 2>&1)" || status=$?
+  output="$(cd -- "${SAFETY_ROOT}" && run_with_runner_deadline "${OFFLINE_ENV[@]}" "${GO_BIN}" test -count=1 -timeout=8s -run "${test_pattern}" "${package_path}" 2>&1)" || status=$?
 
   if (( ${#output} > 65536 )); then
     printf '%s\n' '{"status":"harness-error","reason":"bounded-output-exceeded"}' >&2
@@ -162,7 +213,7 @@ run_exact_go_suite() {
   local listing=''
   local selected=0
 
-  listing="$(cd -- "${SAFETY_ROOT}" && "${OFFLINE_ENV[@]}" "${GO_BIN}" test -list "${test_pattern}" "${package_path}" 2>&1)" || {
+  listing="$(cd -- "${SAFETY_ROOT}" && run_with_runner_deadline "${OFFLINE_ENV[@]}" "${GO_BIN}" test -timeout=8s -list "${test_pattern}" "${package_path}" 2>&1)" || {
     printf '%s\n' '{"status":"harness-error","reason":"test-selection-failed"}' >&2
     return 70
   }
@@ -236,8 +287,8 @@ run_artifact_lineage() {
 
 run_artifact_contracts_wave() {
   # 每个 task 由新的子 runner 建立独立外部根，禁止复用 fixture 或 store。
-  /bin/bash "${SCRIPT_DIR}/test.sh" task artifact-kinds >/dev/null
-  /bin/bash "${SCRIPT_DIR}/test.sh" task artifact-lineage >/dev/null
+  run_with_runner_deadline /bin/bash "${SCRIPT_DIR}/test.sh" task artifact-kinds >/dev/null
+  run_with_runner_deadline /bin/bash "${SCRIPT_DIR}/test.sh" task artifact-lineage >/dev/null
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"artifact-contracts"}'
 }
 
@@ -293,8 +344,8 @@ run_bounded_capture() {
 
 run_privacy_wave() {
   # 两个已完成 handler 各自启动新的子 runner，绝不复用外部根或 store。
-  /bin/bash "${SCRIPT_DIR}/test.sh" task privacy-boundary >/dev/null
-  /bin/bash "${SCRIPT_DIR}/test.sh" task bounded-capture >/dev/null
+  run_with_runner_deadline /bin/bash "${SCRIPT_DIR}/test.sh" task privacy-boundary >/dev/null
+  run_with_runner_deadline /bin/bash "${SCRIPT_DIR}/test.sh" task bounded-capture >/dev/null
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"privacy"}'
 }
 
@@ -350,8 +401,8 @@ run_tier_network_policy() {
 
 run_fixture_policy_wave() {
   # 两个已完成 handler 各自启动新的子 runner，保持 tier、fixture 与 cache 互不复用。
-  /bin/bash "${SCRIPT_DIR}/test.sh" task fixture-lifecycle >/dev/null
-  /bin/bash "${SCRIPT_DIR}/test.sh" task tier-network-policy >/dev/null
+  run_with_runner_deadline /bin/bash "${SCRIPT_DIR}/test.sh" task fixture-lifecycle >/dev/null
+  run_with_runner_deadline /bin/bash "${SCRIPT_DIR}/test.sh" task tier-network-policy >/dev/null
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"fixture-policy"}'
 }
 
@@ -405,6 +456,55 @@ run_sentinel_verdicts() {
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"sentinel-verdicts"}'
 }
 
+run_real_sentinel_envelope() {
+  local sentinel_status=0
+  local e2e_status=0
+  local sentinel_output=''
+  local e2e_output=''
+
+  run_exact_go_suite \
+    './internal/sentinel' \
+    '^TestRealSentinelEnvelope$' \
+    'TestRealSentinelEnvelope' \
+    'real-sentinel-envelope-unit' \
+    'EXPECTED_RED: real-sentinel-envelope-behavior-missing' >/dev/null 2>&1 || sentinel_status=$?
+  sentinel_output="${TEST_OUTPUT:-}"
+
+  run_exact_go_suite \
+    './internal/e2e' \
+    '^TestRealSentinelCLI$' \
+    'TestRealSentinelCLI' \
+    'real-sentinel-envelope-e2e' \
+    'EXPECTED_RED: real-sentinel-envelope-behavior-missing' >/dev/null 2>&1 || e2e_status=$?
+  e2e_output="${TEST_OUTPUT:-}"
+
+  if [[ "${sentinel_status}" -eq 70 || "${e2e_status}" -eq 70 ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"real-sentinel-envelope-selection-failed"}' >&2
+    return 70
+  fi
+  if [[ "${sentinel_status}" -ne 0 && "${sentinel_output}" != *'EXPECTED_RED: real-sentinel-envelope-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"real-sentinel-envelope-unit-contract-failed"}' >&2
+    return 1
+  fi
+  if [[ "${e2e_status}" -ne 0 && "${e2e_output}" != *'EXPECTED_RED: real-sentinel-envelope-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"real-sentinel-envelope-e2e-contract-failed"}' >&2
+    return 1
+  fi
+  if [[ "${sentinel_status}" -ne 0 || "${e2e_status}" -ne 0 ]]; then
+    printf '%s\n' '{"status":"expected-red-observed","suite":"real-sentinel-envelope"}' >&2
+    return 1
+  fi
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"real-sentinel-envelope"}'
+}
+
+run_sentinels_wave() {
+  # 三个已完成 handler 各自启动新的子 runner，外部根与 HMAC key 不复用。
+  run_with_runner_deadline /bin/bash "${SCRIPT_DIR}/test.sh" task sentinel-manifest >/dev/null
+  run_with_runner_deadline /bin/bash "${SCRIPT_DIR}/test.sh" task sentinel-verdicts >/dev/null
+  run_with_runner_deadline /bin/bash "${SCRIPT_DIR}/test.sh" task real-sentinel-envelope >/dev/null
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"sentinels"}'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -436,6 +536,9 @@ case "${SCOPE}:${SUITE}" in
   task:sentinel-verdicts)
     run_sentinel_verdicts
     ;;
+  task:real-sentinel-envelope)
+    run_real_sentinel_envelope
+    ;;
   wave:skeleton)
     run_green_walking_skeleton
     ;;
@@ -447,6 +550,9 @@ case "${SCOPE}:${SUITE}" in
     ;;
   wave:fixture-policy)
     run_fixture_policy_wave
+    ;;
+  wave:sentinels)
+    run_sentinels_wave
     ;;
   *)
     printf '%s\n' '{"status":"harness-error","reason":"unsupported-suite"}' >&2

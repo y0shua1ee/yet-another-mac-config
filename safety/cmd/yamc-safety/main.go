@@ -8,6 +8,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"syscall"
 	"time"
 
 	"example.invalid/yamc/safety/internal/artifact"
@@ -60,9 +61,10 @@ type testPolicyFlags struct {
 }
 
 type sentinelVerifyFlags struct {
-	mode         string
-	manifestPath string
-	fixtureRoot  string
+	mode                string
+	manifestPath        string
+	fixtureRoot         string
+	adapterManifestPath string
 }
 
 type sentinelEvaluateFlags struct {
@@ -129,6 +131,9 @@ func runSentinelVerify(arguments []string, stdout, stderr io.Writer) int {
 		writeSafeError(stderr, "SENTINEL_MANIFEST_REJECTED")
 		return 2
 	}
+	if parsed.mode == "real" {
+		return runRealSentinelProofGate(parsed, manifest, stdout, stderr)
+	}
 	frozen, err := sentinel.FreezeProtectedManifest(manifest)
 	if err != nil {
 		writeSafeError(stderr, "SENTINEL_MANIFEST_REJECTED")
@@ -173,6 +178,26 @@ func runSentinelVerify(arguments []string, stdout, stderr io.Writer) int {
 		return 70
 	}
 	return exitCode
+}
+
+func runRealSentinelProofGate(parsed sentinelVerifyFlags, manifest sentinel.ProtectedManifest, stdout, stderr io.Writer) int {
+	data, err := readBoundedArtifact(parsed.adapterManifestPath)
+	if err != nil {
+		writeSafeError(stderr, "REAL_ADAPTER_MANIFEST_REJECTED")
+		return sentinel.ExitHarnessError
+	}
+	registry, err := sentinel.LoadRealAdapterRegistry(data, time.Now())
+	if err != nil {
+		writeSafeError(stderr, "REAL_ADAPTER_MANIFEST_REJECTED")
+		return sentinel.ExitHarnessError
+	}
+	assessment := registry.Assess(manifest)
+	assessment = sentinel.RequireControlledRealEnvelope(assessment)
+	if err := renderSafe(stdout, assessment); err != nil {
+		writeSafeError(stderr, "OUTPUT_REJECTED")
+		return 70
+	}
+	return assessment.ExitCode
 }
 
 func runSentinelEvaluate(arguments []string, stdout, stderr io.Writer) int {
@@ -545,7 +570,20 @@ func parseSentinelVerifyFlags(arguments []string) (sentinelVerifyFlags, error) {
 	flags.StringVar(&parsed.mode, "mode", "", "")
 	flags.StringVar(&parsed.manifestPath, "manifest", "", "")
 	flags.StringVar(&parsed.fixtureRoot, "fixture-root", "", "")
-	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.mode != "synthetic" || parsed.manifestPath == "" || parsed.fixtureRoot == "" {
+	flags.StringVar(&parsed.adapterManifestPath, "adapter-manifest", "", "")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.manifestPath == "" {
+		return sentinelVerifyFlags{}, errors.New("arguments rejected")
+	}
+	switch parsed.mode {
+	case "synthetic":
+		if parsed.fixtureRoot == "" || parsed.adapterManifestPath != "" {
+			return sentinelVerifyFlags{}, errors.New("arguments rejected")
+		}
+	case "real":
+		if parsed.fixtureRoot != "" || parsed.adapterManifestPath == "" {
+			return sentinelVerifyFlags{}, errors.New("arguments rejected")
+		}
+	default:
 		return sentinelVerifyFlags{}, errors.New("arguments rejected")
 	}
 	return parsed, nil
@@ -626,13 +664,17 @@ func readLineageGraph(parsed storeFlags) (artifact.LineageGraph, error) {
 }
 
 func readBoundedArtifact(path string) ([]byte, error) {
-	file, err := os.Open(path)
+	before, err := os.Lstat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("artifact rejected")
+	}
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("artifact rejected")
 	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil || !info.Mode().IsRegular() || !os.SameFile(before, info) {
 		return nil, errors.New("artifact rejected")
 	}
 	var buffer bytes.Buffer
@@ -640,6 +682,10 @@ func readBoundedArtifact(path string) ([]byte, error) {
 		return nil, errors.New("artifact rejected")
 	}
 	if buffer.Len() > maxArtifactBytes {
+		return nil, errors.New("artifact rejected")
+	}
+	namedAfter, err := os.Lstat(path)
+	if err != nil || !namedAfter.Mode().IsRegular() || namedAfter.Mode()&os.ModeSymlink != 0 || !os.SameFile(info, namedAfter) || info.Size() != namedAfter.Size() || info.Mode() != namedAfter.Mode() || !info.ModTime().Equal(namedAfter.ModTime()) {
 		return nil, errors.New("artifact rejected")
 	}
 	return buffer.Bytes(), nil

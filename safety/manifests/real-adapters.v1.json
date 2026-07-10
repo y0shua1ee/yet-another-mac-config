@@ -1,0 +1,138 @@
+{
+  "schema_version": "1.0.0",
+  "adapters": [
+    {
+      "adapter_id": "git-worktree-readonly-v1",
+      "version": "1.0.0",
+      "implementation_digest": "sha256:592ea1f255c7ca8a9c3a5e6da4664ebeccc9363aada060c05da068a05409e566",
+      "surface_domain": "worktree",
+      "logical_refs": ["repo:sentinel/worktree/tracked"],
+      "proof_state": "current",
+      "official_sources": [
+        { "url": "https://git-scm.com/docs/git-status", "boundary": "porcelain-v2 reports tracked index and worktree differences; untracked-files=no excludes untracked enumeration" },
+        { "url": "https://git-scm.com/docs/git", "boundary": "GIT_OPTIONAL_LOCKS=0 prevents optional lock-taking status refresh side effects" },
+        { "url": "https://git-scm.com/docs/git-config", "boundary": "core.fsmonitor=false is an invocation-local disablement under the minimum supported Git version" }
+      ],
+      "reviewed_at": "2026-07-11",
+      "valid_until": "2026-08-10",
+      "negative_suite": { "suite_id": "negative.git-status.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:0aa22efd75337ed91ac8b4f487f1fcfc7994950c7db340db92449f104d99e304", "digest": "sha256:12b7c8b434a82a61830e9d28fd2d0b4c98fcf8338bc3d634ad03a00e28cc54df", "status": "passed" },
+      "invocations": [
+        { "kind": "executable", "executable": "git", "argv": ["--no-lazy-fetch", "--version"], "environment": ["GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin"] },
+        { "kind": "executable", "executable": "git", "argv": ["--no-lazy-fetch", "-c", "core.fsmonitor=false", "status", "--porcelain=v2", "--untracked-files=no", "--ignore-submodules=all"], "environment": ["GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"] },
+        { "kind": "executable", "executable": "git", "argv": ["--no-lazy-fetch", "ls-files", "-z", "--stage"], "environment": ["GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"] }
+      ],
+      "limits": { "max_files": 4096, "max_bytes": 16777216, "timeout_ms": 5000, "max_processes": 3 },
+      "statuses": ["complete", "indeterminate", "manual-required"],
+      "network_policy": "forbidden",
+      "shell_policy": "forbidden"
+    },
+    {
+      "adapter_id": "git-index-readonly-v1",
+      "version": "1.0.0",
+      "implementation_digest": "sha256:592ea1f255c7ca8a9c3a5e6da4664ebeccc9363aada060c05da068a05409e566",
+      "surface_domain": "worktree",
+      "logical_refs": ["repo:sentinel/worktree/index"],
+      "proof_state": "current",
+      "official_sources": [
+        { "url": "https://git-scm.com/docs/git-ls-files", "boundary": "ls-files --stage reports index mode object and stage; -z preserves exact record boundaries" },
+        { "url": "https://git-scm.com/docs/git", "boundary": "GIT_OPTIONAL_LOCKS=0 disables optional lock-taking sub-operations" }
+      ],
+      "reviewed_at": "2026-07-11",
+      "valid_until": "2026-08-10",
+      "negative_suite": { "suite_id": "negative.git-ls-files.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:0aa22efd75337ed91ac8b4f487f1fcfc7994950c7db340db92449f104d99e304", "digest": "sha256:a4ccb8d4ab700fafbae1ccefc676500040a3fd8946f078798b31ed01be8f80d6", "status": "passed" },
+      "invocations": [
+        { "kind": "executable", "executable": "git", "argv": ["--no-lazy-fetch", "--version"], "environment": ["GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin"] },
+        { "kind": "executable", "executable": "git", "argv": ["--no-lazy-fetch", "ls-files", "-z", "--stage"], "environment": ["GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"] }
+      ],
+      "limits": { "max_files": 4096, "max_bytes": 16777216, "timeout_ms": 5000, "max_processes": 2 },
+      "statuses": ["complete", "indeterminate", "manual-required"],
+      "network_policy": "forbidden",
+      "shell_policy": "forbidden"
+    },
+    {
+      "adapter_id": "go-lstat-file-v1",
+      "version": "1.0.0",
+      "implementation_digest": "sha256:592ea1f255c7ca8a9c3a5e6da4664ebeccc9363aada060c05da068a05409e566",
+      "surface_domain": "named-home",
+      "logical_refs": ["home:.zshrc"],
+      "proof_state": "current",
+      "official_sources": [
+        { "url": "https://pkg.go.dev/os#OpenRoot", "boundary": "Rooted read-only operations reject path traversal and symbolic-link escape outside the named root" },
+        { "url": "https://pkg.go.dev/os#Lstat", "boundary": "Lstat describes the named entry without following a final symbolic link" },
+        { "url": "https://pkg.go.dev/os#Open", "boundary": "Open returns an O_RDONLY descriptor" },
+        { "url": "https://pkg.go.dev/os#SameFile", "boundary": "SameFile binds pre-open and opened file identity for bounded regular-file reads" }
+      ],
+      "reviewed_at": "2026-07-11",
+      "valid_until": "2026-08-10",
+      "negative_suite": { "suite_id": "negative.go-lstat-file.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:0aa22efd75337ed91ac8b4f487f1fcfc7994950c7db340db92449f104d99e304", "digest": "sha256:21b0c8a6753f7d191c1eea1ee685b8ef2d14e4b3df2e4f7cc1b30ad4782c812b", "status": "passed" },
+      "invocations": [{ "kind": "go-api", "api": "os.OpenRoot+Root.Lstat+Root.OpenFile+Root.Readlink+File.Stat+os.SameFile+io.LimitReader", "argv": [], "environment": [] }],
+      "limits": { "max_files": 1, "max_bytes": 1048576, "timeout_ms": 1000, "max_processes": 0 },
+      "statuses": ["complete", "indeterminate", "manual-required"],
+      "network_policy": "forbidden",
+      "shell_policy": "forbidden"
+    },
+    {
+      "adapter_id": "go-bounded-tree-v1",
+      "version": "1.0.0",
+      "implementation_digest": "sha256:592ea1f255c7ca8a9c3a5e6da4664ebeccc9363aada060c05da068a05409e566",
+      "surface_domain": "manager-root",
+      "logical_refs": ["home:sentinel/manager/mise-data"],
+      "proof_state": "current",
+      "official_sources": [
+        { "url": "https://pkg.go.dev/os#OpenRoot", "boundary": "Rooted operations keep every traversed name beneath the exact named manager root" },
+        { "url": "https://pkg.go.dev/io/fs#WalkDir", "boundary": "WalkDir visits one named bounded tree without following symbolic links" },
+        { "url": "https://pkg.go.dev/os#Lstat", "boundary": "Lstat rejects symbolic-link substitution before content reads" },
+        { "url": "https://pkg.go.dev/os#Open", "boundary": "Open supplies O_RDONLY regular-file descriptors inside the bounded tree" }
+      ],
+      "reviewed_at": "2026-07-11",
+      "valid_until": "2026-08-10",
+      "negative_suite": { "suite_id": "negative.go-bounded-tree.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:0aa22efd75337ed91ac8b4f487f1fcfc7994950c7db340db92449f104d99e304", "digest": "sha256:e6b245b6de8875420c1578606da903111d58df8aa8706ee4f8553e504b79f445", "status": "passed" },
+      "invocations": [{ "kind": "go-api", "api": "os.OpenRoot+io/fs.WalkDir+Root.Lstat+Root.OpenFile+Root.Readlink+File.Stat+os.SameFile+io.LimitReader", "argv": [], "environment": [] }],
+      "limits": { "max_files": 2048, "max_bytes": 16777216, "timeout_ms": 5000, "max_processes": 0 },
+      "statuses": ["complete", "indeterminate", "manual-required"],
+      "network_policy": "forbidden",
+      "shell_policy": "forbidden"
+    },
+    {
+      "adapter_id": "launchctl-print-service-v1",
+      "version": "1.0.0",
+      "implementation_digest": "sha256:592ea1f255c7ca8a9c3a5e6da4664ebeccc9363aada060c05da068a05409e566",
+      "surface_domain": "service",
+      "logical_refs": ["profile:sentinel/service/homebrew-mxcl-nginx"],
+      "proof_state": "missing",
+      "official_sources": [
+        { "url": "https://github.com/apple-oss-distributions/launchd/blob/main/man/launchctl.1", "boundary": "the available Apple manual is dated 2009 and does not specify modern print target semantics or a no-side-effect contract" }
+      ],
+      "reviewed_at": "2026-07-11",
+      "valid_until": null,
+      "negative_suite": { "suite_id": "negative.launchctl-print.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:0aa22efd75337ed91ac8b4f487f1fcfc7994950c7db340db92449f104d99e304", "status": "missing" },
+      "invocations": [{ "kind": "executable", "executable": "launchctl", "argv": ["print", "gui/<uid>/homebrew.mxcl.nginx"], "environment": [] }],
+      "limits": { "max_files": 1, "max_bytes": 65536, "timeout_ms": 2000, "max_processes": 1 },
+      "statuses": ["complete", "indeterminate", "manual-required"],
+      "network_policy": "forbidden",
+      "shell_policy": "forbidden"
+    },
+    {
+      "adapter_id": "go-system-shells-file-v1",
+      "version": "1.0.0",
+      "implementation_digest": "sha256:592ea1f255c7ca8a9c3a5e6da4664ebeccc9363aada060c05da068a05409e566",
+      "surface_domain": "named-target",
+      "logical_refs": ["profile:sentinel/named-target/system-shells"],
+      "proof_state": "current",
+      "official_sources": [
+        { "url": "https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/getusershell.3.html", "boundary": "Apple identifies /etc/shells as the named shells database file, without promising existence or contents" },
+        { "url": "https://pkg.go.dev/os#OpenRoot", "boundary": "Rooted read-only operations constrain the exact public target beneath its named parent" },
+        { "url": "https://pkg.go.dev/os#Lstat", "boundary": "Lstat rejects final symlink substitution for the exact named file" },
+        { "url": "https://pkg.go.dev/os#Open", "boundary": "Open reads a bounded regular file through O_RDONLY" }
+      ],
+      "reviewed_at": "2026-07-11",
+      "valid_until": "2026-08-10",
+      "negative_suite": { "suite_id": "negative.go-system-shells.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:0aa22efd75337ed91ac8b4f487f1fcfc7994950c7db340db92449f104d99e304", "digest": "sha256:fa34be48a3b006497f7d615ea5a98b3c892ff77f3b817ce2ee30065688ccf9bd", "status": "passed" },
+      "invocations": [{ "kind": "go-api", "api": "os.OpenRoot+Root.Lstat+Root.OpenFile+Root.Readlink+File.Stat+os.SameFile+io.LimitReader", "argv": [], "environment": [] }],
+      "limits": { "max_files": 1, "max_bytes": 1048576, "timeout_ms": 1000, "max_processes": 0 },
+      "statuses": ["complete", "indeterminate", "manual-required"],
+      "network_policy": "forbidden",
+      "shell_policy": "forbidden"
+    }
+  ]
+}
