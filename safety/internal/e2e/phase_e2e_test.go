@@ -331,6 +331,9 @@ func testPhaseRunnerContract(t *testing.T) {
 		"RUNNER_BUDGET_SECONDS=47",
 		"RUNNER_BUDGET_SECONDS=305",
 		"YAMC_RUNNER_WATCHDOG_PID",
+		"YAMC_RUNNER_WATCHDOG_FD",
+		"YAMC_RUNNER_WATCHDOG_NONCE",
+		"FD_CLOEXEC",
 		"YAMC_RUNNER_TEST_BUDGET_MS",
 		"runner_test_block setup",
 		"runner_test_block docs",
@@ -384,10 +387,13 @@ func testRunnerEntryDeadlines(t *testing.T) {
 		name       string
 		arguments  []string
 		blockPoint string
+		guardMode  string
 	}{
 		{name: "setup", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup"},
 		{name: "docs", arguments: []string{"task", "docs-and-phase-gate"}, blockPoint: "docs"},
 		{name: "child dispatch", arguments: []string{"wave", "artifact-contracts"}, blockPoint: "child"},
+		{name: "forged ambient guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "forged"},
+		{name: "stale ambient guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "stale"},
 	}
 
 	for _, testCase := range cases {
@@ -401,6 +407,16 @@ func testRunnerEntryDeadlines(t *testing.T) {
 
 			command := exec.Command("/bin/bash", append([]string{runnerPath}, testCase.arguments...)...)
 			command.Env = runnerDeadlineEnvironment(testCase.blockPoint, markerPath)
+			switch testCase.guardMode {
+			case "forged":
+				command.Env = append(command.Env, "YAMC_RUNNER_WATCHDOG_PID="+strconv.Itoa(os.Getpid()))
+			case "stale":
+				command.Env = append(command.Env,
+					"YAMC_RUNNER_WATCHDOG_PID=1",
+					"YAMC_RUNNER_WATCHDOG_FD=9",
+					"YAMC_RUNNER_WATCHDOG_NONCE="+strings.Repeat("a", 64),
+				)
+			}
 			var combined bytes.Buffer
 			command.Stdout = &combined
 			command.Stderr = &combined
@@ -443,7 +459,9 @@ func runnerDeadlineEnvironment(blockPoint, markerPath string) []string {
 			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_BUDGET_MS=") ||
 			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_BLOCK=") ||
 			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_MARKER=") ||
-			strings.HasPrefix(entry, "YAMC_RUNNER_WATCHDOG_PID=") {
+			strings.HasPrefix(entry, "YAMC_RUNNER_WATCHDOG_PID=") ||
+			strings.HasPrefix(entry, "YAMC_RUNNER_WATCHDOG_FD=") ||
+			strings.HasPrefix(entry, "YAMC_RUNNER_WATCHDOG_NONCE=") {
 			continue
 		}
 		environment = append(environment, entry)

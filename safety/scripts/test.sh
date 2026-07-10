@@ -17,22 +17,51 @@ if [[ "${YAMC_RUNNER_TEST_MODE:-}" == '1' && "${YAMC_RUNNER_TEST_BUDGET_MS:-}" =
   runner_watchdog_budget_ms="${YAMC_RUNNER_TEST_BUDGET_MS}"
 fi
 
-if [[ "${YAMC_RUNNER_WATCHDOG_PID:-}" != "${PPID}" ]]; then
-  exec /usr/bin/perl -MPOSIX=':sys_wait_h' -MTime::HiRes='alarm,sleep,time' -e '
+runner_watchdog_authenticated=0
+runner_watchdog_received=''
+if [[ "${YAMC_RUNNER_WATCHDOG_PID:-}" == "${PPID}" && \
+      "${YAMC_RUNNER_WATCHDOG_FD:-}" =~ ^[0-9]{1,3}$ && \
+      "${YAMC_RUNNER_WATCHDOG_NONCE:-}" =~ ^[0-9a-f]{64}$ ]] && \
+   (( YAMC_RUNNER_WATCHDOG_FD >= 3 && YAMC_RUNNER_WATCHDOG_FD <= 255 )); then
+  if IFS= read -r -t 1 -u "${YAMC_RUNNER_WATCHDOG_FD}" runner_watchdog_received 2>/dev/null && \
+     [[ "${runner_watchdog_received}" == "${YAMC_RUNNER_WATCHDOG_NONCE}" ]]; then
+    runner_watchdog_authenticated=1
+  fi
+fi
+
+if [[ "${runner_watchdog_authenticated}" -ne 1 ]]; then
+  unset YAMC_RUNNER_WATCHDOG_PID YAMC_RUNNER_WATCHDOG_FD YAMC_RUNNER_WATCHDOG_NONCE
+  exec /usr/bin/perl -MFcntl='F_GETFD,F_SETFD,FD_CLOEXEC' -MPOSIX=':sys_wait_h' -MTime::HiRes='alarm,sleep,time' -e '
     use strict;
     use warnings;
     my $budget_ms = shift @ARGV;
     my $script = shift @ARGV;
     my $grace = 0.50;
     my $deadline = time() + ($budget_ms / 1000.0);
+    open my $random, "<:raw", "/dev/urandom" or exit 70;
+    my $random_bytes = "";
+    exit 70 unless sysread($random, $random_bytes, 32) == 32;
+    close $random;
+    my $nonce = unpack("H*", $random_bytes);
+    pipe(my $guard_read, my $guard_write) or exit 70;
+    my $guard_fd = fileno($guard_read);
+    my $guard_flags = fcntl($guard_read, F_GETFD, 0);
+    exit 70 unless defined $guard_flags && fcntl($guard_read, F_SETFD, $guard_flags & ~FD_CLOEXEC);
+    my $guard_line = $nonce . "\n";
+    exit 70 unless syswrite($guard_write, $guard_line) == length($guard_line);
     my $pid = fork();
     exit 70 unless defined $pid;
     if ($pid == 0) {
+      close $guard_write;
       exit 70 unless setpgrp(0, 0);
       $ENV{YAMC_RUNNER_WATCHDOG_PID} = getppid();
+      $ENV{YAMC_RUNNER_WATCHDOG_FD} = $guard_fd;
+      $ENV{YAMC_RUNNER_WATCHDOG_NONCE} = $nonce;
       exec "/bin/bash", $script, @ARGV;
       exit 127;
     }
+    close $guard_read;
+    close $guard_write;
     my $timed_out = 0;
     my $signal_exit = 0;
     my $stopping = 0;
@@ -80,7 +109,8 @@ if [[ "${YAMC_RUNNER_WATCHDOG_PID:-}" != "${PPID}" ]]; then
   ' "${runner_watchdog_budget_ms}" "${BASH_SOURCE[0]}" "$@"
 fi
 readonly RUNNER_WATCHDOG_PID="${YAMC_RUNNER_WATCHDOG_PID}"
-unset runner_watchdog_budget_ms
+unset runner_watchdog_budget_ms runner_watchdog_authenticated runner_watchdog_received
+unset YAMC_RUNNER_WATCHDOG_PID YAMC_RUNNER_WATCHDOG_FD YAMC_RUNNER_WATCHDOG_NONCE
 
 # 此入口只运行固定的离线 Go 测试，不接受任意命令或隐式更高权限模式。
 readonly SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
