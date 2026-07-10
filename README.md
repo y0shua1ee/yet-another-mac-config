@@ -18,6 +18,7 @@ My Mac config
 | `.config/typora` | Typora 自定义主题 |
 | `.config/yazi` | Yazi 文件管理器及插件 |
 | `.hammerspoon` | Hammerspoon 自动化（含 `hs.ipc` CLI 控制） |
+| `safety/` | 离线安全验证控制面（仓库外 fixture/store、隐私 gate、sentinel 与 scoped readiness report） |
 | `zsh/.zshrc` | Zsh 备用软链接入口（当前主路径由 Home Manager 的 `nix/modules/zsh.nix` 接管；二者共享 `zsh/shared.zsh`） |
 | `flake.nix` + `nix/` | 可选的渐进式 Nix 路线，用来在新机上更快补齐部分运行时与系统偏好；覆盖范围与启用方式见 [`nix/README.md`](nix/README.md) |
 
@@ -35,6 +36,23 @@ My Mac config
 5. 脚本会询问是否将 `zsh/.zshrc` 软链接到 `~/.zshrc`。这是非 Nix / Home Manager 场景的备用入口；当前 Nix 路线会由 Home Manager 生成 `~/.zshrc`。API 密钥、项目变量等隐私内容应写入 `~/.zshrc.local`（不纳入版本控制），会在 zsh 初始化末尾自动加载。
 6. 脚本会检测 `.config/tmux` 是否缺少 `tmux.conf`，如果缺少则提示安装 [oh-my-tmux](https://github.com/gpakosz/.tmux)，自动克隆到 `~/.local/share/tmux/oh-my-tmux` 并创建软链接。
 7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`。同步前先用 `brew install --cask hammerspoon` 安装 app，同步后仍需在「系统设置 → 隐私与安全性 → 辅助功能」中授予 Hammerspoon 权限，否则 `init.lua` 里的事件 tap 与快捷键不会生效；`Ctrl+Alt+T` 快捷键还依赖 Ghostty。当前配置会加载 `hs.ipc`，Hammerspoon 启动后可用 `/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs -c 'hs.reload()'` 远程刷新配置。Nix 路线下 cask 与字体已声明化，完整激活流程见 [`nix/README.md`](nix/README.md)。
+
+## 安全验证控制面（Phase 1）
+
+`safety/` 用来离线验证仓库声明、synthetic fixture、artifact lineage、隐私边界与有限 readiness claim。它不会安装、更新、激活、修复或清理当前 Mac；本仓库始终是期望状态的 source of truth，真实机器只是以后经用户确认的 activation target。
+
+需要本机已经有可用的 Go；缺失时 runner 会返回 `manual-required` / `32`，不会联网下载或自动安装工具链。常用命令：
+
+```bash
+./safety/scripts/test.sh task phase-e2e
+./safety/scripts/test.sh task docs-and-phase-gate
+./safety/scripts/test.sh wave phase-integration
+./safety/scripts/test.sh phase
+```
+
+前三条分别是完整 E2E task、纯结构文档 task 和聚合这两个 task 的最终 wave；完整 phase 必须用第四条单独运行。runner 使用空白 allowlist 环境和仓库外的新建临时根，网络默认 denied，生成的 fixture、Go cache、manager roots 与 artifact store 都不写入仓库。
+
+当前 service surface 所需的 `launchctl print` isolated negative proof 尚未纳入 tracked manifest，因此 current-host 路径会在任何真实 adapter 或 workload 之前停止为 `manual-required` / `indeterminate`。现有完整 outer sequence 与 `covered-surfaces-unchanged-for-run` 只由 proof-valid isolated doubles 验证，不表示当前 Mac 已通过，也不表示整机、多机或重装恢复已经验证。详细契约见 [`safety/README.md`](safety/README.md)。
 
 ## Ghostty
 
@@ -153,6 +171,8 @@ brew services restart <name>    # 重启服务
 - `.config/tmux/tmux.conf`：oh-my-tmux 主配置的软链接，指向本地克隆路径，机器相关。
 - `.config/ghostty/*.bak`：Ghostty 配置备份文件。
 - `.DS_Store`：macOS 自动生成的目录元数据文件。
+
+Safety runner 的 fixture、artifact store、隔离 HOME/XDG、Go cache 与 manager roots 也只存在于仓库外的运行时解析目录。它们默认在 verdict 冻结后按 ownership marker 删除；若运行前显式保留，也仍是本机临时状态，不应复制进仓库或用 broad `.gitignore` / Gitleaks 例外掩盖。
 
 `setup_mac.sh` 只会处理 Git 已跟踪的 `.config` 目录，因此这些本地忽略目录不会出现在同步提示里。
 

@@ -781,6 +781,69 @@ run_phase_e2e() {
     'EXPECTED_RED: phase-integration-behavior-missing'
 }
 
+docs_gate_error() {
+  local reason="$1"
+  printf '{"status":"harness-error","reason":"%s"}\n' "${reason}" >&2
+}
+
+run_docs_and_phase_gate() {
+  # 文档 gate 只检查仓库拥有的固定路径与固定文字，不接受调用方提供路径、命令或匹配式。
+  if [[ ! -f "${SAFETY_ROOT}/README.md" || -L "${SAFETY_ROOT}/README.md" ]]; then
+    docs_gate_error 'safety-readme-invalid'
+    return 1
+  fi
+  if [[ ! -f "${SAFETY_ROOT}/CLAUDE.md" || -L "${SAFETY_ROOT}/CLAUDE.md" ]]; then
+    docs_gate_error 'safety-guidance-invalid'
+    return 1
+  fi
+  if [[ ! -L "${SAFETY_ROOT}/AGENTS.md" || "$(/usr/bin/readlink "${SAFETY_ROOT}/AGENTS.md")" != 'CLAUDE.md' ]]; then
+    docs_gate_error 'safety-agents-symlink-invalid'
+    return 1
+  fi
+  if [[ ! -f "${SAFETY_ROOT}/../README.md" || -L "${SAFETY_ROOT}/../README.md" ]]; then
+    docs_gate_error 'root-readme-invalid'
+    return 1
+  fi
+
+  /usr/bin/grep -Fq 'covered-surfaces-unchanged-for-run' "${SAFETY_ROOT}/README.md" || {
+    docs_gate_error 'safety-readme-claim-boundary-missing'
+    return 1
+  }
+  /usr/bin/grep -Fq '15 / 47 / 305' "${SAFETY_ROOT}/README.md" || {
+    docs_gate_error 'safety-readme-deadlines-missing'
+    return 1
+  }
+  /usr/bin/grep -Fq './safety/scripts/test.sh task docs-and-phase-gate' "${SAFETY_ROOT}/CLAUDE.md" || {
+    docs_gate_error 'safety-guidance-test-contract-missing'
+    return 1
+  }
+  /usr/bin/grep -Fq '禁止执行真实激活、安装、更新或清理命令' "${SAFETY_ROOT}/CLAUDE.md" || {
+    docs_gate_error 'safety-guidance-live-boundary-missing'
+    return 1
+  }
+  /usr/bin/grep -Fq '| `safety/` |' "${SAFETY_ROOT}/../README.md" || {
+    docs_gate_error 'root-readme-table-entry-missing'
+    return 1
+  }
+  /usr/bin/grep -Fq './safety/scripts/test.sh phase' "${SAFETY_ROOT}/../README.md" || {
+    docs_gate_error 'root-readme-phase-command-missing'
+    return 1
+  }
+  /usr/bin/grep -Fq '仓库外' "${SAFETY_ROOT}/../README.md" || {
+    docs_gate_error 'root-readme-local-state-boundary-missing'
+    return 1
+  }
+
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"docs-and-phase-gate"}'
+}
+
+run_phase_integration_wave() {
+  # 最终 wave 只串行聚合两个 Phase 7 task；完整 phase gate 必须由操作者另行运行。
+  run_wave_child phase-e2e
+  run_wave_child docs-and-phase-gate
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"phase-integration"}'
+}
+
 run_phase_wave_child() {
   local suite_name="$1"
   local expected_suite="${suite_name}"
@@ -918,6 +981,9 @@ case "${SCOPE}:${SUITE}" in
   task:phase-e2e)
     run_phase_e2e
     ;;
+  task:docs-and-phase-gate)
+    run_docs_and_phase_gate
+    ;;
   wave:skeleton)
     run_green_walking_skeleton
     ;;
@@ -935,6 +1001,9 @@ case "${SCOPE}:${SUITE}" in
     ;;
   wave:controlplane)
     run_controlplane_wave
+    ;;
+  wave:phase-integration)
+    run_phase_integration_wave
     ;;
   *)
     unsupported_suite
