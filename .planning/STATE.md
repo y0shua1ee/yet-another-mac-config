@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-07-10T21:02:14.125Z"
+status: verifying
+last_updated: "2026-07-10T21:40:49.435Z"
 last_activity: 2026-07-10
 progress:
   total_phases: 13
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
-  completed_plans: 6
-  percent: 0
+  completed_plans: 7
+  percent: 8
 ---
 
 # Project State
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 
 Phase: 01 (safety-privacy-and-state-foundation) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-10
 
-Progress: [█████████░] 86%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [█████████░] 86%
 | Phase 01 P04 | 21 min | 2 tasks | 10 files |
 | Phase 01 P05 | 2h 3m | 3 tasks | 14 files |
 | Phase 01 P06 | 17 min | 2 tasks | 10 files |
+| Phase 01 P07 | 32 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Keep Determinate Nix, nix-darwin, and Home Manager as exact closed role layers while declaration, manager binary, payload, selected owner, and activation context remain separate. — Module availability must not collapse delegated ownership.
 - [Phase 01]: Treat extra and unmanaged-present as report-only statuses with an explicit empty operation list. — Observed extra state never grants cleanup or convergence authority.
 - [Phase 01]: Allow only one fixture-fake-write operation with a fixture logical target and synthetic mode in Phase 1. — This preserves the walking-skeleton receipt without introducing a live mutable executor.
+- [Phase 01]: Keep the full phase gate to six component waves plus phase-e2e and keep the docs task and final integration wave separate. — This prevents recursive or duplicate phase execution while preserving exact child budgets and fresh roots.
+- [Phase 01]: Exercise the complete outer sentinel envelope only through proof-valid isolated doubles while the tracked service proof is missing. — The current-host path must remain manual-required and stop before every adapter and workload call.
+- [Phase 01]: Rebuild the phase report from seven content-addressed artifact instances and revalidate lifecycle lineage privacy manifest bindings and claim eligibility. — A passing prior exit code or directory location is not evidence of a valid final graph.
 
 ### Pending Todos
 
@@ -102,6 +106,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-10T21:01:52.086Z
-Stopped at: Completed 01-06-PLAN.md
+Last session: 2026-07-10T21:40:49.430Z
+Stopped at: Completed 01-07-PLAN.md
 Resume file: None
