@@ -272,8 +272,9 @@ func testTeardownRejections(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(target, "witness"), []byte("synthetic"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.RemoveAll(root.paths.Root); err != nil {
-				t.Fatal(err)
+			frozen, _ := FreezePrimary(VerdictViolation)
+			if final := root.Retention().Finalize(frozen); final.Teardown.Status != TeardownRemoved {
+				t.Fatal("symlink negative setup could not use exact owned teardown")
 			}
 			if err := os.Symlink(target, root.paths.Root); err != nil {
 				t.Fatal(err)
