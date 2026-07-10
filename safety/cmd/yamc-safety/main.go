@@ -7,8 +7,10 @@ import (
 	"flag"
 	"io"
 	"os"
+	"time"
 
 	"example.invalid/yamc/safety/internal/artifact"
+	"example.invalid/yamc/safety/internal/fixture"
 	"example.invalid/yamc/safety/internal/privacy"
 	"example.invalid/yamc/safety/internal/workflow"
 )
@@ -19,9 +21,14 @@ type fixtureRunFlags struct {
 	blueprintPath  string
 	surfacesPath   string
 	fixtureRoot    string
+	fixtureBase    string
+	fixtureID      string
+	fixtureTTL     time.Duration
+	keepFixture    bool
 	storeRoot      string
 	repositoryRoot string
 	mode           string
+	managed        bool
 }
 
 type validateFlags struct {
@@ -74,6 +81,9 @@ func runFixture(arguments []string, stdout, stderr io.Writer) int {
 		writeSafeError(stderr, "FIXTURE_ARGUMENTS_REJECTED")
 		return 64
 	}
+	if parsed.managed {
+		return runManagedFixture(parsed, stdout, stderr)
+	}
 	summary, err := workflow.RunSynthetic(workflow.Options{
 		BlueprintPath:  parsed.blueprintPath,
 		SurfacesPath:   parsed.surfacesPath,
@@ -87,6 +97,63 @@ func runFixture(arguments []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if err := renderSafe(stdout, summary); err != nil {
+		writeSafeError(stderr, "OUTPUT_REJECTED")
+		return 70
+	}
+	return 0
+}
+
+func runManagedFixture(parsed fixtureRunFlags, stdout, stderr io.Writer) int {
+	root, err := fixture.Create(fixture.CreateOptions{
+		Base:           parsed.fixtureBase,
+		RepositoryRoot: parsed.repositoryRoot,
+		LogicalID:      parsed.fixtureID,
+		KeepFixture:    parsed.keepFixture,
+		TTL:            parsed.fixtureTTL,
+	})
+	if err != nil {
+		writeSafeError(stderr, "FIXTURE_ROOT_REJECTED")
+		return 2
+	}
+	paths := root.Paths()
+	summary, runErr := workflow.RunSynthetic(workflow.Options{
+		BlueprintPath:  parsed.blueprintPath,
+		SurfacesPath:   parsed.surfacesPath,
+		FixtureRoot:    paths.Root,
+		StoreRoot:      paths.ArtifactStore,
+		RepositoryRoot: parsed.repositoryRoot,
+		Mode:           parsed.mode,
+	})
+	primary := fixture.VerdictPassed
+	if runErr != nil {
+		primary = fixture.VerdictHarnessError
+	}
+	frozen, freezeErr := fixture.FreezePrimary(primary)
+	if freezeErr != nil {
+		writeSafeError(stderr, "FIXTURE_VERDICT_REJECTED")
+		return 70
+	}
+	final := root.Retention().Finalize(frozen)
+	if final.Teardown.Status == fixture.TeardownFailed {
+		writeSafeError(stderr, "FIXTURE_TEARDOWN_REJECTED")
+		return 70
+	}
+	if runErr != nil {
+		writeRejected(stderr, runErr, "FIXTURE_RUN_REJECTED")
+		return 2
+	}
+	result := struct {
+		Summary        workflow.Summary       `json:"summary"`
+		LogicalRef     string                 `json:"logical_ref"`
+		Retention      fixture.TeardownStatus `json:"retention_status"`
+		ExpiryCategory string                 `json:"expiry_category"`
+	}{
+		Summary:        summary,
+		LogicalRef:     root.LogicalID(),
+		Retention:      final.Teardown.Status,
+		ExpiryCategory: final.Teardown.ExpiryCategory,
+	}
+	if err := renderSafe(stdout, result); err != nil {
 		writeSafeError(stderr, "OUTPUT_REJECTED")
 		return 70
 	}
@@ -170,15 +237,25 @@ func parseFixtureRunFlags(arguments []string) (fixtureRunFlags, error) {
 	flags.StringVar(&parsed.blueprintPath, "blueprint", "", "")
 	flags.StringVar(&parsed.surfacesPath, "surfaces", "", "")
 	flags.StringVar(&parsed.fixtureRoot, "fixture-root", "", "")
+	flags.StringVar(&parsed.fixtureBase, "fixture-base", "", "")
+	flags.StringVar(&parsed.fixtureID, "fixture-id", "", "")
+	flags.DurationVar(&parsed.fixtureTTL, "fixture-ttl", 0, "")
+	flags.BoolVar(&parsed.keepFixture, "keep-fixture", false, "")
 	flags.StringVar(&parsed.storeRoot, "store-root", "", "")
 	flags.StringVar(&parsed.repositoryRoot, "repo-root", "", "")
 	flags.StringVar(&parsed.mode, "mode", "", "")
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 {
 		return fixtureRunFlags{}, errors.New("arguments rejected")
 	}
-	if parsed.blueprintPath == "" || parsed.surfacesPath == "" || parsed.fixtureRoot == "" || parsed.storeRoot == "" || parsed.repositoryRoot == "" || parsed.mode != "synthetic" {
+	if parsed.blueprintPath == "" || parsed.surfacesPath == "" || parsed.repositoryRoot == "" || parsed.mode != "synthetic" {
 		return fixtureRunFlags{}, errors.New("arguments rejected")
 	}
+	legacy := parsed.fixtureRoot != "" && parsed.storeRoot != "" && parsed.fixtureBase == "" && parsed.fixtureID == "" && parsed.fixtureTTL == 0 && !parsed.keepFixture
+	managed := parsed.fixtureRoot == "" && parsed.storeRoot == "" && parsed.fixtureBase != "" && parsed.fixtureID != ""
+	if !legacy && !managed {
+		return fixtureRunFlags{}, errors.New("arguments rejected")
+	}
+	parsed.managed = managed
 	return parsed, nil
 }
 

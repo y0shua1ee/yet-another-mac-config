@@ -298,6 +298,15 @@ run_privacy_wave() {
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"privacy"}'
 }
 
+run_fixture_lifecycle() {
+  run_exact_go_suite \
+    './internal/fixture' \
+    '^TestFixtureLifecycle$' \
+    'TestFixtureLifecycle' \
+    'fixture-lifecycle' \
+    'EXPECTED_RED: fixture-lifecycle-behavior-missing'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -316,6 +325,9 @@ case "${SCOPE}:${SUITE}" in
     ;;
   task:bounded-capture)
     run_bounded_capture
+    ;;
+  task:fixture-lifecycle)
+    run_fixture_lifecycle
     ;;
   wave:skeleton)
     run_green_walking_skeleton
