@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-07-10T15:24:49.536Z"
+last_updated: "2026-07-10T15:46:33.644Z"
 last_activity: 2026-07-10
 progress:
   total_phases: 13
   completed_phases: 0
   total_plans: 7
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 ## Current Position
 
 Phase: 01 (safety-privacy-and-state-foundation) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-07-10
 
-Progress: [███░░░░░░░] 29%
+Progress: [████░░░░░░] 43%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [███░░░░░░░] 29%
 
 | Phase 01 P01 | 11 min | 2 tasks | 10 files |
 | Phase 01 P02 | 40 min | 2 tasks | 13 files |
+| Phase 01 P03 | 17 min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Supersede the Plan 01 embedded fresh-record compromise: keep six closed kinds but store seven apply-path instances, with fresh observation as a second full observed-state envelope. — A compact evidence descriptor cannot replace a separately validated and pinned post-receipt observation.
 - [Phase 01]: Persist plan transitions and rebuild the validated digest-reference graph when Store reopens. — Terminal state, snapshot expiry, and transitive pins must survive process boundaries without trusting run IDs, mtimes, filenames, or latest aliases.
 - [Phase 01]: Preflight the complete graph before immutable writes and roll back only objects created by a failed graph write. — Invalid or colliding late nodes must not leave a partially persisted graph.
+- [Phase 01]: Keep privacy independent of artifact internals and gate already schema-validated canonical candidates immediately before writes and renders. — This avoids an artifact/privacy import cycle while preserving the single pre-output gate.
+- [Phase 01]: Keep sentinel surface domains separate from the six persistent logical namespaces; physical resolver roots remain process-local. — This preserves D-08 and prevents stable machine identity or physical paths from entering public artifacts.
+- [Phase 01]: Materialize the current synthetic executable inside fixture:path/bin and pass the tracked raw sample only through fixed in-memory child environment data. — This provides a real os/exec boundary without a shell, arbitrary argv, inherited environment, or raw temp file.
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-10T15:24:49.531Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-07-10T15:46:33.639Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
