@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"example.invalid/yamc/safety/internal/privacy"
 )
 
 const (
@@ -98,6 +100,9 @@ func ValidateExternalRoot(root, repositoryRoot string) (string, error) {
 func (store *Store) Validate(canonical []byte) (Envelope, error) {
 	envelope, err := DecodeAndValidate(canonical)
 	if err != nil {
+		return Envelope{}, err
+	}
+	if err := validatePrivacy(canonical, envelope); err != nil {
 		return Envelope{}, err
 	}
 	if store.snapshotExpired(envelope) && !store.isPinned(envelope.ContentDigest) {
@@ -559,6 +564,9 @@ func (store *Store) loadExact(digest string, enforceExpiry bool) ([]byte, Envelo
 	if err != nil {
 		return nil, Envelope{}, err
 	}
+	if err := validatePrivacy(canonical, envelope); err != nil {
+		return nil, Envelope{}, err
+	}
 	if envelope.ContentDigest != digest {
 		return nil, Envelope{}, contractError(CodeStoreKeyMismatch, "/content_digest")
 	}
@@ -678,6 +686,9 @@ func (store *Store) rebuildMetadata() error {
 		if validateErr != nil || envelope.ContentDigest != digest {
 			return contractError(CodeStoreKeyMismatch, "/content_digest")
 		}
+		if privacyErr := validatePrivacy(canonical, envelope); privacyErr != nil {
+			return privacyErr
+		}
 		if envelope.Kind == GeneratedPlan && envelope.Lifecycle.TerminalState != TerminalNonterminal {
 			return contractError(CodePlanTransition, "/lifecycle/terminal_state")
 		}
@@ -715,6 +726,13 @@ func (store *Store) writeTransition(planDigest string, transition planTransition
 	canonical, err := Canonicalize(encoded)
 	if err != nil {
 		return contractError(CodePlanTransition, "/transition")
+	}
+	if _, rejection := privacy.Gate(privacy.Candidate{
+		ArtifactKind: privacy.KindStoreTransition,
+		AdapterID:    privacy.AdapterArtifactStore,
+		Canonical:    canonical,
+	}); rejection != nil {
+		return rejection
 	}
 	directory := filepath.Dir(store.transitionPath(planDigest))
 	if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -820,6 +838,18 @@ func mustMarshalEnvelope(envelope Envelope) []byte {
 		return nil
 	}
 	return canonical
+}
+
+func validatePrivacy(canonical []byte, envelope Envelope) error {
+	_, rejection := privacy.Gate(privacy.Candidate{
+		ArtifactKind: privacy.ArtifactKind(envelope.Kind),
+		AdapterID:    privacy.AdapterArtifactStore,
+		Canonical:    canonical,
+	})
+	if rejection != nil {
+		return rejection
+	}
+	return nil
 }
 
 func canonicalForCreation(path string) (string, error) {

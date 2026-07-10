@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"example.invalid/yamc/safety/internal/artifact"
+	"example.invalid/yamc/safety/internal/privacy"
 	"example.invalid/yamc/safety/internal/workflow"
 )
 
@@ -82,10 +83,10 @@ func runFixture(arguments []string, stdout, stderr io.Writer) int {
 		Mode:           parsed.mode,
 	})
 	if err != nil {
-		writeSafeError(stderr, "FIXTURE_RUN_REJECTED")
+		writeRejected(stderr, err, "FIXTURE_RUN_REJECTED")
 		return 2
 	}
-	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+	if err := renderSafe(stdout, summary); err != nil {
 		writeSafeError(stderr, "OUTPUT_REJECTED")
 		return 70
 	}
@@ -108,12 +109,20 @@ func runValidate(arguments []string, stdout, stderr io.Writer) int {
 		writeSafeError(stderr, "ARTIFACT_VALIDATION_REJECTED")
 		return 2
 	}
+	if _, rejection := privacy.Gate(privacy.Candidate{
+		ArtifactKind: privacy.ArtifactKind(envelope.Kind),
+		AdapterID:    privacy.AdapterCLIRenderer,
+		Canonical:    canonical,
+	}); rejection != nil {
+		writePrivacyError(stderr, *rejection)
+		return 2
+	}
 	result := struct {
 		Status string        `json:"status"`
 		Kind   artifact.Kind `json:"kind"`
 		Digest string        `json:"digest"`
 	}{Status: "valid", Kind: envelope.Kind, Digest: envelope.ContentDigest}
-	if err := json.NewEncoder(stdout).Encode(result); err != nil {
+	if err := renderSafe(stdout, result); err != nil {
 		writeSafeError(stderr, "OUTPUT_REJECTED")
 		return 70
 	}
@@ -139,7 +148,7 @@ func runStore(arguments []string, stdout, stderr io.Writer) int {
 	}
 	digests, err := store.WriteGraph(mode, graph)
 	if err != nil {
-		writeSafeError(stderr, "ARTIFACT_STORE_REJECTED")
+		writeRejected(stderr, err, "ARTIFACT_STORE_REJECTED")
 		return 2
 	}
 	result := struct {
@@ -147,7 +156,7 @@ func runStore(arguments []string, stdout, stderr io.Writer) int {
 		Mode    artifact.LineageMode `json:"mode"`
 		Digests map[string]string    `json:"digests"`
 	}{Status: "stored", Mode: mode, Digests: digests}
-	if err := json.NewEncoder(stdout).Encode(result); err != nil {
+	if err := renderSafe(stdout, result); err != nil {
 		writeSafeError(stderr, "OUTPUT_REJECTED")
 		return 70
 	}
@@ -297,7 +306,40 @@ func knownKind(kind artifact.Kind) bool {
 }
 
 func writeSafeError(writer io.Writer, code string) {
-	_ = json.NewEncoder(writer).Encode(struct {
-		ErrorCode string `json:"error_code"`
-	}{ErrorCode: code})
+	errorCode := privacy.CodeOperationRejected
+	category := privacy.CategoryOperation
+	remediation := privacy.RemediationReview
+	switch code {
+	case "UNSUPPORTED_COMMAND":
+		errorCode = privacy.CodeCommandRejected
+		category = privacy.CategoryUnsupported
+		remediation = privacy.RemediationCommand
+	case "OUTPUT_REJECTED":
+		errorCode = privacy.CodeOutputRejected
+	}
+	writePrivacyError(writer, privacy.SafeOperationError(errorCode, category, remediation))
+}
+
+func writeRejected(writer io.Writer, err error, fallback string) {
+	var envelope *privacy.ErrorEnvelope
+	if errors.As(err, &envelope) {
+		writePrivacyError(writer, *envelope)
+		return
+	}
+	writeSafeError(writer, fallback)
+}
+
+func writePrivacyError(writer io.Writer, envelope privacy.ErrorEnvelope) {
+	_ = privacy.RenderError(writer, envelope)
+}
+
+func renderSafe(writer io.Writer, value any) error {
+	if rejection := privacy.Render(writer, privacy.Candidate{
+		ArtifactKind: privacy.KindCommandResult,
+		AdapterID:    privacy.AdapterCLIRenderer,
+		Value:        value,
+	}); rejection != nil {
+		return rejection
+	}
+	return nil
 }

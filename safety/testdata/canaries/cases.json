@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0.0",
+  "cases": [
+    {
+      "name": "synthetic-secret",
+      "candidate": {
+        "secret_value": "synthetic-private-value-never-output-secret"
+      }
+    },
+    {
+      "name": "synthetic-identity",
+      "candidate": {
+        "username": "synthetic-private-value-never-output-user"
+      }
+    },
+    {
+      "name": "synthetic-hostname",
+      "candidate": {
+        "hostname": "synthetic-private-value-never-output-host"
+      }
+    },
+    {
+      "name": "synthetic-serial",
+      "candidate": {
+        "serial_number": "synthetic-private-value-never-output-serial"
+      }
+    },
+    {
+      "name": "synthetic-hardware-fingerprint",
+      "candidate": {
+        "hardware_fingerprint": "synthetic-private-value-never-output-hardware"
+      }
+    },
+    {
+      "name": "synthetic-private-network",
+      "candidate": {
+        "private_network": "10.23.45.67"
+      }
+    },
+    {
+      "name": "synthetic-provider-item",
+      "candidate": {
+        "provider_item_reference": "synthetic-private-value-never-output-provider"
+      }
+    },
+    {
+      "name": "synthetic-absolute-home",
+      "candidate": {
+        "source": "/synthetic-private-home/config/item"
+      }
+    },
+    {
+      "name": "synthetic-environment",
+      "candidate": {
+        "environment": {
+          "SYNTHETIC_PRIVATE": "synthetic-private-value-never-output-environment"
+        }
+      }
+    },
+    {
+      "name": "synthetic-raw-field",
+      "candidate": {
+        "raw_output": "synthetic-private-value-never-output-raw"
+      }
+    }
+  ]
+}

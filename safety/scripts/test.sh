@@ -241,6 +241,15 @@ run_artifact_contracts_wave() {
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"artifact-contracts"}'
 }
 
+run_privacy_boundary() {
+  run_exact_go_suite \
+    './internal/privacy' \
+    '^TestPrivacyBoundary$' \
+    'TestPrivacyBoundary' \
+    'privacy-boundary' \
+    'EXPECTED_RED: privacy-boundary-behavior-missing'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -253,6 +262,9 @@ case "${SCOPE}:${SUITE}" in
     ;;
   task:artifact-lineage)
     run_artifact_lineage
+    ;;
+  task:privacy-"boundary")
+    run_privacy_boundary
     ;;
   wave:skeleton)
     run_green_walking_skeleton
