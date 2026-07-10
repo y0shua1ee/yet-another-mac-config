@@ -52,7 +52,7 @@ My Mac config
 
 前三条分别是完整 E2E task、纯结构文档 task 和聚合这两个 task 的最终 wave；完整 phase 必须用第四条单独运行。runner 使用空白 allowlist 环境和仓库外的新建临时根，网络默认 denied，生成的 fixture、Go cache、manager roots 与 artifact store 都不写入仓库。公开 `fixture run` 只接受仓库外 base 与 logical fixture ID，并由 ownership 状态机建立 fresh direct child；它不接受已有物理 fixture/store root。公共结果只接受 closed field/type schema；run identity 是 digest-derived opaque ID，suite/operation identity 来自固定 registry。15 / 47 / 305 秒预算由入口 watchdog 覆盖 setup、固定检查、测试、child dispatch 和 marker-owned cleanup；内部 re-exec 使用 private inherited FD + nonce + parent 验证，ambient guard 不能绕过；超时只返回一个有界 envelope 与退出码 `124`。
 
-当前 service surface 所需的 `launchctl print` isolated negative proof 尚未纳入 tracked manifest，因此 current-host 路径会在任何真实 adapter 或 workload 之前停止为 `manual-required` / `indeterminate`。standalone `report` 只输出 claim-ineligible 的 synthetic/replay 状态；完整 outer sequence 与 `covered-surfaces-unchanged-for-run` 只能在同一次受控 real envelope 的 one-shot capability 内产生，且正向路径只由 proof-valid isolated private doubles 验证。这不表示当前 Mac 已通过，也不表示整机、多机或重装恢复已经验证。详细契约见 [`safety/README.md`](safety/README.md)。
+当前 service surface 所需的 `launchctl print` isolated negative proof 尚未纳入 tracked manifest，因此 current-host 路径会在任何真实 adapter 或 workload 之前停止为 `manual-required` / `indeterminate`。standalone `report` 只输出 claim-ineligible 的 synthetic/replay 状态；完整 outer sequence 与 `covered-surfaces-unchanged-for-run` 只能在同一次受控 real envelope 的 one-shot capability 内产生，且正向路径只由 proof-valid isolated private doubles 验证。real envelope 的 HMAC key 由内部逐 run 随机生成，仅供同 run before/after 比较，并在每条返回路径清零；公共调用方不能提供或跨 run 复用 key。这不表示当前 Mac 已通过，也不表示整机、多机或重装恢复已经验证。详细契约见 [`safety/README.md`](safety/README.md)。
 
 ## Ghostty
 

@@ -878,6 +878,7 @@ func closedReason(value string) bool {
 		"offline-default", "isolated-offline", "tier-unknown", "exact-network-test-required", "network-execution-unavailable-phase-1", "network-test-unknown", "tier-network-denied", "live-probe-unapproved", "network-manifest-rejected", "ambient-state-forbidden",
 		"fixture-not-expired", "fixture-not-retained", "owned-child-remove-failed", "owned-child-remove-incomplete", "ownership-validation-failed", "primary-verdict-not-frozen",
 		"controlled-real-envelope-runner-required", "all-required-real-adapters-proven", "real-adapter-registry-rejected", "required-real-adapter-proof-unavailable", "required-real-adapter-unavailable", "real-manifest-freeze-rejected", "real-envelope-input-rejected", "real-adapter-implementation-rejected", "real-evidence-build-rejected", "primary-run-indeterminate", "primary-run-harness-error",
+		"real-envelope-key-rejected",
 		"evidence-binding-rejected", "manifest-binding-rejected", "evidence-provenance-rejected", "observation-window-rejected", "observation-window-binding-rejected", "surface-policy-substitution-rejected", "surface-evidence-count-rejected", "surface-evidence-substitution-rejected", "surface-evidence-duplicate-rejected", "surface-observation-rejected", "surface-evidence-missing", "required-observation-incomplete", "real-envelope-binding-missing", "claim-rejected")
 }
 

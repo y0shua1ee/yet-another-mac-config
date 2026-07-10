@@ -57,6 +57,7 @@ task、wave、phase 的 hard deadline 分别是 15、47、305 秒；完整公式
 - 禁止物理路径、真实 root/home、用户名、UID、host identity、raw output、resolver mapping、HMAC key、API key、token、密码、cookie、私钥、登录态或客户数据进入 artifact、报告、文档、fixture 样本或 Git。
 - 当前 service adapter 的 tracked proof 缺失；current-host 必须在 adapter/workload 前 `manual-required`，不能写成 current-host passed。
 - manager-tree 的内部 symlink 必须解析最终 target 并限制在 exact manager root；relative/absolute/chain escape 一律 incomplete、无 token、无 claim，不能通过只 hash link text 绕过。
+- `RunRealEnvelope` 必须在内部为每个 run 生成 fresh 32-byte key，同 run before/after 只临时共享该 key，所有返回路径都清零 buffer；公共 options 禁止接受 caller key。确定性测试只能使用 package-private secret factory，并必须证明跨 run token 不同以及 workload/entropy/claim-consumer 失败后 key 已清零。
 - `synthetic-sentinel-passed` 只是内层 fixture 结果；standalone/replay report 必须是 `synthetic-report-claim-ineligible`，checked-in expectation 不得保存 passed、claim 或 surface token。唯一允许的 scoped claim 是 `covered-surfaces-unchanged-for-run`，且必须在同一次 `RunRealEnvelope` 中以 one-shot process capability 从 actual Evidence + Evaluation + `RequestClaim` 生成，并绑定 evidence/suite/manifest/window/surface evidence；正向路径只用 proof-valid isolated private doubles。禁止整机、当前 host readiness、多机或 fresh-install claim。
 - `extra` 与 `unmanaged-present` 仅 report-only；`operations` 保持为空，不得生成 apply/cleanup authority。
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -137,8 +138,8 @@ type realAdapterSpec struct {
 }
 
 const (
-	negativeTestSourceDigest       = "sha256:a20141dc2ffa896505e78d87140f018f7dad8f3e333471d459ce325b01bbdfd8"
-	realImplementationSourceDigest = "sha256:ad28167a62fe656dd2e9d41cae91b513c717f5add65d12e58208d9f0dee23bc5"
+	negativeTestSourceDigest       = "sha256:88bd26e6beba5c79cf2491b6c4f50af6d2ce811f175119081e57f77894ad5887"
+	realImplementationSourceDigest = "sha256:45b786a3a32d2f1288c94209c49aa6c7f0e1b2f140ccb605771ff1b252a8d040"
 )
 
 var gitVersionInvocation = AdapterInvocation{Kind: "executable", Executable: "git", Argv: []string{"--no-lazy-fetch", "--version"}, Environment: []string{"GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin"}}
@@ -402,9 +403,9 @@ type RealEnvelopeOptions struct {
 	Context       context.Context
 	Workload      func(context.Context) (string, error)
 	Clock         func() time.Time
-	Key           []byte
 	WindowID      string
 	ClaimConsumer func(*Evidence, Evaluation, []string) (string, error)
+	secretFactory func([]byte) error
 }
 
 type RealEnvelope struct {
@@ -425,7 +426,7 @@ func RunRealEnvelope(options RealEnvelopeOptions) RealEnvelope {
 	if !assessment.ClaimEligible {
 		return RealEnvelope{Status: assessment.Status, Sequence: []string{"proof-gate"}, Evaluation: Evaluation{Verdict: assessment.Verdict, ExitCode: assessment.ExitCode, Reason: assessment.Reason}}
 	}
-	if len(options.Key) < 32 || options.Context == nil || options.Workload == nil || !publicManifestID.MatchString(options.WindowID) {
+	if options.Context == nil || options.Workload == nil || !publicManifestID.MatchString(options.WindowID) {
 		return harnessEnvelope("real-envelope-input-rejected", []string{"proof-gate"})
 	}
 	if _, ok := options.Context.Deadline(); !ok {
@@ -439,13 +440,26 @@ func RunRealEnvelope(options RealEnvelopeOptions) RealEnvelope {
 		}
 		adapters[surface.AdapterID] = adapter
 	}
+	secretFactory := options.secretFactory
+	if secretFactory == nil {
+		secretFactory = func(destination []byte) error {
+			_, err := io.ReadFull(rand.Reader, destination)
+			return err
+		}
+	}
+	key := make([]byte, 32)
+	if err := secretFactory(key); err != nil || allZeroBytes(key) {
+		clearSecret(key)
+		return harnessEnvelope("real-envelope-key-rejected", []string{"proof-gate"})
+	}
+	defer clearSecret(key)
 	clock := options.Clock
 	if clock == nil {
 		clock = time.Now
 	}
 	sequence := []string{"real-before"}
 	opened := clock().UTC()
-	before := snapshotRealSurfaces(options.Context, manifest, adapters, options.Key)
+	before := snapshotRealSurfaces(options.Context, manifest, adapters, key)
 	primary := snapshotsVerdict(manifest, before)
 	sequence = append(sequence, "isolated-workload")
 	if options.Context.Err() != nil {
@@ -479,7 +493,7 @@ func RunRealEnvelope(options RealEnvelopeOptions) RealEnvelope {
 	if options.Context.Err() != nil {
 		primary = MonotonicCombine(primary, VerdictIndeterminate)
 	}
-	after := snapshotRealSurfaces(options.Context, manifest, adapters, options.Key)
+	after := snapshotRealSurfaces(options.Context, manifest, adapters, key)
 	if options.Context.Err() != nil {
 		primary = MonotonicCombine(primary, VerdictIndeterminate)
 	}
@@ -530,6 +544,21 @@ func RunRealEnvelope(options RealEnvelopeOptions) RealEnvelope {
 		result.Evidence = &evidence
 	}
 	return result
+}
+
+func clearSecret(value []byte) {
+	for index := range value {
+		value[index] = 0
+	}
+}
+
+func allZeroBytes(value []byte) bool {
+	for _, item := range value {
+		if item != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (registry *RealAdapterRegistry) authorizes(adapter realAdapter) bool {
