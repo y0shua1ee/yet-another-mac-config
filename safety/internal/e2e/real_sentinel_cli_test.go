@@ -134,11 +134,14 @@ func testRealSentinelRunnerContract(t *testing.T) {
 		"'TestRealSentinelCLI'",
 		"task:real-sentinel-envelope)",
 		"wave:sentinels)",
-		"run_with_runner_deadline",
 		"run_wave_child",
 		"RUNNER_BUDGET_SECONDS=15",
 		"RUNNER_BUDGET_SECONDS=47",
 		"RUNNER_BUDGET_SECONDS=305",
+		"YAMC_RUNNER_WATCHDOG_PID",
+		"runner_test_block setup",
+		"runner_test_block docs",
+		"runner_test_block child",
 		"runner-deadline-exceeded",
 		"exit 70 unless setpgrp(0, 0);",
 		"$SIG{TERM} = sub",
@@ -152,7 +155,7 @@ func testRealSentinelRunnerContract(t *testing.T) {
 			t.Fatalf("real sentinel runner literal missing: %s", required)
 		}
 	}
-	waitIndex := strings.Index(text, "waitpid($pid, 0);")
+	waitIndex := strings.Index(text, "waitpid($pid, 0)")
 	descendantCleanupIndex := strings.Index(text, "$stop_descendants->();")
 	if waitIndex < 0 || descendantCleanupIndex < 0 || descendantCleanupIndex < waitIndex {
 		t.Fatal("normal child exit does not clean its surviving process group")
@@ -226,7 +229,8 @@ func testRealSentinelRunnerContract(t *testing.T) {
 		"/bin/bash \"${SCRIPT_DIR}/test.sh\" task \"${suite_name}\"",
 		"child_status}\" -eq 124",
 		"remaining}\" -lt 15",
-		"print_runner_deadline \"${suite_name}\"",
+		"output}\" != \"${RUNNER_DEADLINE_ENVELOPE}",
+		"printf '%s\\n' \"${RUNNER_DEADLINE_ENVELOPE}\" >&2",
 		"return 124",
 	} {
 		if !strings.Contains(waveChild, required) {

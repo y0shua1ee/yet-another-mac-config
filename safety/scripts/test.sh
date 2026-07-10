@@ -1,6 +1,87 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 每个 runner 在解析参数、定位仓库或创建临时根之前先进入唯一 watchdog。
+# 测试预算只允许在固定测试模式下缩短，不能扩大生产预算。
+runner_watchdog_budget_ms=15000
+case "${1:-}" in
+  wave)
+    runner_watchdog_budget_ms=47000
+    ;;
+  phase)
+    runner_watchdog_budget_ms=305000
+    ;;
+esac
+if [[ "${YAMC_RUNNER_TEST_MODE:-}" == '1' && "${YAMC_RUNNER_TEST_BUDGET_MS:-}" =~ ^[1-9][0-9]{2,5}$ ]] && \
+   (( YAMC_RUNNER_TEST_BUDGET_MS >= 500 && YAMC_RUNNER_TEST_BUDGET_MS <= runner_watchdog_budget_ms )); then
+  runner_watchdog_budget_ms="${YAMC_RUNNER_TEST_BUDGET_MS}"
+fi
+
+if [[ "${YAMC_RUNNER_WATCHDOG_PID:-}" != "${PPID}" ]]; then
+  exec /usr/bin/perl -MPOSIX=':sys_wait_h' -MTime::HiRes='alarm,sleep,time' -e '
+    use strict;
+    use warnings;
+    my $budget_ms = shift @ARGV;
+    my $script = shift @ARGV;
+    my $grace = 0.50;
+    my $deadline = time() + ($budget_ms / 1000.0);
+    my $pid = fork();
+    exit 70 unless defined $pid;
+    if ($pid == 0) {
+      exit 70 unless setpgrp(0, 0);
+      $ENV{YAMC_RUNNER_WATCHDOG_PID} = getppid();
+      exec "/bin/bash", $script, @ARGV;
+      exit 127;
+    }
+    my $timed_out = 0;
+    my $signal_exit = 0;
+    my $stopping = 0;
+    my $stop_group = sub {
+      return if $stopping;
+      $stopping = 1;
+      kill "TERM", -$pid;
+      kill "TERM", $pid;
+      sleep $grace;
+      kill "KILL", -$pid;
+      kill "KILL", $pid;
+    };
+    my $stop_descendants = sub {
+      return unless kill 0, -$pid;
+      kill "TERM", -$pid;
+      sleep $grace;
+      kill "KILL", -$pid if kill 0, -$pid;
+    };
+    $SIG{ALRM} = sub { $timed_out = 1; $stop_group->(); };
+    $SIG{HUP} = sub { $signal_exit = 129; $stop_group->(); };
+    $SIG{INT} = sub { $signal_exit = 130; $stop_group->(); };
+    $SIG{TERM} = sub { $signal_exit = 143; $stop_group->(); };
+    my $alarm_after = $deadline - time() - $grace;
+    $alarm_after = 0.05 if $alarm_after < 0.05;
+    alarm $alarm_after;
+    my $status = 0;
+    while (1) {
+      my $waited = waitpid($pid, 0);
+      if ($waited == $pid) {
+        $status = $?;
+        last;
+      }
+      last if $waited == -1;
+    }
+    $stop_descendants->();
+    alarm 0;
+    if ($timed_out) {
+      print STDERR qq({"status":"harness-error","reason":"runner-deadline-exceeded"}\n);
+      exit 124;
+    }
+    exit $signal_exit if $signal_exit;
+    exit WEXITSTATUS($status) if WIFEXITED($status);
+    exit 128 + WTERMSIG($status) if WIFSIGNALED($status);
+    exit 70;
+  ' "${runner_watchdog_budget_ms}" "${BASH_SOURCE[0]}" "$@"
+fi
+readonly RUNNER_WATCHDOG_PID="${YAMC_RUNNER_WATCHDOG_PID}"
+unset runner_watchdog_budget_ms
+
 # 此入口只运行固定的离线 Go 测试，不接受任意命令或隐式更高权限模式。
 readonly SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly SAFETY_ROOT="$(CDPATH='' cd -- "${SCRIPT_DIR}/.." && pwd -P)"
@@ -12,52 +93,6 @@ usage() {
 manual_required() {
   printf '%s\n' '{"status":"manual-required","reason":"local-go-unavailable"}' >&2
   exit 32
-}
-
-run_with_deadline() {
-  local seconds="$1"
-  shift
-  /usr/bin/perl -MPOSIX=':sys_wait_h' -e '
-    use strict;
-    use warnings;
-    my $seconds = shift @ARGV;
-    my $pid = fork();
-    exit 70 unless defined $pid;
-    if ($pid == 0) {
-      exit 70 unless setpgrp(0, 0);
-      exec @ARGV;
-      exit 127;
-    }
-    my $timed_out = 0;
-    my $signal_exit = 0;
-    my $stop_group = sub {
-      kill "TERM", -$pid;
-      kill "TERM", $pid;
-      select undef, undef, undef, 0.2;
-      kill "KILL", -$pid;
-      kill "KILL", $pid;
-    };
-    my $stop_descendants = sub {
-      return unless kill 0, -$pid;
-      kill "TERM", -$pid;
-      select undef, undef, undef, 0.2;
-      kill "KILL", -$pid if kill 0, -$pid;
-    };
-    $SIG{ALRM} = sub { $timed_out = 1; $stop_group->(); };
-    $SIG{HUP} = sub { $signal_exit = 129; $stop_group->(); };
-    $SIG{INT} = sub { $signal_exit = 130; $stop_group->(); };
-    $SIG{TERM} = sub { $signal_exit = 143; $stop_group->(); };
-    alarm $seconds;
-    waitpid($pid, 0);
-    my $status = $?;
-    alarm 0;
-    $stop_descendants->();
-    exit 124 if $timed_out;
-    exit $signal_exit if $signal_exit;
-    exit WEXITSTATUS($status) if WIFEXITED($status);
-    exit 128 + WTERMSIG($status) if WIFSIGNALED($status);
-    exit 70;
-  ' "${seconds}" "$@"
 }
 
 if [[ $# -lt 1 ]]; then
@@ -98,19 +133,10 @@ elif [[ "${SCOPE}" == 'wave' ]]; then
 else
   readonly RUNNER_BUDGET_SECONDS=305
 fi
-
-run_with_runner_deadline() {
-  local elapsed=$((SECONDS - RUNNER_STARTED_SECONDS))
-  local remaining=$((RUNNER_BUDGET_SECONDS - elapsed))
-  if [[ "${remaining}" -le 0 ]]; then
-    return 124
-  fi
-  run_with_deadline "${remaining}" "$@"
-}
+readonly RUNNER_DEADLINE_ENVELOPE='{"status":"harness-error","reason":"runner-deadline-exceeded"}'
 
 print_runner_deadline() {
-  local suite_name="$1"
-  printf '{"status":"harness-error","reason":"runner-deadline-exceeded","suite":"%s"}\n' "${suite_name}" >&2
+  printf '%s\n' "${RUNNER_DEADLINE_ENVELOPE}" >&2
 }
 
 unsupported_suite() {
@@ -152,6 +178,30 @@ trap cleanup_test_root EXIT
 trap 'handle_test_signal 129' HUP
 trap 'handle_test_signal 130' INT
 trap 'handle_test_signal 143' TERM
+
+runner_test_block() {
+  local block_point="$1"
+  local marker_path=''
+  local marker_root=''
+  local marker_suffix=''
+
+  if [[ "${YAMC_RUNNER_TEST_MODE:-}" != '1' || "${YAMC_RUNNER_TEST_BLOCK:-}" != "${block_point}" ]]; then
+    return 0
+  fi
+  marker_path="${YAMC_RUNNER_TEST_MARKER:-}"
+  marker_root="${marker_path%/*}"
+  marker_suffix="${marker_root#/tmp/yamc-runner-contract.}"
+  if [[ "${marker_path}" != "${marker_root}/helper.pid" || "${marker_root}" == "${marker_path}" || \
+        "${marker_root}" != /tmp/yamc-runner-contract.* || ! "${marker_suffix}" =~ ^[[:alnum:]]+$ || \
+        ! -d "${marker_root}" || -L "${marker_root}" ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"runner-test-marker-invalid"}' >&2
+    return 70
+  fi
+  { /bin/bash "${SAFETY_ROOT}/testdata/runner/block-helper.sh" "${marker_path}"; } >/dev/null 2>&1
+}
+
+# 固定阻塞点位于 marker-owned root 创建之后、其余 setup 之前，用来证明 watchdog 也覆盖清理。
+runner_test_block setup
 
 readonly ISOLATED_HOME="${TEST_ROOT}/home"
 readonly XDG_CONFIG_HOME="${TEST_ROOT}/xdg/config"
@@ -235,10 +285,15 @@ run_wave_child() {
   fi
 
   # 子 task 自己拥有 hard deadline；wave 不再叠加新的 process group，避免超时后遗留孙进程。
+  runner_test_block child
   output="$(/bin/bash "${SCRIPT_DIR}/test.sh" task "${suite_name}" 2>&1)" || child_status=$?
   # 任何已观察到的 deadline 都必须先原样传播，不能被输出上限改写成其他状态。
   if [[ "${child_status}" -eq 124 ]]; then
-    print_runner_deadline "${suite_name}"
+    if [[ "${output}" != "${RUNNER_DEADLINE_ENVELOPE}" ]]; then
+      printf '%s\n' '{"status":"harness-error","reason":"wave-child-deadline-invalid"}' >&2
+      return 70
+    fi
+    printf '%s\n' "${RUNNER_DEADLINE_ENVELOPE}" >&2
     return 124
   fi
   if (( ${#output} > 65536 )); then
@@ -267,7 +322,7 @@ run_go_suite() {
   local output=''
   local status=0
 
-  output="$(cd -- "${SAFETY_ROOT}" && run_with_runner_deadline "${OFFLINE_ENV[@]}" "${GO_BIN}" test -count=1 -timeout=30s -run "${test_pattern}" "${package_path}" 2>&1)" || status=$?
+  output="$(cd -- "${SAFETY_ROOT}" && "${OFFLINE_ENV[@]}" "${GO_BIN}" test -count=1 -timeout=30s -run "${test_pattern}" "${package_path}" 2>&1)" || status=$?
 
   # deadline 的退出码优先级高于输出上限，确保所有组合层都能精确传播 124。
   if [[ "${status}" -eq 124 ]]; then
@@ -294,7 +349,7 @@ run_compiled_go_suite() {
   local output=''
   local status=0
 
-  output="$(cd -- "${package_directory}" && run_with_runner_deadline "${OFFLINE_ENV[@]}" "${test_binary}" -test.count=1 -test.timeout=30s -test.run "${test_pattern}" 2>&1)" || status=$?
+  output="$(cd -- "${package_directory}" && "${OFFLINE_ENV[@]}" "${test_binary}" -test.count=1 -test.timeout=30s -test.run "${test_pattern}" 2>&1)" || status=$?
 
   # deadline 必须在输出上限之前传播，避免大输出把 124 改写为 70。
   if [[ "${status}" -eq 124 ]]; then
@@ -335,7 +390,7 @@ run_exact_go_suite() {
   test_binary="${ISOLATED_TMP}/${suite_name}.test"
 
   # 同一 exact suite 只编译一次，再用同一个二进制完成 list 与 behavior，保留 fresh cache 同时给 15 秒 task 留出稳定裕量。
-  build_output="$(cd -- "${SAFETY_ROOT}" && run_with_runner_deadline "${OFFLINE_ENV[@]}" "${GO_BIN}" test -c -o "${test_binary}" "${package_path}" 2>&1)" || build_status=$?
+  build_output="$(cd -- "${SAFETY_ROOT}" && "${OFFLINE_ENV[@]}" "${GO_BIN}" test -c -o "${test_binary}" "${package_path}" 2>&1)" || build_status=$?
   if [[ "${build_status}" -eq 124 ]]; then
     print_runner_deadline "${suite_name}"
     return 124
@@ -349,7 +404,7 @@ run_exact_go_suite() {
     return 70
   fi
 
-  listing="$(cd -- "${package_directory}" && run_with_runner_deadline "${OFFLINE_ENV[@]}" "${test_binary}" -test.timeout=30s -test.list "${test_pattern}" 2>&1)" || listing_status=$?
+  listing="$(cd -- "${package_directory}" && "${OFFLINE_ENV[@]}" "${test_binary}" -test.timeout=30s -test.list "${test_pattern}" 2>&1)" || listing_status=$?
   if [[ "${listing_status}" -eq 124 ]]; then
     print_runner_deadline "${suite_name}"
     return 124
@@ -788,6 +843,7 @@ docs_gate_error() {
 
 run_docs_and_phase_gate() {
   # 文档 gate 只检查仓库拥有的固定路径与固定文字，不接受调用方提供路径、命令或匹配式。
+  runner_test_block docs
   if [[ ! -f "${SAFETY_ROOT}/README.md" || -L "${SAFETY_ROOT}/README.md" ]]; then
     docs_gate_error 'safety-readme-invalid'
     return 1
@@ -862,9 +918,14 @@ run_phase_wave_child() {
   fi
 
   # 组件 wave 自己拥有 47 秒预算；phase 只做启动前保留与完成后校验。
+  runner_test_block child
   output="$(/bin/bash "${SCRIPT_DIR}/test.sh" wave "${suite_name}" 2>&1)" || child_status=$?
   if [[ "${child_status}" -eq 124 ]]; then
-    print_runner_deadline "${suite_name}"
+    if [[ "${output}" != "${RUNNER_DEADLINE_ENVELOPE}" ]]; then
+      printf '%s\n' '{"status":"harness-error","reason":"phase-child-deadline-invalid"}' >&2
+      return 70
+    fi
+    printf '%s\n' "${RUNNER_DEADLINE_ENVELOPE}" >&2
     return 124
   fi
   if (( ${#output} > 65536 )); then
@@ -900,9 +961,14 @@ run_phase_task_child() {
   fi
 
   # 最终 task 自己拥有 15 秒 hard deadline；phase 不叠加 process group。
+  runner_test_block child
   output="$(/bin/bash "${SCRIPT_DIR}/test.sh" task "${suite_name}" 2>&1)" || child_status=$?
   if [[ "${child_status}" -eq 124 ]]; then
-    print_runner_deadline "${suite_name}"
+    if [[ "${output}" != "${RUNNER_DEADLINE_ENVELOPE}" ]]; then
+      printf '%s\n' '{"status":"harness-error","reason":"phase-child-deadline-invalid"}' >&2
+      return 70
+    fi
+    printf '%s\n' "${RUNNER_DEADLINE_ENVELOPE}" >&2
     return 124
   fi
   if (( ${#output} > 65536 )); then

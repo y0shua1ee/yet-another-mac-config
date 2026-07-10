@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"example.invalid/yamc/safety/internal/fixture"
 	"example.invalid/yamc/safety/internal/sentinel"
@@ -97,6 +101,7 @@ func TestPhaseE2E(t *testing.T) {
 	t.Run("keeps current-host production proof fail-closed", testPhaseCurrentHostProofGate)
 	t.Run("binds every locked decision to a named negative suite", testPhaseDecisionMatrix)
 	t.Run("fixes phase order and compositional deadlines", testPhaseRunnerContract)
+	t.Run("enforces entry deadlines across setup docs and child dispatch", testRunnerEntryDeadlines)
 }
 
 func testPhaseReportRoundTrip(t *testing.T) {
@@ -325,6 +330,12 @@ func testPhaseRunnerContract(t *testing.T) {
 		"RUNNER_BUDGET_SECONDS=15",
 		"RUNNER_BUDGET_SECONDS=47",
 		"RUNNER_BUDGET_SECONDS=305",
+		"YAMC_RUNNER_WATCHDOG_PID",
+		"YAMC_RUNNER_TEST_BUDGET_MS",
+		"runner_test_block setup",
+		"runner_test_block docs",
+		"runner_test_block child",
+		"testdata/runner/block-helper.sh",
 		"remaining}\" -lt 47",
 		"remaining}\" -lt 15",
 		"runner-deadline-exceeded",
@@ -363,6 +374,124 @@ func testPhaseRunnerContract(t *testing.T) {
 			t.Fatalf("phase gate contains a forbidden child or nested capability: %s", forbidden)
 		}
 	}
+}
+
+func testRunnerEntryDeadlines(t *testing.T) {
+	safetyRoot, _ := projectRoots(t)
+	runnerPath := filepath.Join(safetyRoot, "scripts", "test.sh")
+	baselineRoots := safetyTempRoots(t)
+	cases := []struct {
+		name       string
+		arguments  []string
+		blockPoint string
+	}{
+		{name: "setup", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup"},
+		{name: "docs", arguments: []string{"task", "docs-and-phase-gate"}, blockPoint: "docs"},
+		{name: "child dispatch", arguments: []string{"wave", "artifact-contracts"}, blockPoint: "child"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			markerRoot, err := os.MkdirTemp("/tmp", "yamc-runner-contract.")
+			if err != nil {
+				t.Fatal("runner deadline marker root unavailable")
+			}
+			t.Cleanup(func() { _ = os.RemoveAll(markerRoot) })
+			markerPath := filepath.Join(markerRoot, "helper.pid")
+
+			command := exec.Command("/bin/bash", append([]string{runnerPath}, testCase.arguments...)...)
+			command.Env = runnerDeadlineEnvironment(testCase.blockPoint, markerPath)
+			var combined bytes.Buffer
+			command.Stdout = &combined
+			command.Stderr = &combined
+			started := time.Now()
+			if err := command.Start(); err != nil {
+				t.Fatal("runner deadline process did not start")
+			}
+
+			helperPID, helperSeen := waitForHelperPID(markerPath, 900*time.Millisecond)
+			runErr := command.Wait()
+			elapsed := time.Since(started)
+			if !helperSeen {
+				t.Fatalf("fixed blocking helper did not publish its PID before the deadline: output=%q", combined.String())
+			}
+			var exitErr *exec.ExitError
+			if !errors.As(runErr, &exitErr) || exitErr.ExitCode() != 124 {
+				t.Fatalf("runner deadline exit changed: err=%v output=%q", runErr, combined.String())
+			}
+			if elapsed > 3*time.Second {
+				t.Fatalf("runner deadline exceeded wall bound: %s", elapsed)
+			}
+			if strings.TrimSpace(combined.String()) != `{"status":"harness-error","reason":"runner-deadline-exceeded"}` {
+				t.Fatalf("runner deadline envelope is not unique: %q", combined.String())
+			}
+			waitForProcessExit(t, helperPID, time.Second)
+			if _, err := os.Lstat(markerPath); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("blocked helper marker remained after watchdog cleanup")
+			}
+			if afterRoots := safetyTempRoots(t); !reflect.DeepEqual(afterRoots, baselineRoots) {
+				t.Fatalf("watchdog left a marker-owned runner root: before=%v after=%v", baselineRoots, afterRoots)
+			}
+		})
+	}
+}
+
+func runnerDeadlineEnvironment(blockPoint, markerPath string) []string {
+	environment := make([]string, 0, len(os.Environ())+4)
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "YAMC_RUNNER_TEST_MODE=") ||
+			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_BUDGET_MS=") ||
+			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_BLOCK=") ||
+			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_MARKER=") ||
+			strings.HasPrefix(entry, "YAMC_RUNNER_WATCHDOG_PID=") {
+			continue
+		}
+		environment = append(environment, entry)
+	}
+	return append(environment,
+		"YAMC_RUNNER_TEST_MODE=1",
+		"YAMC_RUNNER_TEST_BUDGET_MS=1200",
+		"YAMC_RUNNER_TEST_BLOCK="+blockPoint,
+		"YAMC_RUNNER_TEST_MARKER="+markerPath,
+	)
+}
+
+func waitForHelperPID(markerPath string, timeout time.Duration) (int, bool) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(markerPath)
+		if err == nil {
+			pid, parseErr := strconv.Atoi(strings.TrimSpace(string(data)))
+			if parseErr == nil && pid > 1 {
+				return pid, true
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return 0, false
+}
+
+func waitForProcessExit(t *testing.T, pid int, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		err := syscall.Kill(pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("watchdog left blocking helper process %d alive", pid)
+}
+
+func safetyTempRoots(t *testing.T) []string {
+	t.Helper()
+	roots, err := filepath.Glob("/tmp/yamc-safety.*")
+	if err != nil {
+		t.Fatal("runner temp-root scan failed")
+	}
+	sort.Strings(roots)
+	return roots
 }
 
 func twoDigits(value int) string {

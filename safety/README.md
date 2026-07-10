@@ -22,7 +22,7 @@
 ./safety/scripts/test.sh phase
 ```
 
-固定预算是 **15 / 47 / 305** 秒：每个 task 15 秒，每个 wave 47 秒，完整 phase 只按顺序运行六个组件 wave 和最后的 `phase-e2e`，预算公式为 `6 * 47 + 15 + 8 = 305`。deadline 一律保持退出码 `124`，不会被改写为 expected RED 或普通契约失败。`docs-and-phase-gate` 只做固定结构检查；`phase-integration` 只聚合两个 Phase 7 task；两者都不会递归运行 `phase`。
+固定预算是 **15 / 47 / 305** 秒：每个 task 15 秒，每个 wave 47 秒，完整 phase 只按顺序运行六个组件 wave 和最后的 `phase-e2e`，预算公式为 `6 * 47 + 15 + 8 = 305`。每次 runner 从入口开始只建立一个 watchdog，预算覆盖参数处理、临时根 setup、固定文档检查、build/list/test、子 runner 派发与 marker-owned cleanup；聚合层不再给已经自限时的 child 叠加命令级 wrapper。deadline 一律只输出一个 `runner-deadline-exceeded` envelope 并保持退出码 `124`，不会被改写为 expected RED 或普通契约失败。`docs-and-phase-gate` 只做固定结构检查；`phase-integration` 只聚合两个 Phase 7 task；两者都不会递归运行 `phase`。
 
 实现还提供五个稳定的控制面命令：
 

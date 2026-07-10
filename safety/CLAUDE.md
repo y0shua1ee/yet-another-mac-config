@@ -42,7 +42,7 @@
 ./safety/scripts/test.sh phase
 ```
 
-task、wave、phase 的 hard deadline 分别是 15、47、305 秒；完整公式是 `6 * 47 + 15 + 8 = 305`。timeout 必须原样返回 `124`。`docs-and-phase-gate` 只能做固定文档/symlink/结构检查，不得调用 phase；`phase-integration` 只能依次启动 `phase-e2e` 与 `docs-and-phase-gate`，不得重复 phase。完整 phase 必须单独运行，并保持六个固定组件 wave 后接 `phase-e2e` 的顺序。
+task、wave、phase 的 hard deadline 分别是 15、47、305 秒；完整公式是 `6 * 47 + 15 + 8 = 305`。每个 runner 必须从脚本入口开始只拥有一个 watchdog，并让 setup、固定 docs checks、build/list/test、child dispatch 与 marker-owned cleanup 全部计入预算；父聚合层只能原样传播自限时 child 的唯一 timeout envelope，不得再叠加命令级 process-group wrapper。timeout 必须只输出一个 `runner-deadline-exceeded` envelope 并原样返回 `124`。`docs-and-phase-gate` 只能做固定文档/symlink/结构检查，不得调用 phase；`phase-integration` 只能依次启动 `phase-e2e` 与 `docs-and-phase-gate`，不得重复 phase。完整 phase 必须单独运行，并保持六个固定组件 wave 后接 `phase-e2e` 的顺序。
 
 缺少本地 Go 时返回 `manual-required` / `32`，绝不 bootstrap、安装或联网。测试环境必须使用 fresh 仓库外 root/cache、空白 allowlist 环境、`GOTOOLCHAIN=local`、`GOPROXY=off`，不得继承真实 HOME/XDG/manager state。长时间测试要保留同一执行会话并轮询到真实退出码。
 
