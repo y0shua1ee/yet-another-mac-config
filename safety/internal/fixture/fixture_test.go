@@ -18,12 +18,63 @@ func TestFixtureLifecycle(t *testing.T) {
 	t.Run("creates every isolated root below one fresh external child", testFixtureRoots)
 	t.Run("constructs a blank allowlisted child environment", testFixtureEnvironment)
 	t.Run("rejects protected traversal and symlink bases before creation", testFixtureCreationRejections)
+	t.Run("rolls back only the freshly-created child after initialization failures", testFixtureInitializationRollback)
 	t.Run("removes passed and failed workloads only after verdict freeze", testDefaultTeardown)
 	t.Run("retains only by pre-run choice and expires one owned child", testRetentionAndExpiry)
 	t.Run("rejects ambiguous ownership with zero fixture deletion", testTeardownRejections)
 	t.Run("combines teardown outcome monotonically", testMonotonicVerdict)
 	t.Run("managed CLI renders logical retention identity only", testManagedFixtureCLI)
 	t.Run("keeps teardown API narrow", testNarrowTeardownSurface)
+}
+
+func testFixtureInitializationRollback(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		hooks *createHooks
+	}{
+		{
+			name: "marker write failure",
+			hooks: &createHooks{writeMarker: func(string, ownershipMarker) error {
+				return errors.New("injected marker failure")
+			}},
+		},
+		{
+			name: "mid-directory failure",
+			hooks: &createHooks{createDirectory: func() func(string) error {
+				created := 0
+				return func(path string) error {
+					created++
+					if created == 5 {
+						return errors.New("injected directory failure")
+					}
+					return os.MkdirAll(path, 0o700)
+				}
+			}()},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			repository := t.TempDir()
+			base := t.TempDir()
+			witness := filepath.Join(base, "preexisting-witness")
+			if err := os.Mkdir(witness, 0o700); err != nil {
+				t.Fatal("rollback witness unavailable")
+			}
+			_, err := Create(CreateOptions{
+				Base:           base,
+				RepositoryRoot: repository,
+				LogicalID:      "fixture:lifecycle/rollback",
+				Random:         bytes.NewReader(bytes.Repeat([]byte{0x7a}, 16)),
+				hooks:          testCase.hooks,
+			})
+			if err == nil {
+				t.Fatal("injected initialization failure was accepted")
+			}
+			names := directoryNames(t, base)
+			if len(names) != 1 || names[0] != filepath.Base(witness) {
+				t.Fatal("initialization rollback removed a sibling or retained the fresh child")
+			}
+		})
+	}
 }
 
 func testFixtureRoots(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"example.invalid/yamc/safety/internal/privacy"
@@ -31,6 +32,12 @@ type CreateOptions struct {
 	Clock          func() time.Time
 	Random         io.Reader
 	EffectiveUID   func() int
+	hooks          *createHooks
+}
+
+type createHooks struct {
+	writeMarker     func(string, ownershipMarker) error
+	createDirectory func(string) error
 }
 
 type Paths struct {
@@ -72,7 +79,7 @@ type ownershipMarker struct {
 	Nonce         string `json:"ownership_nonce"`
 }
 
-func Create(options CreateOptions) (*Root, error) {
+func Create(options CreateOptions) (result *Root, resultErr error) {
 	clock := options.Clock
 	if clock == nil {
 		clock = time.Now
@@ -134,22 +141,45 @@ func Create(options CreateOptions) (*Root, error) {
 	if err := os.Mkdir(physicalRoot, 0o700); err != nil {
 		return nil, errors.New("fixture root unavailable")
 	}
+	createdRootInfo, err := os.Lstat(physicalRoot)
+	if err != nil {
+		return nil, errors.New("fixture root unavailable")
+	}
 
 	createdAt := clock().UTC()
+	ownerUID := effectiveUID()
 	marker := ownershipMarker{
 		SchemaVersion: markerSchemaVersion,
 		LogicalID:     logicalID.String(),
 		CreatedAt:     createdAt.Format(time.RFC3339Nano),
 		ExpiresAt:     createdAt.Add(ttl).Format(time.RFC3339Nano),
-		EffectiveUID:  effectiveUID(),
+		EffectiveUID:  ownerUID,
 		Nonce:         nonce,
 	}
-	if err := writeMarker(physicalRoot, marker); err != nil {
+	committed := false
+	defer func() {
+		if !committed {
+			// 初始化失败只能回滚本次刚创建且身份仍完全一致的 direct child。
+			if rollbackErr := rollbackFreshFixture(base, physicalRoot, createdRootInfo, marker, ownerUID); rollbackErr != nil {
+				result = nil
+				resultErr = errors.New("fixture initialization rollback failed")
+			}
+		}
+	}()
+	markerWriter := writeMarker
+	if options.hooks != nil && options.hooks.writeMarker != nil {
+		markerWriter = options.hooks.writeMarker
+	}
+	if err := markerWriter(physicalRoot, marker); err != nil {
 		return nil, err
 	}
 
 	paths := fixturePaths(physicalRoot)
-	if err := createFixtureDirectories(paths); err != nil {
+	directoryWriter := os.MkdirAll
+	if options.hooks != nil && options.hooks.createDirectory != nil {
+		directoryWriter = func(path string, _ os.FileMode) error { return options.hooks.createDirectory(path) }
+	}
+	if err := createFixtureDirectories(paths, directoryWriter); err != nil {
 		return nil, err
 	}
 	retention := &Retention{
@@ -160,6 +190,7 @@ func Create(options CreateOptions) (*Root, error) {
 		clock:        clock,
 		effectiveUID: effectiveUID,
 	}
+	committed = true
 	return &Root{paths: paths, retention: retention}, nil
 }
 
@@ -203,7 +234,7 @@ func fixturePaths(root string) Paths {
 	}
 }
 
-func createFixtureDirectories(paths Paths) error {
+func createFixtureDirectories(paths Paths, mkdirAll func(string, os.FileMode) error) error {
 	directories := []string{
 		paths.Home,
 		paths.XDGConfig,
@@ -234,7 +265,7 @@ func createFixtureDirectories(paths Paths) error {
 		paths.SentinelScratch,
 	}
 	for _, directory := range directories {
-		if err := os.MkdirAll(directory, 0o700); err != nil {
+		if err := mkdirAll(directory, 0o700); err != nil {
 			return errors.New("fixture directory unavailable")
 		}
 		inside, err := isWithin(paths.Root, directory)
@@ -243,6 +274,38 @@ func createFixtureDirectories(paths Paths) error {
 		}
 	}
 	return nil
+}
+
+func rollbackFreshFixture(base, root string, created os.FileInfo, expected ownershipMarker, effectiveUID int) error {
+	baseNow, err := canonicalExistingDirectory(base)
+	if err != nil || baseNow != base || root == base || filepath.Dir(root) != base || filepath.Base(root) != "fixture-"+expected.Nonce {
+		return errors.New("fixture rollback containment rejected")
+	}
+	inside, err := isWithin(base, root)
+	if err != nil || !inside {
+		return errors.New("fixture rollback containment rejected")
+	}
+	current, err := os.Lstat(root)
+	if err != nil || !current.IsDir() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(created, current) {
+		return errors.New("fixture rollback identity rejected")
+	}
+	stat, ok := current.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != effectiveUID || effectiveUID != expected.EffectiveUID {
+		return errors.New("fixture rollback ownership rejected")
+	}
+	marker, markerErr := readMarker(root)
+	if markerErr == nil && marker != expected {
+		return errors.New("fixture rollback marker rejected")
+	}
+	if markerErr != nil && !errors.Is(markerFileError(root), os.ErrNotExist) {
+		return errors.New("fixture rollback marker rejected")
+	}
+	return os.RemoveAll(root)
+}
+
+func markerFileError(root string) error {
+	_, err := os.Lstat(filepath.Join(root, markerFileName))
+	return err
 }
 
 func writeMarker(root string, marker ownershipMarker) error {
