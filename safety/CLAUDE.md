@@ -54,6 +54,7 @@ task、wave、phase 的 hard deadline 分别是 15、47、305 秒；完整公式
 - `run_id` 只能由可信 builder 生成 digest-derived opaque ID；`suite_id` / `operation_ids` 只能来自固定 registry。command-result 必须走 closed field/type registry，未知 key、numeric identity 或任意 caller public-ID 不能依赖词法 denylist 放行。canary 必须覆盖无敏感关键词 identity、opaque credential、stable machine ID、unknown key、numeric UID，并验证 construction、CLI renderer 与 Store 在输出/写入前失败且不回显。
 - `fixture run` 只能接受仓库外 base 与 logical fixture ID，并由 `fixture.Create` 创建 fresh direct child；禁止重新公开 `--fixture-root` / `--store-root`，也禁止把已有目录或真实 HOME 当作测试 sandbox。
 - ownership marker 必须通过同目录 temp + fsync/close + no-replace publish；初始化 rollback 仅可依靠本次 fresh directory identity/UID/nonce capability 删除 exact child，即使 marker 截断也不得遗留 child 或触碰 sibling/base。
+- 所有 repository input 必须通过固定 `/usr/bin/git` 的无网络、无 hook exact plumbing：无 symlink regular file、唯一 stage-0 index entry、index 与 frozen HEAD mode/blob 一致、HEAD blob 与实际消费的 bounded worktree bytes 一致。Git 缺失/失败、非 worktree、untracked、ignored、symlink、index substitution 或 worktree substitution 必须在创建 fixture/store 前 fail closed。
 - 禁止物理路径、真实 root/home、用户名、UID、host identity、raw output、resolver mapping、HMAC key、API key、token、密码、cookie、私钥、登录态或客户数据进入 artifact、报告、文档、fixture 样本或 Git。
 - 当前 service adapter 的 tracked proof 缺失；current-host 必须在 adapter/workload 前 `manual-required`，不能写成 current-host passed。
 - manager-tree 的内部 symlink 必须解析最终 target 并限制在 exact manager root；relative/absolute/chain escape 一律 incomplete、无 token、无 claim，不能通过只 hash link text 绕过。

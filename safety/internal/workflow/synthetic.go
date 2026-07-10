@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,6 +22,31 @@ import (
 )
 
 const successState = "synthetic-sentinel-passed"
+
+const (
+	trackedInputMaxBytes = 64 << 10
+	gitProofOutputMax    = 128 << 10
+	gitProofTimeout      = 2 * time.Second
+)
+
+type trackedRepository struct {
+	root string
+}
+
+type trackedInput struct {
+	path string
+	data []byte
+}
+
+type gitProofOperation uint8
+
+const (
+	gitProofTopLevel gitProofOperation = iota + 1
+	gitProofIndexEntry
+	gitProofHeadCommit
+	gitProofTreeEntry
+	gitProofBlob
+)
 
 func SyntheticSentinelState() string {
 	return successState
@@ -169,16 +195,12 @@ func RunSynthetic(options Options) (Summary, error) {
 	if options.Mode != "synthetic" {
 		return Summary{}, errors.New("synthetic mode required")
 	}
-	repositoryRoot, blueprintPath, surfacesPath, rawSamplePath, fixtureRoot, storeRoot, err := preflight(options)
+	repositoryRoot, blueprintInput, surfacesInput, rawSampleInput, fixtureRoot, storeRoot, err := preflight(options)
 	if err != nil {
 		return Summary{}, err
 	}
 
-	blueprintBytes, err := readBounded(blueprintPath)
-	if err != nil {
-		return Summary{}, err
-	}
-	input, err := parseBlueprint(blueprintBytes)
+	input, err := parseBlueprint(blueprintInput.data)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -197,11 +219,7 @@ func RunSynthetic(options Options) (Summary, error) {
 		return Summary{}, errors.New("synthetic operation policy rejected")
 	}
 	operationID := input.OperationID
-	surfacesBytes, err := readBounded(surfacesPath)
-	if err != nil {
-		return Summary{}, err
-	}
-	manifest, err := sentinel.ParseManifest(surfacesBytes)
+	manifest, err := sentinel.ParseManifest(surfacesInput.data)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -261,11 +279,7 @@ func RunSynthetic(options Options) (Summary, error) {
 		return Summary{}, err
 	}
 
-	rawSample, err := readBounded(rawSamplePath)
-	if err != nil {
-		return Summary{}, err
-	}
-	registry, err := privacy.MaterializeFixtureAdapter(fixtureRoot, rawSample)
+	registry, err := privacy.MaterializeFixtureAdapter(fixtureRoot, rawSampleInput.data)
 	if err != nil {
 		return Summary{}, errors.New("synthetic adapter unavailable")
 	}
@@ -346,55 +360,247 @@ func RunSynthetic(options Options) (Summary, error) {
 	}, nil
 }
 
-func preflight(options Options) (string, string, string, string, string, string, error) {
-	repositoryRoot, err := filepath.EvalSymlinks(options.RepositoryRoot)
+func preflight(options Options) (string, trackedInput, trackedInput, trackedInput, string, string, error) {
+	empty := trackedInput{}
+	repository, err := openTrackedRepository(options.RepositoryRoot)
 	if err != nil {
-		return "", "", "", "", "", "", errors.New("repository root rejected")
+		return "", empty, empty, empty, "", "", errors.New("repository root rejected")
 	}
-	repositoryRoot, err = filepath.Abs(repositoryRoot)
+	blueprintInput, err := validateTrackedInput(options.BlueprintPath, repository)
 	if err != nil {
-		return "", "", "", "", "", "", errors.New("repository root rejected")
+		return "", empty, empty, empty, "", "", err
 	}
-	blueprintPath, err := validateTrackedInput(options.BlueprintPath, repositoryRoot)
+	surfacesInput, err := validateTrackedInput(options.SurfacesPath, repository)
 	if err != nil {
-		return "", "", "", "", "", "", err
+		return "", empty, empty, empty, "", "", err
 	}
-	surfacesPath, err := validateTrackedInput(options.SurfacesPath, repositoryRoot)
+	rawSampleInput, err := validateTrackedInput(filepath.Join(repository.root, "safety", "testdata", "raw", "fake-adapter.json"), repository)
 	if err != nil {
-		return "", "", "", "", "", "", err
+		return "", empty, empty, empty, "", "", err
 	}
-	rawSamplePath, err := validateTrackedInput(filepath.Join(repositoryRoot, "safety", "testdata", "raw", "fake-adapter.json"), repositoryRoot)
+	fixtureRoot, err := artifact.ValidateExternalRoot(options.FixtureRoot, repository.root)
 	if err != nil {
-		return "", "", "", "", "", "", err
+		return "", empty, empty, empty, "", "", err
 	}
-	fixtureRoot, err := artifact.ValidateExternalRoot(options.FixtureRoot, repositoryRoot)
+	storeRoot, err := artifact.ValidateExternalRoot(options.StoreRoot, repository.root)
 	if err != nil {
-		return "", "", "", "", "", "", err
+		return "", empty, empty, empty, "", "", err
 	}
-	storeRoot, err := artifact.ValidateExternalRoot(options.StoreRoot, repositoryRoot)
-	if err != nil {
-		return "", "", "", "", "", "", err
-	}
-	return repositoryRoot, blueprintPath, surfacesPath, rawSamplePath, fixtureRoot, storeRoot, nil
+	return repository.root, blueprintInput, surfacesInput, rawSampleInput, fixtureRoot, storeRoot, nil
 }
 
-func validateTrackedInput(path, repositoryRoot string) (string, error) {
-	if path == "" || !filepath.IsAbs(path) {
-		return "", errors.New("tracked input rejected")
+func openTrackedRepository(root string) (*trackedRepository, error) {
+	if root == "" || !filepath.IsAbs(root) {
+		return nil, errors.New("tracked repository rejected")
+	}
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(root))
+	if err != nil {
+		return nil, errors.New("tracked repository rejected")
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return nil, errors.New("tracked repository rejected")
+	}
+	gitInfo, err := os.Stat("/usr/bin/git")
+	if err != nil || !gitInfo.Mode().IsRegular() || gitInfo.Mode().Perm()&0o111 == 0 {
+		return nil, errors.New("tracked repository rejected")
+	}
+	repository := &trackedRepository{root: resolved}
+	topLevel, err := repository.gitOutput(gitProofTopLevel, "", "")
+	if err != nil || bytes.Count(topLevel, []byte{'\n'}) > 1 {
+		return nil, errors.New("tracked repository rejected")
+	}
+	gitRoot := strings.TrimSpace(string(topLevel))
+	gitRoot, err = filepath.EvalSymlinks(gitRoot)
+	if err != nil {
+		return nil, errors.New("tracked repository rejected")
+	}
+	gitRoot, err = filepath.Abs(gitRoot)
+	if err != nil || filepath.Clean(gitRoot) != repository.root {
+		return nil, errors.New("tracked repository rejected")
+	}
+	return repository, nil
+}
+
+func validateTrackedInput(path string, repository *trackedRepository) (trackedInput, error) {
+	rejected := func() (trackedInput, error) {
+		return trackedInput{}, errors.New("tracked input rejected")
+	}
+	if repository == nil || path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsAny(path, "\x00\r\n\t") {
+		return rejected()
 	}
 	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || resolved != path {
+		return rejected()
+	}
+	relative, err := filepath.Rel(repository.root, resolved)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || strings.Contains(relative, "\\") {
+		return rejected()
+	}
+	relative = filepath.ToSlash(relative)
+	data, err := readBoundedNoSymlink(resolved)
+	if err != nil || len(data) > trackedInputMaxBytes {
+		return rejected()
+	}
+
+	indexOutput, err := repository.gitOutput(gitProofIndexEntry, relative, "")
 	if err != nil {
-		return "", errors.New("tracked input rejected")
+		return rejected()
 	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() {
-		return "", errors.New("tracked input rejected")
+	indexMode, indexObject, err := parseGitIndexEntry(indexOutput, relative)
+	if err != nil {
+		return rejected()
 	}
-	relative, err := filepath.Rel(repositoryRoot, resolved)
-	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", errors.New("tracked input rejected")
+	headObject, err := repository.gitOutput(gitProofHeadCommit, "", "")
+	if err != nil || !validGitObjectID(strings.TrimSpace(string(headObject))) {
+		return rejected()
 	}
-	return resolved, nil
+	treeOutput, err := repository.gitOutput(gitProofTreeEntry, relative, strings.TrimSpace(string(headObject)))
+	if err != nil {
+		return rejected()
+	}
+	treeMode, treeObject, err := parseGitTreeEntry(treeOutput, relative)
+	if err != nil || treeMode != indexMode || treeObject != indexObject {
+		return rejected()
+	}
+	blob, err := repository.gitOutput(gitProofBlob, "", treeObject)
+	if err != nil || !bytes.Equal(blob, data) {
+		return rejected()
+	}
+	return trackedInput{path: resolved, data: data}, nil
+}
+
+func (repository *trackedRepository) gitOutput(operation gitProofOperation, relative, object string) ([]byte, error) {
+	if repository == nil || repository.root == "" {
+		return nil, errors.New("tracked repository rejected")
+	}
+	var arguments []string
+	var limit int64
+	switch operation {
+	case gitProofTopLevel:
+		if relative != "" || object != "" {
+			return nil, errors.New("tracked repository rejected")
+		}
+		arguments, limit = []string{"rev-parse", "--show-toplevel"}, 4096
+	case gitProofIndexEntry:
+		if relative == "" || object != "" {
+			return nil, errors.New("tracked repository rejected")
+		}
+		arguments, limit = []string{"ls-files", "-z", "--stage", "--error-unmatch", "--", relative}, 8192
+	case gitProofHeadCommit:
+		if relative != "" || object != "" {
+			return nil, errors.New("tracked repository rejected")
+		}
+		arguments, limit = []string{"rev-parse", "--verify", "HEAD^{commit}"}, 128
+	case gitProofTreeEntry:
+		if relative == "" || !validGitObjectID(object) {
+			return nil, errors.New("tracked repository rejected")
+		}
+		arguments, limit = []string{"ls-tree", "-z", "--full-tree", object, "--", relative}, 8192
+	case gitProofBlob:
+		if relative != "" || !validGitObjectID(object) {
+			return nil, errors.New("tracked repository rejected")
+		}
+		arguments, limit = []string{"cat-file", "blob", object}, trackedInputMaxBytes
+	default:
+		return nil, errors.New("tracked repository rejected")
+	}
+	if limit <= 0 || limit > gitProofOutputMax {
+		return nil, errors.New("tracked repository rejected")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), gitProofTimeout)
+	defer cancel()
+	base := []string{
+		"--no-lazy-fetch",
+		"--literal-pathspecs",
+		"-c", "core.fsmonitor=false",
+		"-c", "core.hooksPath=/dev/null",
+		"-c", "protocol.allow=never",
+		"-C", repository.root,
+	}
+	command := exec.CommandContext(ctx, "/usr/bin/git", append(base, arguments...)...)
+	command.Dir = repository.root
+	command.Env = []string{
+		"HOME=/var/empty",
+		"XDG_CONFIG_HOME=/var/empty",
+		"GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_OPTIONAL_LOCKS=0",
+		"GIT_NO_LAZY_FETCH=1",
+		"GIT_NO_REPLACE_OBJECTS=1",
+		"GIT_LITERAL_PATHSPECS=1",
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_ASKPASS=/usr/bin/false",
+		"SSH_ASKPASS=/usr/bin/false",
+		"LC_ALL=C",
+		"LANG=C",
+		"PATH=/usr/bin:/bin",
+	}
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		return nil, errors.New("tracked repository rejected")
+	}
+	command.Stderr = io.Discard
+	if err := command.Start(); err != nil {
+		return nil, errors.New("tracked repository rejected")
+	}
+	output, readErr := io.ReadAll(io.LimitReader(stdout, limit+1))
+	if int64(len(output)) > limit {
+		cancel()
+	}
+	waitErr := command.Wait()
+	if readErr != nil || waitErr != nil || ctx.Err() != nil || int64(len(output)) > limit {
+		return nil, errors.New("tracked repository rejected")
+	}
+	return output, nil
+}
+
+func parseGitIndexEntry(data []byte, relative string) (string, string, error) {
+	if bytes.Count(data, []byte{0}) != 1 || len(data) < 2 || data[len(data)-1] != 0 {
+		return "", "", errors.New("tracked input rejected")
+	}
+	entry := data[:len(data)-1]
+	tab := bytes.IndexByte(entry, '\t')
+	if tab < 0 || string(entry[tab+1:]) != relative {
+		return "", "", errors.New("tracked input rejected")
+	}
+	fields := strings.Fields(string(entry[:tab]))
+	if len(fields) != 3 || !validGitFileMode(fields[0]) || !validGitObjectID(fields[1]) || fields[2] != "0" {
+		return "", "", errors.New("tracked input rejected")
+	}
+	return fields[0], fields[1], nil
+}
+
+func parseGitTreeEntry(data []byte, relative string) (string, string, error) {
+	if bytes.Count(data, []byte{0}) != 1 || len(data) < 2 || data[len(data)-1] != 0 {
+		return "", "", errors.New("tracked input rejected")
+	}
+	entry := data[:len(data)-1]
+	tab := bytes.IndexByte(entry, '\t')
+	if tab < 0 || string(entry[tab+1:]) != relative {
+		return "", "", errors.New("tracked input rejected")
+	}
+	fields := strings.Fields(string(entry[:tab]))
+	if len(fields) != 3 || !validGitFileMode(fields[0]) || fields[1] != "blob" || !validGitObjectID(fields[2]) {
+		return "", "", errors.New("tracked input rejected")
+	}
+	return fields[0], fields[2], nil
+}
+
+func validGitFileMode(value string) bool {
+	return value == "100644" || value == "100755"
+}
+
+func validGitObjectID(value string) bool {
+	if len(value) != 40 && len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 func parseBlueprint(data []byte) (blueprint, error) {
@@ -469,54 +675,35 @@ func capturedFacts(observation privacy.Observation, expected []fact) ([]fact, bo
 	return result, true
 }
 
-func readBounded(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) > 64<<10 {
-		return nil, errors.New("tracked input rejected")
-	}
-	return data, nil
-}
-
 func BuildPhaseReport(options PhaseReportOptions) (PhaseReport, error) {
-	repositoryRoot, err := filepath.EvalSymlinks(options.RepositoryRoot)
+	repository, err := openTrackedRepository(options.RepositoryRoot)
 	if err != nil {
 		return PhaseReport{}, errors.New("phase repository rejected")
 	}
-	repositoryRoot, err = filepath.Abs(repositoryRoot)
-	if err != nil {
-		return PhaseReport{}, errors.New("phase repository rejected")
-	}
-	suitePath, err := validateTrackedInput(options.SuitePath, repositoryRoot)
-	if err != nil || filepath.ToSlash(mustRelative(repositoryRoot, suitePath)) != "safety/manifests/offline-suite.v1.json" {
+	repositoryRoot := repository.root
+	suiteInput, err := validateTrackedInput(options.SuitePath, repository)
+	if err != nil || filepath.ToSlash(mustRelative(repositoryRoot, suiteInput.path)) != "safety/manifests/offline-suite.v1.json" {
 		return PhaseReport{}, errors.New("phase suite rejected")
 	}
-	expectedPath, err := validateTrackedInput(options.ExpectedReportPath, repositoryRoot)
-	if err != nil || filepath.ToSlash(mustRelative(repositoryRoot, expectedPath)) != "safety/testdata/blueprints/walking-skeleton/expected-report.json" {
+	expectedInput, err := validateTrackedInput(options.ExpectedReportPath, repository)
+	if err != nil || filepath.ToSlash(mustRelative(repositoryRoot, expectedInput.path)) != "safety/testdata/blueprints/walking-skeleton/expected-report.json" {
 		return PhaseReport{}, errors.New("phase expected report rejected")
 	}
 
-	suiteData, err := readBoundedNoSymlink(suitePath)
-	if err != nil {
-		return PhaseReport{}, errors.New("phase suite rejected")
-	}
 	var suite offlineSuite
-	if err := decodeClosedPhase(suiteData, &suite); err != nil || validateOfflineSuite(suite) != nil {
+	if err := decodeClosedPhase(suiteInput.data, &suite); err != nil || validateOfflineSuite(suite) != nil {
 		return PhaseReport{}, errors.New("phase suite rejected")
-	}
-	expectedData, err := readBoundedNoSymlink(expectedPath)
-	if err != nil {
-		return PhaseReport{}, errors.New("phase expected report rejected")
 	}
 	var expected phaseReportTemplate
-	if err := decodeClosedPhase(expectedData, &expected); err != nil {
+	if err := decodeClosedPhase(expectedInput.data, &expected); err != nil {
 		return PhaseReport{}, errors.New("phase expected report rejected")
 	}
 
-	manifestDigests, err := validateManifestBindings(suite, repositoryRoot, expectedPath)
+	manifestDigests, manifestInputs, err := validateManifestBindings(suite, repository, expectedInput.path)
 	if err != nil {
 		return PhaseReport{}, err
 	}
-	currentHost, err := assessCurrentHostProof(repositoryRoot)
+	currentHost, err := assessCurrentHostProof(manifestInputs)
 	if err != nil {
 		return PhaseReport{}, err
 	}
@@ -532,7 +719,7 @@ func BuildPhaseReport(options PhaseReportOptions) (PhaseReport, error) {
 	if err := decodeClosedPhase(summaryData, &summary); err != nil || summary.State != successState || summary.ArtifactCount != 7 || summary.KindCount != 6 || len(summary.Artifacts) != 7 {
 		return PhaseReport{}, errors.New("phase summary rejected")
 	}
-	if err := validateSyntheticManifestDigest(repositoryRoot, summary.ManifestDigest); err != nil {
+	if err := validateSyntheticManifestDigest(repository, summary.ManifestDigest); err != nil {
 		return PhaseReport{}, err
 	}
 	if err := validatePhasePolicies(expected.PolicyStatuses); err != nil {
@@ -651,7 +838,7 @@ func validateOfflineSuite(suite offlineSuite) error {
 	return nil
 }
 
-func validateManifestBindings(suite offlineSuite, repositoryRoot, expectedPath string) (map[string]string, error) {
+func validateManifestBindings(suite offlineSuite, repository *trackedRepository, expectedPath string) (map[string]string, map[string]trackedInput, error) {
 	want := map[string]string{
 		"protected-surfaces": "repo:safety/manifests/protected-surfaces.v1.json",
 		"real-adapters":      "repo:safety/manifests/real-adapters.v1.json",
@@ -659,47 +846,45 @@ func validateManifestBindings(suite offlineSuite, repositoryRoot, expectedPath s
 		"expected-report":    "repo:safety/testdata/blueprints/walking-skeleton/expected-report.json",
 	}
 	result := make(map[string]string, len(want))
+	inputs := make(map[string]trackedInput, len(want))
 	for _, binding := range suite.Manifests {
 		logical, err := privacy.ParseLogicalRef(binding.LogicalRef)
 		if err != nil || logical.Namespace != privacy.NamespaceRepo || want[binding.ID] != binding.LogicalRef || !artifact.IsDigest(binding.Digest) {
-			return nil, errors.New("phase manifest binding rejected")
+			return nil, nil, errors.New("phase manifest binding rejected")
 		}
-		physical, err := validateTrackedInput(filepath.Join(repositoryRoot, filepath.FromSlash(logical.ID)), repositoryRoot)
+		input, err := validateTrackedInput(filepath.Join(repository.root, filepath.FromSlash(logical.ID)), repository)
 		if err != nil {
-			return nil, errors.New("phase manifest binding rejected")
+			return nil, nil, errors.New("phase manifest binding rejected")
 		}
-		if binding.ID == "expected-report" && filepath.Clean(physical) != filepath.Clean(expectedPath) {
-			return nil, errors.New("phase expected report binding rejected")
+		if binding.ID == "expected-report" && filepath.Clean(input.path) != filepath.Clean(expectedPath) {
+			return nil, nil, errors.New("phase expected report binding rejected")
 		}
-		data, err := readBoundedNoSymlink(physical)
-		if err != nil || digestPhaseBytes(data) != binding.Digest {
-			return nil, errors.New("phase manifest digest rejected")
+		if digestPhaseBytes(input.data) != binding.Digest {
+			return nil, nil, errors.New("phase manifest digest rejected")
 		}
 		if _, duplicate := result[binding.ID]; duplicate {
-			return nil, errors.New("phase manifest binding rejected")
+			return nil, nil, errors.New("phase manifest binding rejected")
 		}
 		result[binding.ID] = binding.Digest
+		inputs[binding.ID] = input
 	}
 	if len(result) != len(want) {
-		return nil, errors.New("phase manifest binding rejected")
+		return nil, nil, errors.New("phase manifest binding rejected")
 	}
-	return result, nil
+	return result, inputs, nil
 }
 
-func assessCurrentHostProof(repositoryRoot string) (PhaseCurrentHostStatus, error) {
-	protectedData, err := readBoundedNoSymlink(filepath.Join(repositoryRoot, "safety", "manifests", "protected-surfaces.v1.json"))
+func assessCurrentHostProof(inputs map[string]trackedInput) (PhaseCurrentHostStatus, error) {
+	protectedInput, protectedOK := inputs["protected-surfaces"]
+	adapterInput, adapterOK := inputs["real-adapters"]
+	if !protectedOK || !adapterOK {
+		return PhaseCurrentHostStatus{}, errors.New("phase protected manifest rejected")
+	}
+	manifest, err := sentinel.ParseProtectedManifest(protectedInput.data)
 	if err != nil {
 		return PhaseCurrentHostStatus{}, errors.New("phase protected manifest rejected")
 	}
-	manifest, err := sentinel.ParseProtectedManifest(protectedData)
-	if err != nil {
-		return PhaseCurrentHostStatus{}, errors.New("phase protected manifest rejected")
-	}
-	adapterData, err := readBoundedNoSymlink(filepath.Join(repositoryRoot, "safety", "manifests", "real-adapters.v1.json"))
-	if err != nil {
-		return PhaseCurrentHostStatus{}, errors.New("phase adapter manifest rejected")
-	}
-	registry, err := sentinel.LoadRealAdapterRegistry(adapterData, time.Now().UTC())
+	registry, err := sentinel.LoadRealAdapterRegistry(adapterInput.data, time.Now().UTC())
 	if err != nil {
 		return PhaseCurrentHostStatus{}, errors.New("phase adapter manifest rejected")
 	}
@@ -730,12 +915,12 @@ func validatePhaseTemplate(expected phaseReportTemplate, suite offlineSuite, cur
 	return nil
 }
 
-func validateSyntheticManifestDigest(repositoryRoot, expectedDigest string) error {
-	data, err := readBoundedNoSymlink(filepath.Join(repositoryRoot, "safety", "testdata", "blueprints", "walking-skeleton", "protected-surfaces.json"))
+func validateSyntheticManifestDigest(repository *trackedRepository, expectedDigest string) error {
+	input, err := validateTrackedInput(filepath.Join(repository.root, "safety", "testdata", "blueprints", "walking-skeleton", "protected-surfaces.json"), repository)
 	if err != nil {
 		return errors.New("phase synthetic manifest rejected")
 	}
-	manifest, err := sentinel.ParseManifest(data)
+	manifest, err := sentinel.ParseManifest(input.data)
 	if err != nil || manifest.Digest != expectedDigest {
 		return errors.New("phase synthetic manifest digest rejected")
 	}

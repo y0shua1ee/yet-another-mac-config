@@ -4,6 +4,8 @@
 
 当前 Phase 1 只允许读取仓库输入，并把所有生成状态写入仓库外的新建临时根或显式外部 store。它不会安装或更新 Nix、Homebrew、mise、uv、rustup，不会执行 `darwin-rebuild switch`、`home-manager switch`、`brew services`、`launchctl`、`defaults write`、真实链接/信任变更，也不会尝试“收敛”当前电脑。
 
+这里的“仓库输入”不是“路径碰巧位于仓库内”。每个 blueprint、surface、raw sample、suite、expected report 和 manifest 都必须是无 symlink 的 regular file，并通过固定 `/usr/bin/git` 的离线 plumbing 证明：repository root 是 exact worktree top-level；index 中存在唯一 stage-0 entry；index mode/blob 与 frozen HEAD tree 完全一致；`cat-file` 读取的 HEAD blob 与本次实际消费的 bounded worktree bytes 完全一致。Git 调用使用空白配置、禁用 hooks/fsmonitor/replace object、optional lock、lazy fetch、prompt 与 protocol，因此不会联网或执行仓库 hook。Git 不可用、不是 worktree、查询失败、未跟踪、被 ignore、symlink、staged/index 替换或 worktree 漂移都会在 fixture/store 创建前 fail closed。
+
 ## 操作者入口
 
 运行测试需要本机已有可用的 Go。runner 固定使用 `GOTOOLCHAIN=local`、`GOPROXY=off` 和空白 allowlist 环境；若 Go 不存在，会以 `manual-required`、退出码 `32` 停止，不会联网下载或自动 bootstrap 工具链。

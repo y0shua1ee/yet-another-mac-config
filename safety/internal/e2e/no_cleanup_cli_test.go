@@ -22,6 +22,7 @@ func TestNoCleanupCLI(t *testing.T) {
 	t.Run("rejects destructive policy before output or state", testDestructivePolicyCLI)
 	t.Run("keeps the only receipt synthetic and fixture scoped", testSyntheticFixtureReceipt)
 	t.Run("has no mutable command or shell dispatch edge", testNoMutableProductionRoute)
+	t.Run("allows only exact offline Git input plumbing", testExactTrackedGitPlumbing)
 	t.Run("binds exact task pairs and fixed fresh-root wave", testNoCleanupRunnerContract)
 }
 
@@ -136,8 +137,9 @@ func testNoMutableProductionRoute(t *testing.T) {
 	safetyRoot, _ := projectRoots(t)
 	fileSet := token.NewFileSet()
 	allowedExecImports := map[string]struct{}{
-		filepath.Join("internal", "privacy", "capture.go"): {},
-		filepath.Join("internal", "sentinel", "real.go"):   {},
+		filepath.Join("internal", "privacy", "capture.go"):    {},
+		filepath.Join("internal", "sentinel", "real.go"):      {},
+		filepath.Join("internal", "workflow", "synthetic.go"): {},
 	}
 	forbiddenRoutes := map[string]struct{}{
 		"apply": {}, "cleanup": {}, "uninstall": {}, "zap": {}, "runtime-delete": {},
@@ -218,6 +220,64 @@ func testNoMutableProductionRoute(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("production graph scan failed: %v", err)
+	}
+}
+
+func testExactTrackedGitPlumbing(t *testing.T) {
+	safetyRoot, _ := projectRoots(t)
+	path := filepath.Join(safetyRoot, "internal", "workflow", "synthetic.go")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal("tracked-input plumbing source unavailable")
+	}
+	text := string(data)
+	for _, required := range []string{
+		`"/usr/bin/git"`, `"--no-lazy-fetch"`, `"--literal-pathspecs"`, `"core.fsmonitor=false"`, `"core.hooksPath=/dev/null"`, `"protocol.allow=never"`,
+		`"GIT_CONFIG_NOSYSTEM=1"`, `"GIT_CONFIG_GLOBAL=/dev/null"`, `"GIT_OPTIONAL_LOCKS=0"`, `"GIT_NO_LAZY_FETCH=1"`, `"GIT_NO_REPLACE_OBJECTS=1"`,
+		`"GIT_LITERAL_PATHSPECS=1"`, `"GIT_TERMINAL_PROMPT=0"`, `"GIT_ASKPASS=/usr/bin/false"`, `"SSH_ASKPASS=/usr/bin/false"`,
+		`type gitProofOperation uint8`, `switch operation`,
+		`"rev-parse", "--show-toplevel"`, `"ls-files", "-z", "--stage", "--error-unmatch"`, `"rev-parse", "--verify", "HEAD^{commit}"`,
+		`"ls-tree", "-z", "--full-tree"`, `"cat-file", "blob"`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatal("exact tracked-input Git contract is incomplete")
+		}
+	}
+	if strings.Contains(text, "os.Environ(") || strings.Contains(text, "arguments ...string") {
+		t.Fatal("tracked-input Git plumbing exposed ambient or arbitrary command input")
+	}
+
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, path, data, 0)
+	if err != nil {
+		t.Fatal("tracked-input plumbing source did not parse")
+	}
+	commandCalls := 0
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		identifier, ok := selector.X.(*ast.Ident)
+		if !ok || identifier.Name != "exec" {
+			return true
+		}
+		commandCalls++
+		if selector.Sel.Name != "CommandContext" || len(call.Args) < 2 {
+			t.Fatal("tracked-input plumbing exposed a non-context command edge")
+		}
+		executable, ok := call.Args[1].(*ast.BasicLit)
+		if !ok || executable.Kind != token.STRING || executable.Value != `"/usr/bin/git"` {
+			t.Fatal("tracked-input plumbing executable is not fixed Git")
+		}
+		return true
+	})
+	if commandCalls != 1 {
+		t.Fatal("tracked-input plumbing command edge is not singular")
 	}
 }
 

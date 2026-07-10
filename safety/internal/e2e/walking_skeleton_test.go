@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"example.invalid/yamc/safety/internal/workflow"
 )
 
 const (
@@ -101,6 +103,7 @@ func TestWalkingSkeletonContract(t *testing.T) {
 	assertSixKindsAndStoreKeys(t, artifacts, summary)
 	assertExactLineage(t, artifacts, summary, summary.ManifestDigest)
 	assertNegativeRoutes(t, safetyRoot, repoRoot, blueprintPath, surfacesPath, externalBase)
+	assertTrackedInputRoutes(t, safetyRoot)
 }
 
 func projectRoots(t *testing.T) (string, string) {
@@ -448,6 +451,124 @@ func assertNegativeRoutes(t *testing.T, safetyRoot, repoRoot, blueprintPath, sur
 		if err != nil || string(data) != want {
 			t.Fatal("rejected fixture route changed preexisting state")
 		}
+	}
+}
+
+func assertTrackedInputRoutes(t *testing.T, safetyRoot string) {
+	t.Helper()
+	repositoryRoot := filepath.Join(t.TempDir(), "tracked-input-repository")
+	blueprintRelative := filepath.Join("safety", "testdata", "blueprints", "walking-skeleton", "input.json")
+	surfacesRelative := filepath.Join("safety", "testdata", "blueprints", "walking-skeleton", "protected-surfaces.json")
+	rawRelative := filepath.Join("safety", "testdata", "raw", "fake-adapter.json")
+	blueprintPath := copyTrackedFixture(t, safetyRoot, repositoryRoot, blueprintRelative)
+	surfacesPath := copyTrackedFixture(t, safetyRoot, repositoryRoot, surfacesRelative)
+	copyTrackedFixture(t, safetyRoot, repositoryRoot, rawRelative)
+	gitignorePath := filepath.Join(repositoryRoot, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte("ignored.json\n"), 0o600); err != nil {
+		t.Fatal("tracked-input ignore fixture unavailable")
+	}
+	runFixtureGit(t, repositoryRoot, "init", "-q")
+	runFixtureGit(t, repositoryRoot, "add", "--", ".gitignore", filepath.ToSlash(blueprintRelative), filepath.ToSlash(surfacesRelative), filepath.ToSlash(rawRelative))
+	runFixtureGit(t, repositoryRoot,
+		"-c", "user.name=synthetic-fixture",
+		"-c", "user.email=synthetic@example.invalid",
+		"-c", "commit.gpgsign=false",
+		"commit", "-q", "-m", "synthetic baseline",
+	)
+
+	original, err := os.ReadFile(blueprintPath)
+	if err != nil {
+		t.Fatal("tracked blueprint fixture unavailable")
+	}
+	untrackedPath := filepath.Join(filepath.Dir(blueprintPath), "untracked.json")
+	ignoredPath := filepath.Join(filepath.Dir(blueprintPath), "ignored.json")
+	symlinkPath := filepath.Join(filepath.Dir(blueprintPath), "symlink.json")
+	for _, candidate := range []string{untrackedPath, ignoredPath} {
+		if err := os.WriteFile(candidate, original, 0o600); err != nil {
+			t.Fatal("untracked blueprint fixture unavailable")
+		}
+	}
+	if err := os.Symlink(filepath.Base(blueprintPath), symlinkPath); err != nil {
+		t.Fatal("symlinked blueprint fixture unavailable")
+	}
+	runFixtureGit(t, repositoryRoot, "check-ignore", "--quiet", "--", filepath.ToSlash(filepath.Join(filepath.Dir(blueprintRelative), "ignored.json")))
+
+	assertTrackedInputRejected(t, repositoryRoot, untrackedPath, surfacesPath, "tracked input rejected")
+	assertTrackedInputRejected(t, repositoryRoot, ignoredPath, surfacesPath, "tracked input rejected")
+	assertTrackedInputRejected(t, repositoryRoot, symlinkPath, surfacesPath, "tracked input rejected")
+
+	mutated := append(append([]byte{}, original...), '\n')
+	if err := os.WriteFile(blueprintPath, mutated, 0o600); err != nil {
+		t.Fatal("worktree substitution fixture unavailable")
+	}
+	assertTrackedInputRejected(t, repositoryRoot, blueprintPath, surfacesPath, "tracked input rejected")
+	if err := os.WriteFile(blueprintPath, original, 0o600); err != nil {
+		t.Fatal("tracked blueprint restore unavailable")
+	}
+
+	if err := os.WriteFile(blueprintPath, mutated, 0o600); err != nil {
+		t.Fatal("index substitution fixture unavailable")
+	}
+	runFixtureGit(t, repositoryRoot, "add", "--", filepath.ToSlash(blueprintRelative))
+	if err := os.WriteFile(blueprintPath, original, 0o600); err != nil {
+		t.Fatal("index substitution worktree restore unavailable")
+	}
+	assertTrackedInputRejected(t, repositoryRoot, blueprintPath, surfacesPath, "tracked input rejected")
+
+	nonWorktreeRoot := filepath.Join(t.TempDir(), "non-worktree")
+	nonWorktreeBlueprint := copyTrackedFixture(t, safetyRoot, nonWorktreeRoot, blueprintRelative)
+	nonWorktreeSurfaces := copyTrackedFixture(t, safetyRoot, nonWorktreeRoot, surfacesRelative)
+	copyTrackedFixture(t, safetyRoot, nonWorktreeRoot, rawRelative)
+	assertTrackedInputRejected(t, nonWorktreeRoot, nonWorktreeBlueprint, nonWorktreeSurfaces, "repository root rejected")
+}
+
+func assertTrackedInputRejected(t *testing.T, repositoryRoot, blueprintPath, surfacesPath, want string) {
+	t.Helper()
+	externalRoot := t.TempDir()
+	fixtureRoot := filepath.Join(externalRoot, "fixture")
+	_, err := workflow.RunSynthetic(workflow.Options{
+		BlueprintPath: blueprintPath, SurfacesPath: surfacesPath,
+		FixtureRoot: fixtureRoot, StoreRoot: filepath.Join(fixtureRoot, "artifact-store"),
+		RepositoryRoot: repositoryRoot, Mode: "synthetic",
+	})
+	if err == nil || err.Error() != want {
+		t.Fatal("untrusted repository input did not fail at the tracked-input gate")
+	}
+	if _, statErr := os.Lstat(fixtureRoot); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("tracked-input rejection wrote to the external fixture")
+	}
+}
+
+func copyTrackedFixture(t *testing.T, safetyRoot, repositoryRoot, relative string) string {
+	t.Helper()
+	source := filepath.Join(safetyRoot, strings.TrimPrefix(relative, "safety"+string(filepath.Separator)))
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal("tracked-input source fixture unavailable")
+	}
+	destination := filepath.Join(repositoryRoot, relative)
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil || os.WriteFile(destination, data, 0o600) != nil {
+		t.Fatal("tracked-input repository fixture unavailable")
+	}
+	return destination
+}
+
+func runFixtureGit(t *testing.T, repositoryRoot string, arguments ...string) {
+	t.Helper()
+	base := []string{
+		"--no-lazy-fetch",
+		"-c", "core.fsmonitor=false",
+		"-c", "core.hooksPath=/dev/null",
+		"-c", "protocol.allow=never",
+		"-C", repositoryRoot,
+	}
+	command := exec.Command("/usr/bin/git", append(base, arguments...)...)
+	command.Env = []string{
+		"HOME=/var/empty", "XDG_CONFIG_HOME=/var/empty", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin",
+	}
+	if err := command.Run(); err != nil {
+		t.Fatal("isolated tracked-input Git fixture unavailable")
 	}
 }
 
