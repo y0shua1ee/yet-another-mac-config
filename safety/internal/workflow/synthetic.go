@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"example.invalid/yamc/safety/internal/artifact"
+	"example.invalid/yamc/safety/internal/privacy"
 	"example.invalid/yamc/safety/internal/sentinel"
 )
 
@@ -57,7 +59,7 @@ func RunSynthetic(options Options) (Summary, error) {
 	if options.Mode != "synthetic" {
 		return Summary{}, errors.New("synthetic mode required")
 	}
-	repositoryRoot, blueprintPath, surfacesPath, fixtureRoot, storeRoot, err := preflight(options)
+	repositoryRoot, blueprintPath, surfacesPath, rawSamplePath, fixtureRoot, storeRoot, err := preflight(options)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -131,13 +133,26 @@ func RunSynthetic(options Options) (Summary, error) {
 		return Summary{}, err
 	}
 
-	if err := runFakeAdapter(fixtureRoot, input.OperationID); err != nil {
+	rawSample, err := readBounded(rawSamplePath)
+	if err != nil {
 		return Summary{}, err
+	}
+	registry, err := privacy.MaterializeFixtureAdapter(fixtureRoot, rawSample)
+	if err != nil {
+		return Summary{}, errors.New("synthetic adapter unavailable")
+	}
+	captured, rejection := privacy.Capture(context.Background(), registry, privacy.CommandFixtureFake, privacy.Limits{})
+	if rejection != nil {
+		return Summary{}, rejection
+	}
+	normalizedFacts, ok := capturedFacts(captured, input.ExpectedPostconditions)
+	if !ok {
+		return Summary{}, errors.New("synthetic adapter normalization rejected")
 	}
 	freshObservedArtifact, err := makeArtifact(artifact.ObservedState, run, []string{receipt.envelope.ContentDigest}, struct {
 		Scope string `json:"scope"`
 		Facts []fact `json:"facts"`
-	}{"fixture:scope/walking-skeleton", input.ExpectedPostconditions})
+	}{"fixture:scope/walking-skeleton", normalizedFacts})
 	if err != nil {
 		return Summary{}, err
 	}
@@ -203,32 +218,36 @@ func RunSynthetic(options Options) (Summary, error) {
 	}, nil
 }
 
-func preflight(options Options) (string, string, string, string, string, error) {
+func preflight(options Options) (string, string, string, string, string, string, error) {
 	repositoryRoot, err := filepath.EvalSymlinks(options.RepositoryRoot)
 	if err != nil {
-		return "", "", "", "", "", errors.New("repository root rejected")
+		return "", "", "", "", "", "", errors.New("repository root rejected")
 	}
 	repositoryRoot, err = filepath.Abs(repositoryRoot)
 	if err != nil {
-		return "", "", "", "", "", errors.New("repository root rejected")
+		return "", "", "", "", "", "", errors.New("repository root rejected")
 	}
 	blueprintPath, err := validateTrackedInput(options.BlueprintPath, repositoryRoot)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", "", "", err
 	}
 	surfacesPath, err := validateTrackedInput(options.SurfacesPath, repositoryRoot)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", "", "", err
+	}
+	rawSamplePath, err := validateTrackedInput(filepath.Join(repositoryRoot, "safety", "testdata", "raw", "fake-adapter.json"), repositoryRoot)
+	if err != nil {
+		return "", "", "", "", "", "", err
 	}
 	fixtureRoot, err := artifact.ValidateExternalRoot(options.FixtureRoot, repositoryRoot)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", "", "", err
 	}
 	storeRoot, err := artifact.ValidateExternalRoot(options.StoreRoot, repositoryRoot)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", "", "", err
 	}
-	return repositoryRoot, blueprintPath, surfacesPath, fixtureRoot, storeRoot, nil
+	return repositoryRoot, blueprintPath, surfacesPath, rawSamplePath, fixtureRoot, storeRoot, nil
 }
 
 func validateTrackedInput(path, repositoryRoot string) (string, error) {
@@ -308,22 +327,18 @@ func makeArtifact(kind artifact.Kind, run artifact.RunMetadata, inputs []string,
 	return preparedArtifact{canonical: canonical, envelope: envelope}, err
 }
 
-func runFakeAdapter(fixtureRoot, operationID string) error {
-	workloadRoot := filepath.Join(fixtureRoot, "workload")
-	if err := os.MkdirAll(workloadRoot, 0o700); err != nil {
-		return errors.New("synthetic adapter unavailable")
+func capturedFacts(observation privacy.Observation, expected []fact) ([]fact, bool) {
+	if observation.Status != "normalized" || len(observation.Facts) != len(expected) {
+		return nil, false
 	}
-	data, err := json.Marshal(struct {
-		OperationID string `json:"operation_id"`
-		State       string `json:"state"`
-	}{operationID, "fixture:state/materialized"})
-	if err != nil {
-		return errors.New("synthetic adapter unavailable")
+	result := make([]fact, len(observation.Facts))
+	for index, captured := range observation.Facts {
+		if captured.Ref != expected[index].Ref || captured.State != expected[index].State {
+			return nil, false
+		}
+		result[index] = fact{Ref: captured.Ref, State: captured.State}
 	}
-	if err := os.WriteFile(filepath.Join(workloadRoot, "result.json"), data, 0o600); err != nil {
-		return errors.New("synthetic adapter unavailable")
-	}
-	return nil
+	return result, true
 }
 
 func readBounded(path string) ([]byte, error) {

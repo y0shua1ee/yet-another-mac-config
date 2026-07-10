@@ -250,6 +250,54 @@ run_privacy_boundary() {
     'EXPECTED_RED: privacy-boundary-behavior-missing'
 }
 
+run_bounded_capture() {
+  local privacy_status=0
+  local e2e_status=0
+  local privacy_output=''
+  local e2e_output=''
+
+  run_exact_go_suite \
+    './internal/privacy' \
+    '^TestBoundedCapture$' \
+    'TestBoundedCapture' \
+    'bounded-capture-privacy' \
+    'EXPECTED_RED: bounded-capture-behavior-missing' >/dev/null 2>&1 || privacy_status=$?
+  privacy_output="${TEST_OUTPUT:-}"
+
+  run_exact_go_suite \
+    './internal/e2e' \
+    '^TestPrivacyCLI$' \
+    'TestPrivacyCLI' \
+    'bounded-capture-e2e' \
+    'EXPECTED_RED: bounded-capture-behavior-missing' >/dev/null 2>&1 || e2e_status=$?
+  e2e_output="${TEST_OUTPUT:-}"
+
+  if [[ "${privacy_status}" -eq 70 || "${e2e_status}" -eq 70 ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"bounded-capture-selection-failed"}' >&2
+    return 70
+  fi
+  if [[ "${privacy_status}" -ne 0 && "${privacy_output}" != *'EXPECTED_RED: bounded-capture-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"bounded-capture-privacy-contract-failed"}' >&2
+    return 1
+  fi
+  if [[ "${e2e_status}" -ne 0 && "${e2e_output}" != *'EXPECTED_RED: bounded-capture-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"bounded-capture-e2e-contract-failed"}' >&2
+    return 1
+  fi
+  if [[ "${privacy_status}" -ne 0 || "${e2e_status}" -ne 0 ]]; then
+    printf '%s\n' '{"status":"expected-red-observed","suite":"bounded-capture"}' >&2
+    return 1
+  fi
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"bounded-capture"}'
+}
+
+run_privacy_wave() {
+  # 两个已完成 handler 各自启动新的子 runner，绝不复用外部根或 store。
+  /bin/bash "${SCRIPT_DIR}/test.sh" task privacy-boundary >/dev/null
+  /bin/bash "${SCRIPT_DIR}/test.sh" task bounded-capture >/dev/null
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"privacy"}'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -266,11 +314,17 @@ case "${SCOPE}:${SUITE}" in
   task:privacy-"boundary")
     run_privacy_boundary
     ;;
+  task:bounded-"capture")
+    run_bounded_capture
+    ;;
   wave:skeleton)
     run_green_walking_skeleton
     ;;
   wave:artifact-contracts)
     run_artifact_contracts_wave
+    ;;
+  wave:"privacy")
+    run_privacy_wave
     ;;
   *)
     printf '%s\n' '{"status":"harness-error","reason":"unsupported-suite"}' >&2
