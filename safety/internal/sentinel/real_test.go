@@ -632,7 +632,7 @@ func isolatedRealAdapters(manifest ProtectedManifest, registry *RealAdapterRegis
 				return incompleteSurface(surface, ReasonSymlinkEscape)
 			}
 			start := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
-			canonical, reason := fingerprintSurface(resolver.root, path, surface.Bounds, start, func() time.Time { return start })
+			canonical, reason := fingerprintSurface(resolver.root, path, surface.Bounds, start, func() time.Time { return start }, nil)
 			if reason != "" {
 				return incompleteSurface(surface, reason)
 			}

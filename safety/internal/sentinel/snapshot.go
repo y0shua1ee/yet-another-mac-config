@@ -7,11 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -50,6 +52,7 @@ type ProtectedSnapshot struct {
 type SnapshotOptions struct {
 	Clock         func() time.Time
 	BetweenPasses func(logicalRef string)
+	DuringRead    func(path string)
 }
 
 type SyntheticResolver struct {
@@ -69,8 +72,6 @@ type nodeFact struct {
 type fingerprintLimits struct {
 	files int
 	bytes int
-	start time.Time
-	clock func() time.Time
 }
 
 var syntheticTargets = map[string]string{
@@ -166,7 +167,7 @@ func SnapshotProtected(frozen *FrozenManifest, current ProtectedManifest, resolv
 			return ProtectedSnapshot{}, errors.New("protected resolver escaped")
 		}
 		start := clock()
-		first, reason := fingerprintSurface(resolver.root, path, surface.Bounds, start, clock)
+		first, reason := fingerprintSurface(resolver.root, path, surface.Bounds, start, clock, options.DuringRead)
 		if reason != "" {
 			snapshot.Reason = reason
 			result.Surfaces = append(result.Surfaces, snapshot)
@@ -175,7 +176,7 @@ func SnapshotProtected(frozen *FrozenManifest, current ProtectedManifest, resolv
 		if options.BetweenPasses != nil {
 			options.BetweenPasses(surface.LogicalRef)
 		}
-		second, reason := fingerprintSurface(resolver.root, path, surface.Bounds, start, clock)
+		second, reason := fingerprintSurface(resolver.root, path, surface.Bounds, start, clock, options.DuringRead)
 		if reason != "" {
 			snapshot.Reason = reason
 			result.Surfaces = append(result.Surfaces, snapshot)
@@ -230,14 +231,15 @@ func (resolver *SyntheticResolver) resolve(logicalRef string) (string, error) {
 	return candidate, nil
 }
 
-func fingerprintSurface(root, target string, bounds SurfaceBounds, start time.Time, clock func() time.Time) ([]byte, IncompleteReason) {
-	limits := &fingerprintLimits{start: start, clock: clock}
+func fingerprintSurface(root, target string, bounds SurfaceBounds, start time.Time, clock func() time.Time, duringRead func(string)) ([]byte, IncompleteReason) {
+	limits := &fingerprintLimits{}
+	deadline := start.Add(time.Duration(bounds.Timeout) * time.Millisecond)
 	facts := make([]nodeFact, 0)
 	err := filepath.WalkDir(target, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return errors.New(string(ReasonUnreadable))
 		}
-		if clock().Sub(start) > time.Duration(bounds.Timeout)*time.Millisecond {
+		if clock().After(deadline) {
 			return errors.New(string(ReasonWindow))
 		}
 		limits.files++
@@ -280,17 +282,14 @@ func fingerprintSurface(root, target string, bounds SurfaceBounds, start time.Ti
 			if info.Mode().Perm()&0o444 == 0 {
 				return errors.New(string(ReasonUnreadable))
 			}
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return errors.New(string(ReasonUnreadable))
+			remaining := bounds.MaxBytes - limits.bytes
+			content, readBytes, reason := readBoundedRegular(root, path, info, remaining, deadline, clock, duringRead)
+			if reason != "" {
+				return errors.New(string(reason))
 			}
-			limits.bytes += len(data)
-			if limits.bytes > bounds.MaxBytes {
-				return errors.New(string(ReasonOverflow))
-			}
-			content := sha256.Sum256(data)
+			limits.bytes += readBytes
 			fact.Kind = "regular"
-			fact.Content = hex.EncodeToString(content[:])
+			fact.Content = content
 		default:
 			return errors.New(string(ReasonUnreadable))
 		}
@@ -312,6 +311,60 @@ func fingerprintSurface(root, target string, bounds SurfaceBounds, start time.Ti
 		return nil, ReasonUnreadable
 	}
 	return canonical, ""
+}
+
+func readBoundedRegular(root, path string, expected os.FileInfo, remaining int, deadline time.Time, clock func() time.Time, duringRead func(string)) (string, int, IncompleteReason) {
+	inside, err := withinRoot(root, path)
+	if err != nil || !inside {
+		return "", 0, ReasonSymlinkEscape
+	}
+	if remaining < 0 || expected.Size() > int64(remaining) {
+		return "", 0, ReasonOverflow
+	}
+	if clock().After(deadline) {
+		return "", 0, ReasonWindow
+	}
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return "", 0, ReasonUnreadable
+	}
+	file := os.NewFile(uintptr(fd), path)
+	if file == nil {
+		_ = syscall.Close(fd)
+		return "", 0, ReasonUnreadable
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(expected, opened) || !sameFileIdentity(expected, opened) {
+		return "", 0, ReasonRace
+	}
+	if opened.Size() > int64(remaining) {
+		return "", 0, ReasonOverflow
+	}
+	if duringRead != nil {
+		duringRead(path)
+	}
+	hash := sha256.New()
+	readBytes, err := io.Copy(hash, io.LimitReader(file, int64(remaining)+1))
+	if err != nil {
+		return "", 0, ReasonUnreadable
+	}
+	if readBytes > int64(remaining) {
+		return "", 0, ReasonOverflow
+	}
+	if clock().After(deadline) {
+		return "", 0, ReasonWindow
+	}
+	closed, err := file.Stat()
+	pathInfo, pathErr := os.Lstat(path)
+	if err != nil || pathErr != nil || !os.SameFile(opened, closed) || !os.SameFile(opened, pathInfo) || !sameFileIdentity(opened, closed) || !sameFileIdentity(opened, pathInfo) || readBytes != closed.Size() {
+		return "", 0, ReasonRace
+	}
+	return hex.EncodeToString(hash.Sum(nil)), int(readBytes), ""
+}
+
+func sameFileIdentity(left, right os.FileInfo) bool {
+	return left.Mode() == right.Mode() && left.Size() == right.Size() && left.ModTime().Equal(right.ModTime())
 }
 
 func withinRoot(root, candidate string) (bool, error) {

@@ -211,6 +211,61 @@ func testIncompleteSnapshots(t *testing.T) {
 		}
 	})
 
+	t.Run("single oversized file is rejected before an unbounded read", func(t *testing.T) {
+		root := t.TempDir()
+		resolver, _ := PrepareProtectedSynthetic(root)
+		path, _ := resolver.resolve("home:.zshrc")
+		if err := os.WriteFile(path, bytes.Repeat([]byte("x"), 1<<20), 0o600); err != nil {
+			t.Fatal("oversized file setup failed")
+		}
+		bounded := manifest
+		bounded.Surfaces = append([]ProtectedSurface(nil), manifest.Surfaces...)
+		for index := range bounded.Surfaces {
+			if bounded.Surfaces[index].LogicalRef == "home:.zshrc" {
+				bounded.Surfaces[index].Bounds.MaxBytes = 16
+			}
+		}
+		bounded = reparseManifest(t, bounded)
+		frozen, _ := FreezeProtectedManifest(bounded)
+		snapshot, err := SnapshotProtected(frozen, bounded, resolver, key, SnapshotOptions{})
+		if err != nil || reasonFor(snapshot, "home:.zshrc") != ReasonOverflow {
+			t.Fatal("oversized file did not stop at the byte boundary")
+		}
+	})
+
+	t.Run("file growth during the bounded read is rejected", func(t *testing.T) {
+		root := t.TempDir()
+		resolver, _ := PrepareProtectedSynthetic(root)
+		path, _ := resolver.resolve("home:.zshrc")
+		initial, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal("growing file setup failed")
+		}
+		bounded := manifest
+		bounded.Surfaces = append([]ProtectedSurface(nil), manifest.Surfaces...)
+		for index := range bounded.Surfaces {
+			if bounded.Surfaces[index].LogicalRef == "home:.zshrc" {
+				bounded.Surfaces[index].Bounds.MaxBytes = len(initial)
+			}
+		}
+		bounded = reparseManifest(t, bounded)
+		frozen, _ := FreezeProtectedManifest(bounded)
+		grew := false
+		snapshot, err := SnapshotProtected(frozen, bounded, resolver, key, SnapshotOptions{DuringRead: func(current string) {
+			if current == path && !grew {
+				grew = true
+				file, openErr := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+				if openErr == nil {
+					_, _ = file.Write([]byte("growth"))
+					_ = file.Close()
+				}
+			}
+		}})
+		if err != nil || !grew || reasonFor(snapshot, "home:.zshrc") != ReasonOverflow {
+			t.Fatal("in-window file growth crossed the byte boundary")
+		}
+	})
+
 	t.Run("symlink escape", func(t *testing.T) {
 		root := t.TempDir()
 		resolver, _ := PrepareProtectedSynthetic(root)
