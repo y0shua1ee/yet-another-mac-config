@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0.0",
+  "suite_id": "phase-01-offline-safety-v1",
+  "tier": "offline-static",
+  "evidence_mode": "isolated-proof-double",
+  "inner_status": "synthetic-sentinel-passed",
+  "outer_sequence": [
+    "real-before",
+    "isolated-workload",
+    "freeze-primary",
+    "fixture-finalize",
+    "real-after",
+    "monotonic-combine"
+  ],
+  "verdict": "passed",
+  "claim": "covered-surfaces-unchanged-for-run",
+  "artifact_kinds": [
+    "applied-receipt",
+    "desired-state",
+    "generated-plan",
+    "observed-state",
+    "readiness-report",
+    "verification-evidence"
+  ],
+  "artifact_instances": 7,
+  "artifact_digest_labels": [
+    "applied-receipt",
+    "desired-state",
+    "fresh-observed-state",
+    "generated-plan",
+    "observed-state",
+    "readiness-report",
+    "verification-evidence"
+  ],
+  "manifest_binding_ids": [
+    "expected-report",
+    "network-contract",
+    "protected-surfaces",
+    "real-adapters"
+  ],
+  "surface_evidence": [
+    {
+      "surface_domain": "worktree",
+      "logical_ref": "repo:sentinel/worktree/tracked",
+      "before_token": "hmac-sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "after_token": "hmac-sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "surface_domain": "worktree",
+      "logical_ref": "repo:sentinel/worktree/index",
+      "before_token": "hmac-sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "after_token": "hmac-sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    {
+      "surface_domain": "named-home",
+      "logical_ref": "home:.zshrc",
+      "before_token": "hmac-sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "after_token": "hmac-sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "surface_domain": "manager-root",
+      "logical_ref": "home:sentinel/manager/mise-data",
+      "before_token": "hmac-sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "after_token": "hmac-sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    {
+      "surface_domain": "service",
+      "logical_ref": "profile:sentinel/service/homebrew-mxcl-nginx",
+      "before_token": "hmac-sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "after_token": "hmac-sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    {
+      "surface_domain": "named-target",
+      "logical_ref": "profile:sentinel/named-target/system-shells",
+      "before_token": "hmac-sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "after_token": "hmac-sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  ],
+  "policy_statuses": [
+    "extra",
+    "unmanaged-present"
+  ],
+  "operations": [],
+  "current_host": {
+    "status": "manual-required",
+    "verdict": "indeterminate",
+    "reason": "required-real-adapter-proof-unavailable",
+    "claim_eligible": false
+  }
+}

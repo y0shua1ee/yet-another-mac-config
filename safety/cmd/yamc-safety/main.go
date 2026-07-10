@@ -82,6 +82,14 @@ type sentinelEvaluateFlags struct {
 	claim        string
 }
 
+type reportFlags struct {
+	suitePath          string
+	expectedReportPath string
+	summaryPath        string
+	storeRoot          string
+	repositoryRoot     string
+}
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -118,10 +126,36 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 			writeSafeError(stderr, "UNSUPPORTED_COMMAND")
 			return 64
 		}
+	case "report":
+		return runReport(arguments[1:], stdout, stderr)
 	default:
 		writeSafeError(stderr, "UNSUPPORTED_COMMAND")
 		return 64
 	}
+}
+
+func runReport(arguments []string, stdout, stderr io.Writer) int {
+	parsed, err := parseReportFlags(arguments)
+	if err != nil {
+		writeSafeError(stderr, "REPORT_ARGUMENTS_REJECTED")
+		return 64
+	}
+	report, err := workflow.BuildPhaseReport(workflow.PhaseReportOptions{
+		SuitePath:          parsed.suitePath,
+		ExpectedReportPath: parsed.expectedReportPath,
+		SummaryPath:        parsed.summaryPath,
+		StoreRoot:          parsed.storeRoot,
+		RepositoryRoot:     parsed.repositoryRoot,
+	})
+	if err != nil {
+		writeRejected(stderr, err, "REPORT_REJECTED")
+		return 2
+	}
+	if err := renderSafe(stdout, report); err != nil {
+		writeSafeError(stderr, "OUTPUT_REJECTED")
+		return 70
+	}
+	return 0
 }
 
 func runSentinelVerify(arguments []string, stdout, stderr io.Writer) int {
@@ -691,6 +725,21 @@ func parseSentinelEvaluateFlags(arguments []string) (sentinelEvaluateFlags, erro
 	flags.StringVar(&parsed.claim, "claim", "", "")
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.manifestPath == "" || parsed.evidencePath == "" {
 		return sentinelEvaluateFlags{}, errors.New("arguments rejected")
+	}
+	return parsed, nil
+}
+
+func parseReportFlags(arguments []string) (reportFlags, error) {
+	var parsed reportFlags
+	flags := flag.NewFlagSet("report", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&parsed.suitePath, "suite", "", "")
+	flags.StringVar(&parsed.expectedReportPath, "expected", "", "")
+	flags.StringVar(&parsed.summaryPath, "summary", "", "")
+	flags.StringVar(&parsed.storeRoot, "store-root", "", "")
+	flags.StringVar(&parsed.repositoryRoot, "repo-root", "", "")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.suitePath == "" || parsed.expectedReportPath == "" || parsed.summaryPath == "" || parsed.storeRoot == "" || parsed.repositoryRoot == "" {
+		return reportFlags{}, errors.New("arguments rejected")
 	}
 	return parsed, nil
 }

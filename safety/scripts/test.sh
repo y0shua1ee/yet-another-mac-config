@@ -113,6 +113,11 @@ print_runner_deadline() {
   printf '{"status":"harness-error","reason":"runner-deadline-exceeded","suite":"%s"}\n' "${suite_name}" >&2
 }
 
+unsupported_suite() {
+  printf '%s\n' '{"status":"harness-error","reason":"unsupported-suite"}' >&2
+  exit 64
+}
+
 if ! command -v go >/dev/null 2>&1; then
   manual_required
 fi
@@ -767,6 +772,109 @@ run_controlplane_wave() {
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"controlplane"}'
 }
 
+run_phase_e2e() {
+  run_exact_go_suite \
+    './internal/e2e' \
+    '^TestPhaseE2E$' \
+    'TestPhaseE2E' \
+    'phase-e2e' \
+    'EXPECTED_RED: phase-integration-behavior-missing'
+}
+
+run_phase_wave_child() {
+  local suite_name="$1"
+  local expected_suite="${suite_name}"
+  local output=''
+  local child_status=0
+  local elapsed=$((SECONDS - RUNNER_STARTED_SECONDS))
+  local remaining=$((RUNNER_BUDGET_SECONDS - elapsed))
+
+  if [[ "${suite_name}" == 'skeleton' ]]; then
+    expected_suite='walking-skeleton'
+  fi
+
+  if [[ "${remaining}" -lt 47 ]]; then
+    print_runner_deadline "${suite_name}"
+    return 124
+  fi
+
+  # 组件 wave 自己拥有 47 秒预算；phase 只做启动前保留与完成后校验。
+  output="$(/bin/bash "${SCRIPT_DIR}/test.sh" wave "${suite_name}" 2>&1)" || child_status=$?
+  if [[ "${child_status}" -eq 124 ]]; then
+    print_runner_deadline "${suite_name}"
+    return 124
+  fi
+  if (( ${#output} > 65536 )); then
+    printf '%s\n' '{"status":"harness-error","reason":"bounded-output-exceeded"}' >&2
+    return 70
+  fi
+  if [[ "${child_status}" -ne 0 ]]; then
+    printf '{"status":"harness-error","reason":"phase-child-failed","suite":"%s"}\n' "${suite_name}" >&2
+    return 1
+  fi
+  if [[ "${output}" != "{\"status\":\"synthetic-sentinel-passed\",\"suite\":\"${expected_suite}\"}" ]]; then
+    printf '{"status":"harness-error","reason":"phase-child-output-invalid","suite":"%s"}\n' "${suite_name}" >&2
+    return 70
+  fi
+
+  elapsed=$((SECONDS - RUNNER_STARTED_SECONDS))
+  if [[ "${elapsed}" -ge "${RUNNER_BUDGET_SECONDS}" ]]; then
+    print_runner_deadline "${suite_name}"
+    return 124
+  fi
+}
+
+run_phase_task_child() {
+  local suite_name="$1"
+  local output=''
+  local child_status=0
+  local elapsed=$((SECONDS - RUNNER_STARTED_SECONDS))
+  local remaining=$((RUNNER_BUDGET_SECONDS - elapsed))
+
+  if [[ "${remaining}" -lt 15 ]]; then
+    print_runner_deadline "${suite_name}"
+    return 124
+  fi
+
+  # 最终 task 自己拥有 15 秒 hard deadline；phase 不叠加 process group。
+  output="$(/bin/bash "${SCRIPT_DIR}/test.sh" task "${suite_name}" 2>&1)" || child_status=$?
+  if [[ "${child_status}" -eq 124 ]]; then
+    print_runner_deadline "${suite_name}"
+    return 124
+  fi
+  if (( ${#output} > 65536 )); then
+    printf '%s\n' '{"status":"harness-error","reason":"bounded-output-exceeded"}' >&2
+    return 70
+  fi
+  if [[ "${child_status}" -ne 0 ]]; then
+    printf '{"status":"harness-error","reason":"phase-child-failed","suite":"%s"}\n' "${suite_name}" >&2
+    return 1
+  fi
+  if [[ "${output}" != "{\"status\":\"synthetic-sentinel-passed\",\"suite\":\"${suite_name}\"}" ]]; then
+    printf '{"status":"harness-error","reason":"phase-child-output-invalid","suite":"%s"}\n' "${suite_name}" >&2
+    return 70
+  fi
+
+  elapsed=$((SECONDS - RUNNER_STARTED_SECONDS))
+  if [[ "${elapsed}" -ge "${RUNNER_BUDGET_SECONDS}" ]]; then
+    print_runner_deadline "${suite_name}"
+    return 124
+  fi
+}
+
+run_phase_gate() {
+  # 六个固定组件 wave 后只运行 phase-e2e；完整预算为 6*47+15+8=305 秒。
+  run_phase_wave_child skeleton
+  run_phase_wave_child artifact-contracts
+  run_phase_wave_child privacy
+  run_phase_wave_child fixture-policy
+  run_phase_wave_child sentinels
+  run_phase_wave_child controlplane
+  run_phase_task_child phase-e2e
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"phase"}'
+}
+
+if [[ "${SCOPE}" != 'phase' ]]; then
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -807,6 +915,9 @@ case "${SCOPE}:${SUITE}" in
   task:no-destructive-defaults)
     run_no_destructive_defaults
     ;;
+  task:phase-e2e)
+    run_phase_e2e
+    ;;
   wave:skeleton)
     run_green_walking_skeleton
     ;;
@@ -826,7 +937,17 @@ case "${SCOPE}:${SUITE}" in
     run_controlplane_wave
     ;;
   *)
-    printf '%s\n' '{"status":"harness-error","reason":"unsupported-suite"}' >&2
-    exit 64
+    unsupported_suite
+    ;;
+esac
+exit 0
+fi
+
+case "${SCOPE}:${SUITE}" in
+  phase:phase)
+    run_phase_gate
+    ;;
+  *)
+    unsupported_suite
     ;;
 esac

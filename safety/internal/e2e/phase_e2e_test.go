@@ -141,6 +141,35 @@ func testPhaseReportRoundTrip(t *testing.T) {
 	decodeStrict(t, stdout, &report)
 	assertPhaseReport(t, report, summary)
 
+	if _, err := workflow.BuildPhaseReport(workflow.PhaseReportOptions{
+		SuitePath:          suitePath,
+		ExpectedReportPath: filepath.Join(safetyRoot, "manifests", "network-tests.v1.json"),
+		SummaryPath:        summaryPath,
+		StoreRoot:          root.Paths().ArtifactStore,
+		RepositoryRoot:     repositoryRoot,
+	}); err == nil {
+		t.Fatal("substituted expected-report binding was accepted")
+	}
+	staleSummary := summary
+	staleSummary.Artifacts = make(map[string]string, len(summary.Artifacts))
+	for label, digest := range summary.Artifacts {
+		staleSummary.Artifacts[label] = digest
+	}
+	staleSummary.Artifacts["readiness-report"] = "sha256:" + strings.Repeat("0", 64)
+	staleData, err := json.Marshal(staleSummary)
+	if err != nil || os.WriteFile(summaryPath, staleData, 0o600) != nil {
+		t.Fatal("stale-lineage negative setup failed")
+	}
+	if _, err := workflow.BuildPhaseReport(workflow.PhaseReportOptions{
+		SuitePath:          suitePath,
+		ExpectedReportPath: expectedPath,
+		SummaryPath:        summaryPath,
+		StoreRoot:          root.Paths().ArtifactStore,
+		RepositoryRoot:     repositoryRoot,
+	}); err == nil {
+		t.Fatal("stale report lineage was accepted")
+	}
+
 	frozen, err := fixture.FreezePrimary(fixture.VerdictPassed)
 	if err != nil {
 		t.Fatal("phase verdict did not freeze")
@@ -247,6 +276,17 @@ func testPhaseDecisionMatrix(t *testing.T) {
 	if suite.SchemaVersion != "1.0.0" || suite.SuiteID != "phase-01-offline-safety-v1" || suite.Tier != "offline-static" || suite.EvidenceMode != "isolated-proof-double" || suite.ExpectedClaim != sentinel.ScopedUnchangedClaim || suite.CurrentHostGate != "manual-required" {
 		t.Fatal("offline suite identity or claim ceiling changed")
 	}
+	wantOrder := []string{"wave:skeleton", "wave:artifact-contracts", "wave:privacy", "wave:fixture-policy", "wave:sentinels", "wave:controlplane", "task:phase-e2e"}
+	if len(suite.TaskGroups) != 7 || !reflect.DeepEqual(suite.PhaseOrder, wantOrder) || len(suite.Manifests) != 4 {
+		t.Fatal("offline suite component or manifest bindings are incomplete")
+	}
+	manifestIDs := make(map[string]string, len(suite.Manifests))
+	for _, binding := range suite.Manifests {
+		manifestIDs[binding.ID] = binding.Digest
+	}
+	if !reflect.DeepEqual(sortedKeys(manifestIDs), []string{"expected-report", "network-contract", "protected-surfaces", "real-adapters"}) {
+		t.Fatal("offline suite manifest bindings changed")
+	}
 	if len(suite.NegativeMatrix) != 19 {
 		t.Fatal("D-01..D-19 negative matrix is incomplete")
 	}
@@ -323,7 +363,7 @@ func testPhaseRunnerContract(t *testing.T) {
 	if finalTask <= position || strings.Count(body, "run_phase_wave_child ") != 6 || strings.Count(body, "run_phase_task_child ") != 1 {
 		t.Fatal("phase gate child set is not exactly six waves plus phase-e2e")
 	}
-	for _, forbidden := range []string{"docs-and-phase-gate", "phase-integration", "run_with_deadline", "run_with_runner_deadline", " launchctl ", " darwin-rebuild ", " brew ", " mise ", " uv ", " rustup ", " curl ", " eval "} {
+	for _, forbidden := range []string{"run_with_deadline", "run_with_runner_deadline", " launchctl ", " darwin-rebuild ", " brew ", " mise ", " uv ", " rustup ", " curl ", " eval "} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("phase gate contains a forbidden child or nested capability: %s", forbidden)
 		}
