@@ -2,7 +2,7 @@
 phase: 01-safety-privacy-and-state-foundation
 plan: "05"
 subsystem: safety-sentinel-evidence
-tags: [go, protected-surfaces, read-only-adapters, hmac, four-state-verdict, fail-closed, symlink-safety]
+tags: [go, protected-surfaces, read-only-adapters, hmac, four-state-verdict, fail-closed, symlink-safety, runner-deadline, process-group]
 
 requires:
   - phase: 01-safety-privacy-and-state-foundation
@@ -13,11 +13,12 @@ provides:
   - strict four-state evidence, exit, and scoped-claim contract with a structural synthetic ceiling
   - source-bound exact read-only adapter registry and monotonic real-before/real-after envelope mechanism
   - fail-closed manual-required behavior while modern launchctl read-only semantics remain unproved
+  - stable 15/47/305-second isolated runner contract with exact 124 propagation and no orphan descendants
 affects: [01-06-diagnostics, 01-07-phase-e2e, future-read-only-inspection, current-host-evidence]
 
 tech-stack:
   added: []
-  patterns: [frozen manifest scope, per-run opaque HMAC, source-bound adapter capability, rooted read-only observation, monotonic outer envelope]
+  patterns: [frozen manifest scope, per-run opaque HMAC, source-bound adapter capability, rooted read-only observation, monotonic outer envelope, shared outer context, fixed-child serial waves]
 
 key-files:
   created:
@@ -36,6 +37,8 @@ key-files:
     - safety/scripts/test.sh
     - safety/cmd/yamc-safety/main.go
     - safety/internal/workflow/synthetic.go
+    - safety/internal/e2e/artifact_cli_test.go
+    - safety/internal/e2e/tier_cli_test.go
 
 key-decisions:
   - "Allow only the exact six logical refs across five closed domains; freeze manifest policy before observation and render only logical refs plus per-run opaque tokens."
@@ -43,6 +46,7 @@ key-decisions:
   - "Treat proof metadata as necessary but insufficient: exact adapters require a private registry-issued source-bound capability, current implementation and negative-suite digests, and one shared bounded observation window."
   - "Keep the tracked launchctl proof explicitly missing and return indeterminate/manual-required with exit 32 before any adapter or workload call until current official no-side-effect semantics are established."
   - "Expose the controlled real-envelope mechanism in Plan 01-05, while leaving phase-runner outer-envelope wiring to Plan 01-07."
+  - "Give every real-envelope stage one caller-supplied outer context/deadline, freeze the authorized adapter set before workload execution, and preserve exact deadline exit 124 through every runner layer."
 
 patterns-established:
   - "Opaque surface evidence: a fresh process-local HMAC key binds type, existence, mode, symlink identity, and bounded content/tree state without persisting physical roots, names, contents, or stable fingerprints."
@@ -77,6 +81,8 @@ completed: 2026-07-10
 - Added a controlled real envelope that performs real-before, isolated workload, frozen primary verdict, fixture finalization, real-after, and monotonic combination in that order. A required after-window change overrides an earlier workload or teardown failure with the exact D-15 violation code.
 - Kept the tracked controlled-service proof explicitly `missing`: current public Apple material did not establish modern `launchctl print` no-side-effect semantics. The default real command therefore exits `32` as `indeterminate/manual-required` before any adapter or workload call instead of manufacturing a host-safety claim.
 - Added exact task routes for `sentinel-manifest`, `sentinel-verdicts`, and `real-sentinel-envelope`, plus fixed `wave:sentinels` aggregation. All routes retain literal package/pattern ownership, exactly-one-test selection, shared wall deadlines, and bounded failure output.
+- Remediated the intermittent fresh-cache runner failure with exact `15/47/305`-second budgets, one compilation per exact suite, serial fixed children without nested process-group wrappers, exact exit-`124` propagation, and cleanup of both timed-out and normally orphaned descendants.
+- Hardened the real envelope after review: before/workload/finalize/after now share one deadline, the authorized adapter map and resolver are frozen before workload execution, Git version capability is probed once per adapter set, and proof calendar dates are evaluated in UTC.
 
 ## Task Commits
 
@@ -85,6 +91,11 @@ Each task was committed atomically:
 1. **Task 01-05-01: 校验 protected manifest 并取得 bounded opaque snapshots** - `044c0c8` (feat)
 2. **Task 01-05-02: 强制四态 verdict、non-pass exits 与 scoped claim** - `6b99f4d` (feat)
 3. **Task 01-05-03: 用 exact real adapters 包裹 isolated workload 并证明 failure monotonicity** - `32a8e29` (feat)
+
+Corrective reliability work was also committed atomically:
+
+4. **Align Phase 1 isolated-runner deadline contract** - `2842686` (fix, planning contract)
+5. **Stabilize isolated sentinel deadlines and harden the real envelope** - `436ad78` (fix)
 
 _Plan metadata is committed together with this summary._
 
@@ -98,10 +109,12 @@ _Plan metadata is committed together with this summary._
 - `safety/internal/sentinel/real.go` - Implements proof validation, private adapter capabilities, rooted read-only observers, aggregate limits, and the monotonic controlled real envelope.
 - `safety/internal/sentinel/real_test.go` - Binds proof to exact source/test digests and exercises proof failure, zero-call canaries, FIFO/race/symlink safety, deadlines, caps, and complete envelope ordering.
 - `safety/internal/e2e/sentinel_cli_test.go` - Verifies CLI verdict/exit/claim behavior and the structural synthetic claim ceiling.
-- `safety/internal/e2e/real_sentinel_cli_test.go` - Verifies default manual-required behavior, exact exits, bounded private logs, runner routes, and proof-gated envelope behavior.
+- `safety/internal/e2e/real_sentinel_cli_test.go` - Verifies default manual-required behavior, exact exits, bounded private logs, runner deadlines/process groups, UTC proof dates, fixed-child waves, and proof-gated envelope behavior.
+- `safety/internal/e2e/artifact_cli_test.go` - Keeps the earlier artifact wave structural contract aligned with fixed `run_wave_child` aggregation and rejects nested deadline wrappers.
+- `safety/internal/e2e/tier_cli_test.go` - Keeps fixture-policy aggregation aligned with fixed child handlers and rejects nested deadline wrappers.
 - `safety/manifests/protected-surfaces.v1.json` - Tracks the exact six logical protected refs and required/optional/excluded policy without physical identity or path data.
 - `safety/manifests/real-adapters.v1.json` - Tracks exact adapter invocations, limits, official-source metadata, source/test digests, and an explicit missing controlled-service proof.
-- `safety/scripts/test.sh` - Adds three exact task routes and the fixed sentinels wave with process-group wall deadlines.
+- `safety/scripts/test.sh` - Runs exact suites from one fresh-cache compiled test binary, enforces 15/47/305-second task/wave/phase ceilings, propagates deadline exit 124 unchanged, and cleans complete process groups without nested wave wrappers.
 - `safety/cmd/yamc-safety/main.go` - Adds bounded manifest/verdict/real sentinel commands and nonblocking race-safe artifact reads.
 - `safety/internal/workflow/synthetic.go` - Preserves the synthetic-only status ceiling while accepting only complete outer real evidence for the scoped claim.
 
@@ -154,9 +167,27 @@ _Plan metadata is committed together with this summary._
 - **Verification:** Complete ordering and workload/finalization/change cross-product tests pass.
 - **Committed in:** `32a8e29`.
 
+**4. [Rule 1 - Reliability] Repaired intermittent fresh-cache deadlines without weakening fail-closed behavior**
+
+- **Found during:** Post-completion replay of the three sentinel tasks and `wave sentinels` from consecutive fresh isolated roots.
+- **Issue:** The previous 9-second task/29-second wave budgets could expire while compiling the exact package pairs from a fresh `GOCACHE`. Timeout `124` was then sometimes rewritten as a selection or contract failure; nested process groups could outlive a wave wrapper, and a normally exited direct child could leave descendants running.
+- **Fix:** Aligned the planning contract to exact `15/47/305`-second ceilings in `2842686`; each exact suite now compiles once and uses that same binary for list and behavior, every observed `124` is propagated before output-cap checks, waves launch only fixed task children directly after reserving a complete 15-second budget, and the deadline wrapper cleans the original process group after timeout, signal, or normal direct-child exit.
+- **Files modified:** `safety/scripts/test.sh`, `safety/internal/e2e/real_sentinel_cli_test.go`, `safety/internal/e2e/artifact_cli_test.go`, `safety/internal/e2e/tier_cli_test.go`.
+- **Verification:** Final task timings were 5.23s (`sentinel-manifest`), 7.95s (`sentinel-verdicts`), and 7.81s (`real-sentinel-envelope`). Five consecutive frozen-code sentinel waves passed in 20.48s, 20.66s, 20.63s, 19.69s, and 19.73s. Deadline canaries returned exact `124` with one bounded JSON record even above 64 KiB; both timeout and normal-exit descendant canaries left no marker or orphan.
+- **Committed in:** `436ad78`.
+
+**5. [Rule 1 - Evidence Integrity] Froze the post-gate adapter set and shared one outer deadline across the real envelope**
+
+- **Found during:** Adversarial review of cancellation, adapter ownership, proof-calendar rollover, and Git capability probing.
+- **Issue:** Before and after observations read a caller-owned adapter map after the proof gate, so workload code could replace or delete an entry. The real stages also lacked one shared caller deadline, proof dates depended on an implicit local calendar, and Git version support could be probed more than once.
+- **Fix:** Copied the authorized adapter map and resolver values before the first observation, passed one required outer context through before/workload/finalize-state checks/after, derived bounded child deadlines for every filesystem adapter, cached the Git version capability once per adapter set, and normalized production proof assessment to UTC. Refreshed the source-bound proof material to test digest `sha256:9db0aab399a95926db5874d8c6767d6704b125ed9c5125792bc014411afb4997` and implementation digest `sha256:0f33eba9d72f321aa10a11ee02c3bc7040db4951fb3ff31aae447c8178ca7a69`, together with all five current negative-suite digests.
+- **Files modified:** `safety/internal/sentinel/real.go`, `safety/internal/sentinel/real_test.go`, `safety/internal/e2e/real_sentinel_cli_test.go`, `safety/cmd/yamc-safety/main.go`, `safety/manifests/real-adapters.v1.json`.
+- **Verification:** Cancellation skips after adapters but still finalizes the marker-owned fixture and returns `indeterminate` without a claim; workload substitution never reaches after observation; resolver mutation cannot redirect a default adapter; Git probes exactly once; hash/registry checks and the complete real task pass.
+- **Committed in:** `436ad78`.
+
 ### Research-Gated Scope Decision
 
-**4. [Rule 4 - Architectural] Left controlled-service proof missing instead of asserting unsupported launchctl safety**
+**6. [Rule 4 - Architectural] Left controlled-service proof missing instead of asserting unsupported launchctl safety**
 
 - **Found during:** Official-documentation research for Task 01-05-03.
 - **Issue:** Available public Apple material did not establish current modern `launchctl print` no-side-effect semantics strongly enough to satisfy the plan's current official proof requirement.
@@ -168,31 +199,34 @@ _Plan metadata is committed together with this summary._
 
 ---
 
-**Total deviations:** 3 auto-fixed Rule 1 issues and 1 research-gated architectural decision. **Impact:** Scope remains the approved sentinel contract; the implementation is more conservative and refuses a current-host claim rather than relying on incomplete service semantics.
+**Total deviations:** 5 auto-fixed Rule 1 issues and 1 research-gated architectural decision. **Impact:** Scope remains the approved sentinel contract; the runner is deterministic under fresh caches, the real envelope is closed against post-gate substitution, and the implementation still refuses a current-host claim rather than relying on incomplete service semantics.
 
 ## Issues Encountered
 
 - macOS temporary and filesystem aliases require canonical rooted comparisons; tests compare descriptor-backed canonical containment rather than user-visible alias spellings.
 - `go run` emits its own fixed `exit status 32` wrapper when the tested CLI intentionally returns `manual-required`; E2E tests accept only that exact wrapper diagnostic while requiring structured bounded decision output.
 - Official Apple launchd material available during implementation was insufficient for the required modern service-read proof. This remains an explicit manual proof gap, not an implicit pass or fallback.
+- Consecutive fresh-cache replay exposed an intermittent first-suite contract failure. Timing samples showed valid manifest/verdict tests crossing the old 9-second wall budget; the underlying deadline exit was being mislabeled. The corrected runner now compiles each exact suite once, preserves `124`, and has more than 26 seconds of measured margin in the final sentinel waves.
+- Updating all wave handlers to the shared fixed-child helper invalidated older artifact and tier structural assertions. Those assertions now bind the exact helper calls and explicitly reject reintroduced nested process-group wrappers.
 
 ## User Setup Required
 
-None - no package installation, credential, network access, host activation, real HOME/manager/service observation through a sentinel adapter, or real-machine configuration change was performed. Work remained limited to repository implementation, isolated synthetic tests, and the required atomic Git commits. The tracked default real gate remains `manual-required` until the service proof is complete.
+None - no package installation, credential, network access, host activation, real HOME/manager/service observation through a sentinel adapter, or real-machine configuration change was performed. Work remained limited to repository implementation, fresh external synthetic roots/caches, fault-injection canaries, and the required atomic Git commits. The tracked default real gate remains `manual-required` until the service proof is complete.
 
 ## Next Phase Readiness
 
 - Plan 01-06 can consume the exact four-state verdict and bounded evidence contracts for diagnostics without acquiring host-mutation or overclaim capability.
-- Plan 01-07 must wrap the complete phase runner with the controlled real envelope; it must not treat the current standalone proof gate as the final outer wiring.
+- Plan 01-07 must wrap the complete phase runner with the controlled real envelope, provide one fresh per-run key and one shared outer context/deadline, and preserve exact `124` through the future phase layer; it must not treat the current standalone proof gate as the final outer wiring.
 - The tracked launchctl proof remains deliberately missing. Until current official no-side-effect semantics and matching isolated negative evidence are recorded, any attempted real run must stop at `indeterminate/manual-required` with exit `32` before adapter or workload execution.
-- `sentinel-manifest`, `sentinel-verdicts`, `real-sentinel-envelope`, `sentinels`, and the existing `walking-skeleton` regression are green without touching actual HOME, manager state, services, or tracked worktree/index state through real adapters.
+- `sentinel-manifest`, `sentinel-verdicts`, `real-sentinel-envelope`, five consecutive `sentinels` waves, `artifact-contracts`, `privacy`, `fixture-policy`, and the existing `walking-skeleton` regression are green without touching actual HOME, manager state, services, or tracked worktree/index state through real adapters.
 
 ## Self-Check: PASSED
 
-- All eleven created and three modified implementation files exist; task commits `044c0c8`, `6b99f4d`, and `32a8e29` are present and delete no tracked files.
-- Bash syntax, `sentinel-manifest`, `sentinel-verdicts`, `real-sentinel-envelope`, `wave sentinels`, and `walking-skeleton` pass after the final commit.
+- All eleven created and five modified implementation/regression files exist; task commits `044c0c8`, `6b99f4d`, and `32a8e29`, planning repair `2842686`, and corrective implementation commit `436ad78` are present and delete no tracked files.
+- Bash syntax, `sentinel-manifest`, `sentinel-verdicts`, `real-sentinel-envelope`, five frozen-code `wave sentinels` runs (20.48s/20.66s/20.63s/19.69s/19.73s), `artifact-contracts`, `privacy`, `fixture-policy`, and `walking-skeleton` pass.
 - Commit-parent runner diffs introduce exactly the plan-owned literal labels; fixed package/pattern selection and permanent generic/malformed negative behavior remain bounded and non-zero.
-- Both JSON manifests parse; exact source/test digests match; proof-missing zero-call canaries and proof-valid isolated envelope ordering pass.
+- Both JSON manifests parse; exact source/test/negative-suite digests match; proof-missing manual-required/exit-32 zero-call canaries, shared-context ordering, post-gate substitution rejection, and one-probe Git capability checks pass.
+- Deadline fault injection proves exact exit `124` and one bounded JSON record even with more than 64 KiB of child output; timeout and normal-exit descendant markers remain absent after the runner returns.
 - Exact task staging, cached diff checks, targeted physical-path/identity/credential scans, and staged Gitleaks passed with zero leaks.
 - No real Nix, Homebrew, mise, uv, rustup, launchctl, service, HOME, manager, network, or host-state command ran. Existing user changes in `CLAUDE.md`, `.ai/`, and `.config/alma/` remained unstaged and unchanged.
 
