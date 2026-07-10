@@ -51,7 +51,7 @@
     {
       "id": "real-adapters",
       "logical_ref": "repo:safety/manifests/real-adapters.v1.json",
-      "digest": "sha256:263917e8b7dee23d33fb3608d386f44e3e2b4ff0080a7f017b62f30e62396fb0"
+      "digest": "sha256:70e0200442284da77498faf5260475d9da84fe0a050e5e7767cc29447a5bbe2c"
     },
     {
       "id": "network-contract",
