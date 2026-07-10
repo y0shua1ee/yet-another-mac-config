@@ -355,6 +355,15 @@ run_fixture_policy_wave() {
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"fixture-policy"}'
 }
 
+run_sentinel_manifest() {
+  run_exact_go_suite \
+    './internal/sentinel' \
+    '^TestSentinelManifest$' \
+    'TestSentinelManifest' \
+    'sentinel-manifest' \
+    'EXPECTED_RED: sentinel-manifest-behavior-missing'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -379,6 +388,9 @@ case "${SCOPE}:${SUITE}" in
     ;;
   task:tier-network-policy)
     run_tier_network_policy
+    ;;
+  task:sentinel-manifest)
+    run_sentinel_manifest
     ;;
   wave:skeleton)
     run_green_walking_skeleton

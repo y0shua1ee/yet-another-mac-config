@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -12,6 +13,7 @@ import (
 	"example.invalid/yamc/safety/internal/artifact"
 	"example.invalid/yamc/safety/internal/fixture"
 	"example.invalid/yamc/safety/internal/privacy"
+	"example.invalid/yamc/safety/internal/sentinel"
 	"example.invalid/yamc/safety/internal/workflow"
 )
 
@@ -57,6 +59,12 @@ type testPolicyFlags struct {
 	liveProbeID         string
 }
 
+type sentinelVerifyFlags struct {
+	mode         string
+	manifestPath string
+	fixtureRoot  string
+}
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -79,10 +87,78 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		return runStore(arguments[1:], stdout, stderr)
 	case "test-policy":
 		return runTestPolicy(arguments[1:], stdout, stderr)
+	case "sentinel":
+		if len(arguments) < 2 || arguments[1] != "verify" {
+			writeSafeError(stderr, "UNSUPPORTED_COMMAND")
+			return 64
+		}
+		return runSentinelVerify(arguments[2:], stdout, stderr)
 	default:
 		writeSafeError(stderr, "UNSUPPORTED_COMMAND")
 		return 64
 	}
+}
+
+func runSentinelVerify(arguments []string, stdout, stderr io.Writer) int {
+	parsed, err := parseSentinelVerifyFlags(arguments)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_ARGUMENTS_REJECTED")
+		return 64
+	}
+	data, err := readBoundedArtifact(parsed.manifestPath)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_MANIFEST_REJECTED")
+		return 2
+	}
+	manifest, err := sentinel.ParseProtectedManifest(data)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_MANIFEST_REJECTED")
+		return 2
+	}
+	frozen, err := sentinel.FreezeProtectedManifest(manifest)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_MANIFEST_REJECTED")
+		return 2
+	}
+	resolver, err := sentinel.NewSyntheticResolver(parsed.fixtureRoot)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_RESOLVER_REJECTED")
+		return 2
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		writeSafeError(stderr, "SENTINEL_KEY_REJECTED")
+		return 70
+	}
+	snapshot, err := sentinel.SnapshotProtected(frozen, manifest, resolver, key, sentinel.SnapshotOptions{})
+	for index := range key {
+		key[index] = 0
+	}
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_SNAPSHOT_REJECTED")
+		return 70
+	}
+	complete := true
+	for _, surface := range snapshot.Surfaces {
+		if surface.Status != sentinel.ObservationComplete {
+			complete = false
+		}
+	}
+	status := "synthetic-sentinel-passed"
+	exitCode := 0
+	if !complete {
+		status = "indeterminate"
+		exitCode = 21
+	}
+	result := struct {
+		Status   string                     `json:"status"`
+		Snapshot sentinel.ProtectedSnapshot `json:"snapshot"`
+	}{Status: status, Snapshot: snapshot}
+	if err := renderSafe(stdout, result); err != nil {
+		writeSafeError(stderr, "OUTPUT_REJECTED")
+		return 70
+	}
+	return exitCode
 }
 
 func runFixture(arguments []string, stdout, stderr io.Writer) int {
@@ -397,6 +473,19 @@ func parseTestPolicyFlags(arguments []string) (testPolicyFlags, error) {
 		if parsed.networkManifestPath != "" || parsed.repositoryRoot != "" || parsed.networkTestID != "" {
 			return testPolicyFlags{}, errors.New("arguments rejected")
 		}
+	}
+	return parsed, nil
+}
+
+func parseSentinelVerifyFlags(arguments []string) (sentinelVerifyFlags, error) {
+	var parsed sentinelVerifyFlags
+	flags := flag.NewFlagSet("sentinel-verify", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&parsed.mode, "mode", "", "")
+	flags.StringVar(&parsed.manifestPath, "manifest", "", "")
+	flags.StringVar(&parsed.fixtureRoot, "fixture-root", "", "")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.mode != "synthetic" || parsed.manifestPath == "" || parsed.fixtureRoot == "" {
+		return sentinelVerifyFlags{}, errors.New("arguments rejected")
 	}
 	return parsed, nil
 }
