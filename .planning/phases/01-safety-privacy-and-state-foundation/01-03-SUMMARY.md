@@ -68,7 +68,7 @@ completed: 2026-07-10
 - Added a shared privacy gate used by content-addressed artifact writes, persisted plan transitions, CLI validation/success output, and stderr diagnostics. Rejections contain exactly error code, artifact kind, adapter ID, logical pointer, category, and remediation, with no value-derived sample, length, basename, or digest.
 - Added registry-owned `os/exec` capture with fixed executable IDs/argv, empty fixed child environment, independent stdout/stderr pipes, 5-second and 64-KiB defaults, hard 30-second and 256-KiB maxima, context cancellation, and in-memory buffer clearing.
 - Replaced the walking skeleton's direct fake write with a fixture-local executable copied into `fixture:path/bin`; the tracked raw transport sample is passed in memory, strictly decoded, privacy-gated, compared with expected synthetic postconditions, and stored only as normalized facts.
-- Added canary, resolver, domain cross-product, overflow, timeout, invalid UTF-8, parse, unknown-field, process-failure, arbitrary-command, CLI/store leakage, and Phase 4+ runner-deny tests without inspecting live HOME, services, managers, provider state, environment dumps, or network endpoints.
+- Added canary, resolver, domain cross-product, overflow, timeout, invalid UTF-8, parse, unknown-field, process-failure, arbitrary-command, CLI/store leakage, closed literal-label, and permanent generic runner-rejection tests without inspecting live HOME, services, managers, provider state, environment dumps, or network endpoints.
 
 ## Task Commits
 
@@ -90,8 +90,8 @@ _Plan metadata is committed together with this summary._
 - `safety/internal/privacy/capture_test.go` - Covers defaults/maxima, success, unknown and shell-like IDs, timeout, both overflows, invalid encoding, parse/unknown-field failures, process failure, and zero raw retention.
 - `safety/testdata/raw/fake-adapter.json` - Contains the reviewed synthetic raw transport sample and a transport-only canary removed by normalization.
 - `safety/internal/workflow/synthetic.go` - Feeds the fake-process result through capture and uses only exact normalized facts for the fresh observed-state artifact.
-- `safety/internal/e2e/privacy_cli_test.go` - Proves the raw marker is absent from CLI output, canonical store objects, and retained fixture files while future routes remain denied.
-- `safety/scripts/test.sh` - Adds exact `privacy-boundary` and two-package `bounded-capture` handlers plus a two-handler privacy wave with fresh child roots.
+- `safety/internal/e2e/privacy_cli_test.go` - Proves the raw marker is absent from CLI output, canonical store objects, and retained fixture files; also enforces complete literal dispatch labels and permanent generic/malformed rejection probes.
+- `safety/scripts/test.sh` - Adds exact `privacy-boundary` and two-package `bounded-capture` handlers plus a two-handler privacy wave with fresh child roots and unsplit literal case labels.
 
 ## Decisions Made
 
@@ -108,11 +108,26 @@ _Plan metadata is committed together with this summary._
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+### Auto-fixed Issues
+
+**1. [Rule 1 - Correctness] Separated temporal owner-time evidence from lifetime route regressions**
+
+- **Found during:** Post-plan read-only review on 2026-07-11.
+- **Issue:** Plan 01-02's committed tests permanently asserted that the three planned Phase 3 route names were absent. Plan 01-03 then used Bash quote concatenation to keep those stale assertions green, so the runtime labels were operationally correct but no longer one complete mechanically reviewable literal.
+- **Root cause:** A temporal no-preregistration fact was encoded as a lifetime planned-name blacklist. The correct proof belongs to each owner task's staged runner diff against its parent commit, while lifetime source tests should validate closed syntax and reserved generic rejection behavior.
+- **Fix:** Restored the complete literal labels `task:privacy-boundary)`, `task:bounded-capture)`, and `wave:privacy)`; removed the expired Phase 3 absence loops from `safety/internal/artifact/validate_test.go` and `safety/internal/e2e/artifact_cli_test.go`; and changed `safety/internal/e2e/privacy_cli_test.go` to reject split/variable/glob/alternation labels while probing only `never-registered-task`, `never-registered-wave`, `never-registered-scope`, and malformed `phase unexpected-argument` inputs.
+- **Files modified:** `safety/scripts/test.sh`, `safety/internal/artifact/validate_test.go`, `safety/internal/e2e/artifact_cli_test.go`, `safety/internal/e2e/privacy_cli_test.go`.
+- **Temporal owner-time evidence:** Corrected planning contract commit `d07a7527ed9a801041b313ad3a87034e396f36ef` now requires owner-task staged/parent diffs to prove exactly which complete label was introduced at that time; no committed Go test carries planned future route names forward as an absence blacklist.
+- **Verification:** Bash syntax; five task suites; `skeleton`, `artifact-contracts`, and `privacy` waves; all four permanent generic/malformed negatives; exact four-file staging; cached diff-check; targeted privacy scan; and staged Gitleaks all passed.
+- **Committed in:** `51bef58a3d764e093c087ae1ff59f0144518ca71` (`fix(01-03): retire temporal route assertions`).
+
+---
+
+**Total deviations:** 1 auto-fixed Rule 1 correctness issue. **Impact:** Runtime capability and the two-task plan scope are unchanged; evidence semantics and lifetime route guards are now fail-closed without encoding future planned names.
 
 ## Issues Encountered
 
-- Plan 01-02's regression tests deliberately reject the literal text of future runner route labels. The new case labels use Bash literal concatenation while exposing the exact same operator routes, so the prior contract remains green without modifying files outside Plan 01-03's whitelist.
+- The post-plan route-evidence defect was repaired by `51bef58` and is documented under Deviations; no planned future route name remains in a lifetime absence assertion.
 - The first resolver assertion compared a canonical `/tmp` result with a non-canonical test path. The test was corrected to compare containment after `EvalSymlinks` before Task 1 was committed.
 - Tightening adapter materialization from an arbitrary `path/bin` argument to an external fixture root left one unused test local; the compile failure was repaired before Task 2 staging or commit.
 
@@ -123,13 +138,13 @@ None - no package installation, external service, credential, network access, ho
 ## Next Phase Readiness
 
 - Plan 01-04 can build fixture marker/TTL/retention and exact tier/network authorization on top of a capture API that already denies arbitrary commands, shells, inherited environment, and raw persistence.
-- The privacy wave is green and Phase 4+ routes remain unsupported/non-zero until their owning tasks land.
+- The privacy wave is green; reserved generic task/wave probes remain bounded `unsupported-suite`, and malformed scope/phase arguments remain bounded non-zero usage rejections without satisfying RED.
 - No real apply, live probe, Nix/Homebrew/mise/uv/rustup command, service query, HOME mutation, network request, whole-Mac claim, or current-host readiness claim was introduced.
 
 ## Self-Check: PASSED
 
 - Both exact task commits exist and contain only their declared whitelists; neither commit deletes a tracked file.
-- `task privacy-boundary`, `task bounded-capture`, and `wave privacy` pass after both commits, and the pre-implementation RED markers were distinct from unsupported-suite, test-selection, toolchain, or setup failures.
+- `task privacy-boundary`, `task bounded-capture`, and `wave privacy` pass after both task commits and the corrective commit; the pre-implementation RED markers remain distinct from unsupported-suite, test-selection, toolchain, or setup failures, and permanent generic negatives never satisfy RED.
 - Scoped diff checks, targeted path/identity/credential scans, and staged Gitleaks passed for each task with zero leaks.
 - The seven created and four modified implementation files exist; synthetic raw/canary fixtures contain no real identity, endpoint, credential, provider binding, or machine path.
 - Existing user changes in `CLAUDE.md`, `.ai/`, and `.config/alma/` remained unstaged and unchanged by this plan.
