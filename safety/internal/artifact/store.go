@@ -21,9 +21,11 @@ const (
 	CodeStoreExpired       ErrorCode = "ARTIFACT_STORE_EXPIRED"
 	CodeStorePinned        ErrorCode = "ARTIFACT_STORE_PINNED"
 	CodeStoreDeleteDenied  ErrorCode = "ARTIFACT_STORE_DELETE_DENIED"
+	CodeStoreClockRejected ErrorCode = "ARTIFACT_STORE_CLOCK_REJECTED"
 	CodePlanTransition     ErrorCode = "ARTIFACT_PLAN_TRANSITION_REJECTED"
 	FreshObservedKey                 = "fresh-observed-state"
 	maxStoredArtifactBytes           = 1 << 20
+	snapshotClockSkew                = 2 * time.Minute
 )
 
 type storedMetadata struct {
@@ -103,6 +105,9 @@ func (store *Store) Validate(canonical []byte) (Envelope, error) {
 		return Envelope{}, err
 	}
 	if err := validatePrivacy(canonical, envelope); err != nil {
+		return Envelope{}, err
+	}
+	if err := store.validateSnapshotClock(envelope); err != nil {
 		return Envelope{}, err
 	}
 	if store.snapshotExpired(envelope) && !store.isPinned(envelope.ContentDigest) {
@@ -570,6 +575,9 @@ func (store *Store) loadExact(digest string, enforceExpiry bool) ([]byte, Envelo
 	if envelope.ContentDigest != digest {
 		return nil, Envelope{}, contractError(CodeStoreKeyMismatch, "/content_digest")
 	}
+	if err := store.validateSnapshotClock(envelope); err != nil {
+		return nil, Envelope{}, err
+	}
 	store.recordMetadata(envelope)
 	if enforceExpiry && store.snapshotExpired(envelope) && !store.isPinned(digest) {
 		return nil, Envelope{}, contractError(CodeStoreExpired, "/lifecycle/expires_at")
@@ -656,6 +664,19 @@ func (store *Store) snapshotExpired(envelope Envelope) bool {
 	return err != nil || !store.now().UTC().Before(expiresAt)
 }
 
+func (store *Store) validateSnapshotClock(envelope Envelope) error {
+	if envelope.Lifecycle.Retention != Snapshot24Hours {
+		return nil
+	}
+	createdAt, createdErr := time.Parse(time.RFC3339, envelope.Lifecycle.CreatedAt)
+	expiresAt, expiresErr := time.Parse(time.RFC3339, envelope.Lifecycle.ExpiresAt)
+	now := store.now().UTC()
+	if createdErr != nil || expiresErr != nil || createdAt.After(now.Add(snapshotClockSkew)) || expiresAt.After(now.Add(SnapshotLifetime+snapshotClockSkew)) {
+		return contractError(CodeStoreClockRejected, "/lifecycle/created_at")
+	}
+	return nil
+}
+
 func (store *Store) objectPath(digest string) string {
 	return filepath.Join(store.root, "sha256", strings.TrimPrefix(digest, "sha256:"))
 }
@@ -688,6 +709,9 @@ func (store *Store) rebuildMetadata() error {
 		}
 		if privacyErr := validatePrivacy(canonical, envelope); privacyErr != nil {
 			return privacyErr
+		}
+		if clockErr := store.validateSnapshotClock(envelope); clockErr != nil {
+			return clockErr
 		}
 		if envelope.Kind == GeneratedPlan && envelope.Lifecycle.TerminalState != TerminalNonterminal {
 			return contractError(CodePlanTransition, "/lifecycle/terminal_state")

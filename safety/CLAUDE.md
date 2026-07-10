@@ -28,6 +28,8 @@
 
 唯一允许的删除是：主 verdict 已冻结后，重新验证 marker、effective UID、nonce、非 symlink、直接子级 containment 与 TTL，再删除**本次创建的仓库外 fixture 子目录**。默认删除；只有运行前显式 keep 才可保留最多 24 小时。不得把这个 teardown 例外扩展成真实环境清理权限。
 
+外部 artifact store 必须用 store 自己的时钟约束 24 小时 snapshot；只允许明确的 2 分钟正向 clock skew，并在 write、reopen、read、delete 全部 fail closed。测试必须注入时钟，不能依赖固定日期或通过未来 `created_at` 延长生命周期。
+
 ## 测试契约
 
 修改前后只通过下面的固定入口验证：

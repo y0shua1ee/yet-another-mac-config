@@ -40,8 +40,51 @@ func TestArtifactLineage(t *testing.T) {
 	readOnly := buildReadOnlyBundle(t, "synthetic-run-read-only")
 	assertLineageCases(t, apply, readOnly)
 	assertStoreLifecycle(t, apply)
+	assertFutureSnapshotClockBoundary(t)
 	assertArtifactCLI(t, apply, readOnly)
 	assertLineageRunnerContract(t)
+}
+
+func assertFutureSnapshotClockBoundary(t *testing.T) {
+	t.Helper()
+	_, repositoryRoot := projectRoots(t)
+	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	clockNow := now
+	clock := func() time.Time { return clockNow }
+
+	futureRoot := filepath.Join(t.TempDir(), "future-store")
+	futureStore, err := artifact.NewStoreWithClock(futureRoot, repositoryRoot, clock)
+	if err != nil {
+		t.Fatal("future snapshot store setup failed")
+	}
+	future := buildDesiredOnly(t, "synthetic-run-future-clock", now.Add(3*time.Minute), "repo:synthetic/future-clock")
+	if _, err := futureStore.Write(future); err == nil {
+		t.Fatal("future-created snapshot crossed the trusted store clock")
+	}
+	if entries, err := os.ReadDir(filepath.Join(futureRoot, "sha256")); err == nil && len(entries) != 0 {
+		t.Fatal("future-created snapshot reached the object store")
+	}
+
+	rewindRoot := filepath.Join(t.TempDir(), "rewind-store")
+	rewindStore, err := artifact.NewStoreWithClock(rewindRoot, repositoryRoot, clock)
+	if err != nil {
+		t.Fatal("clock rewind store setup failed")
+	}
+	current := buildDesiredOnly(t, "synthetic-run-current-clock", now, "repo:synthetic/current-clock")
+	digest, err := rewindStore.Write(current)
+	if err != nil {
+		t.Fatal("current snapshot was rejected")
+	}
+	clockNow = now.Add(-10 * time.Minute)
+	if _, _, err := rewindStore.Read(digest); err == nil {
+		t.Fatal("future-relative snapshot remained readable after clock rewind")
+	}
+	if err := rewindStore.Delete(digest); err == nil {
+		t.Fatal("future-relative snapshot reached delete after clock rewind")
+	}
+	if _, err := artifact.NewStoreWithClock(rewindRoot, repositoryRoot, clock); err == nil {
+		t.Fatal("store reopen accepted a future-relative snapshot")
+	}
 }
 
 func assertLineageCases(t *testing.T, apply, readOnly graphBundle) {
@@ -549,7 +592,7 @@ func assertLineageRunnerContract(t *testing.T) {
 
 func buildApplyBundle(t *testing.T, runID string, planOperations, receiptOperations []string) graphBundle {
 	t.Helper()
-	createdAt := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	createdAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
 	run := artifact.RunMetadata{RunID: runID, Tier: "offline-static", SuiteID: "artifact-lineage"}
 	bundle := newGraphBundle(createdAt)
 	desiredPayload := artifact.DesiredPayload{Profile: "profile:synthetic-developer", Declarations: []artifact.Fact{{Ref: "repo:synthetic/config", State: "fixture:state/declared"}}}
@@ -594,7 +637,7 @@ func buildApplyBundle(t *testing.T, runID string, planOperations, receiptOperati
 
 func buildReadOnlyBundle(t *testing.T, runID string) graphBundle {
 	t.Helper()
-	createdAt := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	createdAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
 	run := artifact.RunMetadata{RunID: runID, Tier: "offline-static", SuiteID: "artifact-lineage-read-only"}
 	bundle := newGraphBundle(createdAt)
 	desiredCanonical, desired := makeArtifact(t, artifact.DesiredState, run, nil, artifact.DesiredPayload{Profile: "profile:synthetic-developer", Declarations: []artifact.Fact{{Ref: "repo:synthetic/config", State: "fixture:state/declared"}}}, createdAt)
