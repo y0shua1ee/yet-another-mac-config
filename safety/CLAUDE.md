@@ -52,6 +52,7 @@ task、wave、phase 的 hard deadline 分别是 15、47、305 秒；完整公式
 
 - 只持久化 closed schema 允许的 logical ref、canonical digest、opaque HMAC token 与 bounded status。
 - `run_id`、`suite_id`、`operation_ids`、enum、digest、HMAC token 与 timestamp 必须走各自 field-specific validator；未注册自由字符串默认拒绝。canary 还必须把 secret/identity/provider/path-like 值放入看似合法的字段，验证 artifact、CLI renderer 与 Store 在输出/写入前失败且不回显。
+- `fixture run` 只能接受仓库外 base 与 logical fixture ID，并由 `fixture.Create` 创建 fresh direct child；禁止重新公开 `--fixture-root` / `--store-root`，也禁止把已有目录或真实 HOME 当作测试 sandbox。
 - 禁止物理路径、真实 root/home、用户名、UID、host identity、raw output、resolver mapping、HMAC key、API key、token、密码、cookie、私钥、登录态或客户数据进入 artifact、报告、文档、fixture 样本或 Git。
 - 当前 service adapter 的 tracked proof 缺失；current-host 必须在 adapter/workload 前 `manual-required`，不能写成 current-host passed。
 - `synthetic-sentinel-passed` 只是内层 fixture 结果；standalone/replay report 必须是 `synthetic-report-claim-ineligible`，checked-in expectation 不得保存 passed、claim 或 surface token。唯一允许的 scoped claim 是 `covered-surfaces-unchanged-for-run`，且必须在同一次 `RunRealEnvelope` 中以 one-shot process capability 从 actual Evidence + Evaluation + `RequestClaim` 生成，并绑定 evidence/suite/manifest/window/surface evidence；正向路径只用 proof-valid isolated private doubles。禁止整机、当前 host readiness、多机或 fresh-install claim。

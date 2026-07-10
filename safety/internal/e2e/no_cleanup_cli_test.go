@@ -95,16 +95,17 @@ func testDestructivePolicyCLI(t *testing.T) {
 func testSyntheticFixtureReceipt(t *testing.T) {
 	safetyRoot, repositoryRoot := projectRoots(t)
 	externalBase := t.TempDir()
-	fixtureRoot := filepath.Join(externalBase, "fixture")
-	storeRoot := filepath.Join(externalBase, "store")
 	blueprintPath := filepath.Join(safetyRoot, "testdata", "blueprints", "walking-skeleton", "input.json")
 	surfacesPath := filepath.Join(safetyRoot, "testdata", "blueprints", "walking-skeleton", "protected-surfaces.json")
-	stdout, stderr, err := runCLI(safetyRoot, fixtureArgs(blueprintPath, surfacesPath, fixtureRoot, storeRoot, repositoryRoot, "synthetic")...)
+	stdout, stderr, err := runCLI(safetyRoot, managedFixtureArgs(blueprintPath, surfacesPath, externalBase, "fixture:no-cleanup/receipt", repositoryRoot, "synthetic", true)...)
 	if err != nil || len(stderr) != 0 {
 		t.Fatal("synthetic fixture receipt run failed")
 	}
-	var summary runSummary
-	decodeStrict(t, stdout, &summary)
+	var output managedRunOutput
+	decodeStrict(t, stdout, &output)
+	summary := output.Summary
+	fixtureRoot := onlyFixtureChild(t, externalBase)
+	storeRoot := filepath.Join(fixtureRoot, "artifact-store")
 	artifacts := readStoredArtifacts(t, storeRoot)
 	receipt := summaryArtifact(t, artifacts, summary, "applied-receipt")
 	payload := payloadMap(t, receipt)
@@ -117,12 +118,16 @@ func testSyntheticFixtureReceipt(t *testing.T) {
 		t.Fatal("receipt operation is not fixture scoped")
 	}
 
-	rejectedStore := filepath.Join(externalBase, "live-store")
-	stdout, stderr, err = runCLI(safetyRoot, fixtureArgs(blueprintPath, surfacesPath, filepath.Join(externalBase, "live-fixture"), rejectedStore, repositoryRoot, "live")...)
+	before, readErr := os.ReadDir(externalBase)
+	if readErr != nil {
+		t.Fatal("managed fixture base unavailable")
+	}
+	stdout, stderr, err = runCLI(safetyRoot, managedFixtureArgs(blueprintPath, surfacesPath, externalBase, "fixture:no-cleanup/live", repositoryRoot, "live", false)...)
 	if err == nil || len(stdout) != 0 || len(stderr) == 0 {
 		t.Fatal("live receipt mode did not fail closed")
 	}
-	if _, statErr := os.Lstat(rejectedStore); !os.IsNotExist(statErr) {
+	after, readErr := os.ReadDir(externalBase)
+	if readErr != nil || len(after) != len(before) {
 		t.Fatal("live receipt mode wrote before rejection")
 	}
 }

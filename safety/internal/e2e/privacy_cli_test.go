@@ -17,8 +17,6 @@ const privacyRawMarker = "synthetic-raw-boundary-canary"
 func TestPrivacyCLI(t *testing.T) {
 	safetyRoot, repoRoot := projectRoots(t)
 	externalRoot := t.TempDir()
-	fixtureRoot := filepath.Join(externalRoot, "fixture")
-	storeRoot := filepath.Join(externalRoot, "store")
 	blueprintPath := filepath.Join(safetyRoot, "testdata", "blueprints", "walking-skeleton", "input.json")
 	surfacesPath := filepath.Join(safetyRoot, "testdata", "blueprints", "walking-skeleton", "protected-surfaces.json")
 	rawPath := filepath.Join(safetyRoot, "testdata", "raw", "fake-adapter.json")
@@ -27,18 +25,21 @@ func TestPrivacyCLI(t *testing.T) {
 	if err != nil || !bytes.Contains(rawSample, []byte(privacyRawMarker)) {
 		t.Fatal("tracked synthetic raw sample unavailable")
 	}
-	stdout, stderr, err := runCLI(safetyRoot, fixtureArgs(blueprintPath, surfacesPath, fixtureRoot, storeRoot, repoRoot, "synthetic")...)
+	stdout, stderr, err := runCLI(safetyRoot, managedFixtureArgs(blueprintPath, surfacesPath, externalRoot, "fixture:privacy-boundary/run", repoRoot, "synthetic", true)...)
 	if err != nil {
 		t.Fatal("privacy-boundary fixture run failed")
 	}
 	if len(stderr) != 0 || bytes.Contains(stdout, []byte(privacyRawMarker)) {
 		t.Fatal("CLI exposed raw adapter data")
 	}
-	var summary runSummary
-	decodeStrict(t, stdout, &summary)
+	var output managedRunOutput
+	decodeStrict(t, stdout, &output)
+	summary := output.Summary
 	if summary.State != wantSuccessState || summary.ArtifactCount != 7 || summary.KindCount != 6 {
 		t.Fatal("privacy-boundary fixture summary is incomplete")
 	}
+	fixtureRoot := onlyFixtureChild(t, externalRoot)
+	storeRoot := filepath.Join(fixtureRoot, "artifact-store")
 	artifacts := readStoredArtifacts(t, storeRoot)
 	assertNormalizedFreshObservation(t, artifacts, summary)
 	assertNoRawRetention(t, fixtureRoot, storeRoot)

@@ -28,7 +28,7 @@
 
 1. `validate`：解析并验证固定 schema、logical ref、控制面或 policy 契约。
 2. `store`：把已经通过隐私 gate 和 lineage 校验的 artifact graph 写入显式外部 store。
-3. `fixture run`：在显式仓库外 base 下创建并运行 marker-owned fixture。
+3. `fixture run`：只接受显式仓库外 `--fixture-base` 与 logical `--fixture-id`，由生命周期状态机原子创建 fresh direct child，并在其中运行 marker-owned fixture。旧式 `--fixture-root` / `--store-root` 公开入口已删除；调用方不能把已有目录、HOME 形状目录或任意 store 当作 fixture。
 4. `sentinel verify`：验证 synthetic snapshot，或先对 real adapter registry 执行 proof gate。
 5. `report`：反向装载并校验 suite、只含结构期望的 expected report 与七个 artifact instance，再输出 `synthetic-report-claim-ineligible` 有界报告；standalone/replay 命令不会恢复 outer claim。
 
@@ -62,7 +62,7 @@ apply 路径因此是六种 kind、七个 instance：`desired -> observed-before
 | `nix-output:` | 公开、规范化的 Nix 输出标识 |
 | `profile:` | 公开 profile/surface 标识 |
 
-字段和值都采用 closed contract：`run_id`、`suite_id` 与 artifact `operation_ids` 必须是有界 public ID（Phase 1 operation 还必须使用 `fixture.` 前缀）；state、status、reason、tier、mode 与 verdict 只能取已注册值或其明确的 logical-ref 变体；digest、HMAC token 与 timestamp 分别使用独立 validator。未注册自由字符串默认拒绝，不能把 secret、真实身份、provider item 或路径伪装进合法字段名。walking-skeleton blueprint 因此分别保存 public `operation_id` 与只供 policy 使用的 `fixture:` logical `operation_target`。
+字段和值都采用 closed contract：`run_id`、`suite_id` 与 artifact `operation_ids` 必须遵守各自可信构造/固定 registry（Phase 1 operation 还必须使用 `fixture.` 前缀）；state、status、reason、tier、mode 与 verdict 只能取已注册值或其明确的 logical-ref 变体；digest、HMAC token 与 timestamp 分别使用独立 validator。未注册自由字符串默认拒绝，不能把 secret、真实身份、provider item 或路径伪装进合法字段名。walking-skeleton blueprint 因此分别保存已注册 public `operation_id` 与只供 policy 使用的 `fixture:` logical `operation_target`。
 
 namespace 与 `surface_domain` 是两张不同的闭合表。当前五个 domain 与六个允许映射为：
 
@@ -77,6 +77,8 @@ namespace 与 `surface_domain` 是两张不同的闭合表。当前五个 domain
 未知 namespace/domain、跨域搭配、绝对 suffix、`..` traversal、resolver escape、raw output、真实 home/root、UID、host identity、HMAC key 与未规范化路径都 fail closed。公共 surface token 只使用 opaque HMAC 结果。
 
 ## Fixture、tier 与网络边界
+
+公开 `fixture run` 不接受物理 child/store 路径。它只在经过 containment 检查的外部 base 下，以不可预测 nonce 原子建立本次 direct child；artifact store、HOME/XDG、manager roots、fake PATH 与 sentinel scratch 都由该 child 派生。existing/non-empty/HOME-shaped child、fixture/store overlap 和预先存在的 witness 不能通过参数成为写入目标；初始化失败的 rollback 与运行后 finalize 都只处理本次 marker-owned child。
 
 fixture base 和 artifact store 必须位于仓库外。每次运行只在显式 base 的直接子级创建一个新目录，并写入包含 logical ID、创建/过期时间、effective UID 与随机 nonce 的 ownership marker；删除前会重新验证 marker、UID、nonce、非 symlink、直接子级 containment 和最长 24 小时 TTL。
 

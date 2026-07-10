@@ -37,6 +37,13 @@ type runSummary struct {
 	Artifacts      map[string]string `json:"artifacts"`
 }
 
+type managedRunOutput struct {
+	Summary        runSummary `json:"summary"`
+	LogicalRef     string     `json:"logical_ref"`
+	Retention      string     `json:"retention_status"`
+	ExpiryCategory string     `json:"expiry_category"`
+}
+
 type envelope struct {
 	Kind          string          `json:"kind"`
 	SchemaVersion string          `json:"schema_version"`
@@ -50,8 +57,6 @@ type envelope struct {
 func TestWalkingSkeletonContract(t *testing.T) {
 	safetyRoot, repoRoot := projectRoots(t)
 	externalBase := t.TempDir()
-	fixtureRoot := filepath.Join(externalBase, "fixture")
-	storeRoot := filepath.Join(externalBase, "store")
 	blueprintPath := filepath.Join(safetyRoot, "testdata", "blueprints", "walking-skeleton", "input.json")
 	surfacesPath := filepath.Join(safetyRoot, "testdata", "blueprints", "walking-skeleton", "protected-surfaces.json")
 
@@ -62,13 +67,7 @@ func TestWalkingSkeletonContract(t *testing.T) {
 	}
 
 	stdout, stderr, err := runCLI(safetyRoot,
-		"fixture", "run",
-		"--blueprint", blueprintPath,
-		"--surfaces", surfacesPath,
-		"--fixture-root", fixtureRoot,
-		"--store-root", storeRoot,
-		"--repo-root", repoRoot,
-		"--mode", "synthetic",
+		managedFixtureArgs(blueprintPath, surfacesPath, externalBase, "fixture:walking-skeleton/run", repoRoot, "synthetic", true)...,
 	)
 	if err != nil {
 		entrypoint := filepath.Join(safetyRoot, "cmd", "yamc-safety", "main.go")
@@ -79,8 +78,12 @@ func TestWalkingSkeletonContract(t *testing.T) {
 	}
 
 	assertBoundedAndPrivate(t, stdout, stderr, repoRoot, externalBase)
-	var summary runSummary
-	decodeStrict(t, stdout, &summary)
+	var output managedRunOutput
+	decodeStrict(t, stdout, &output)
+	summary := output.Summary
+	if output.LogicalRef != "fixture:walking-skeleton/run" || output.Retention != "retained" || output.ExpiryCategory == "" {
+		t.Fatalf("managed fixture lifecycle output is incomplete")
+	}
 	if summary.State != wantSuccessState {
 		t.Fatalf("unexpected synthetic success state")
 	}
@@ -92,6 +95,8 @@ func TestWalkingSkeletonContract(t *testing.T) {
 	}
 	assertNoOverclaim(t, stdout)
 
+	fixtureRoot := onlyFixtureChild(t, externalBase)
+	storeRoot := filepath.Join(fixtureRoot, "artifact-store")
 	artifacts := readStoredArtifacts(t, storeRoot)
 	assertSixKindsAndStoreKeys(t, artifacts, summary)
 	assertExactLineage(t, artifacts, summary, summary.ManifestDigest)
@@ -359,30 +364,53 @@ func summaryArtifact(t *testing.T, artifacts map[string]envelope, summary runSum
 
 func assertNegativeRoutes(t *testing.T, safetyRoot, repoRoot, blueprintPath, surfacesPath, externalBase string) {
 	t.Helper()
+	witness := filepath.Join(externalBase, "preexisting-witness")
+	if err := os.WriteFile(witness, []byte("preserve"), 0o600); err != nil {
+		t.Fatal("preexisting witness unavailable")
+	}
+	homeShaped := filepath.Join(externalBase, "home-shaped")
+	if err := os.Mkdir(homeShaped, 0o700); err != nil {
+		t.Fatal("home-shaped negative root unavailable")
+	}
+	homeWitness := filepath.Join(homeShaped, "existing-state")
+	if err := os.WriteFile(homeWitness, []byte("preserve"), 0o600); err != nil {
+		t.Fatal("home-shaped witness unavailable")
+	}
+	overlapRoot := filepath.Join(externalBase, "overlap-root")
+	if err := os.Mkdir(overlapRoot, 0o700); err != nil {
+		t.Fatal("overlap negative root unavailable")
+	}
+
 	tests := []struct {
 		name      string
 		args      []string
 		forbidden string
 	}{
 		{
-			name:      "store-inside-repository",
-			args:      fixtureArgs(blueprintPath, surfacesPath, filepath.Join(externalBase, "negative-fixture-1"), filepath.Join(safetyRoot, ".forbidden-store"), repoRoot, "synthetic"),
-			forbidden: filepath.Join(safetyRoot, ".forbidden-store"),
+			name: "legacy-existing-root",
+			args: legacyFixtureArgs(blueprintPath, surfacesPath, externalBase, filepath.Join(externalBase, "legacy-store"), repoRoot),
 		},
 		{
-			name:      "fixture-inside-repository",
-			args:      fixtureArgs(blueprintPath, surfacesPath, filepath.Join(safetyRoot, ".forbidden-fixture"), filepath.Join(externalBase, "negative-store-2"), repoRoot, "synthetic"),
+			name: "legacy-home-shaped-root",
+			args: legacyFixtureArgs(blueprintPath, surfacesPath, homeShaped, filepath.Join(externalBase, "home-store"), repoRoot),
+		},
+		{
+			name: "legacy-fixture-store-overlap",
+			args: legacyFixtureArgs(blueprintPath, surfacesPath, overlapRoot, overlapRoot, repoRoot),
+		},
+		{
+			name:      "fixture-base-inside-repository",
+			args:      managedFixtureArgs(blueprintPath, surfacesPath, filepath.Join(safetyRoot, ".forbidden-fixture"), "fixture:negative/repository", repoRoot, "synthetic", false),
 			forbidden: filepath.Join(safetyRoot, ".forbidden-fixture"),
 		},
 		{
 			name:      "path-traversal",
-			args:      fixtureArgs(blueprintPath, surfacesPath, filepath.Join(externalBase, "negative-fixture-3"), externalBase+string(filepath.Separator)+"store"+string(filepath.Separator)+".."+string(filepath.Separator)+"escape", repoRoot, "synthetic"),
+			args:      managedFixtureArgs(blueprintPath, surfacesPath, externalBase+string(filepath.Separator)+"..", "fixture:negative/traversal", repoRoot, "synthetic", false),
 			forbidden: filepath.Join(externalBase, "escape"),
 		},
 		{
-			name:      "unsupported-mode",
-			args:      fixtureArgs(blueprintPath, surfacesPath, filepath.Join(externalBase, "negative-fixture-4"), filepath.Join(externalBase, "negative-store-4"), repoRoot, "real"),
-			forbidden: filepath.Join(externalBase, "negative-store-4"),
+			name: "unsupported-mode",
+			args: managedFixtureArgs(blueprintPath, surfacesPath, externalBase, "fixture:negative/mode", repoRoot, "real", false),
 		},
 		{
 			name: "unsupported-command",
@@ -396,9 +424,8 @@ func assertNegativeRoutes(t *testing.T, safetyRoot, repoRoot, blueprintPath, sur
 			args      []string
 			forbidden string
 		}{
-			name:      "reject-overclaim-" + strings.ReplaceAll(claim, "-", "_"),
-			args:      append(fixtureArgs(blueprintPath, surfacesPath, filepath.Join(externalBase, "claim-fixture"), filepath.Join(externalBase, "claim-store"), repoRoot, "synthetic"), "--claim", claim),
-			forbidden: filepath.Join(externalBase, "claim-store"),
+			name: "reject-overclaim-" + strings.ReplaceAll(claim, "-", "_"),
+			args: append(managedFixtureArgs(blueprintPath, surfacesPath, externalBase, "fixture:negative/claim", repoRoot, "synthetic", false), "--claim", claim),
 		})
 	}
 
@@ -416,16 +443,48 @@ func assertNegativeRoutes(t *testing.T, safetyRoot, repoRoot, blueprintPath, sur
 			}
 		})
 	}
+	for path, want := range map[string]string{witness: "preserve", homeWitness: "preserve"} {
+		data, err := os.ReadFile(path)
+		if err != nil || string(data) != want {
+			t.Fatal("rejected fixture route changed preexisting state")
+		}
+	}
 }
 
-func fixtureArgs(blueprintPath, surfacesPath, fixtureRoot, storeRoot, repoRoot, mode string) []string {
-	return []string{
+func managedFixtureArgs(blueprintPath, surfacesPath, fixtureBase, fixtureID, repoRoot, mode string, keep bool) []string {
+	arguments := []string{
 		"fixture", "run",
 		"--blueprint", blueprintPath,
 		"--surfaces", surfacesPath,
-		"--fixture-root", fixtureRoot,
-		"--store-root", storeRoot,
+		"--fixture-base", fixtureBase,
+		"--fixture-id", fixtureID,
 		"--repo-root", repoRoot,
 		"--mode", mode,
 	}
+	if keep {
+		arguments = append(arguments, "--keep-fixture")
+	}
+	return arguments
+}
+
+func legacyFixtureArgs(blueprintPath, surfacesPath, fixtureRoot, storeRoot, repoRoot string) []string {
+	return []string{
+		"fixture", "run", "--blueprint", blueprintPath, "--surfaces", surfacesPath,
+		"--fixture-root", fixtureRoot, "--store-root", storeRoot, "--repo-root", repoRoot, "--mode", "synthetic",
+	}
+}
+
+func onlyFixtureChild(t *testing.T, base string) string {
+	t.Helper()
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		t.Fatal("managed fixture base unavailable")
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), "fixture-") {
+			return filepath.Join(base, entry.Name())
+		}
+	}
+	t.Fatal("managed fixture child unavailable")
+	return ""
 }

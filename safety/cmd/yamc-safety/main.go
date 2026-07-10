@@ -24,15 +24,12 @@ const maxArtifactBytes = 1 << 20
 type fixtureRunFlags struct {
 	blueprintPath  string
 	surfacesPath   string
-	fixtureRoot    string
 	fixtureBase    string
 	fixtureID      string
 	fixtureTTL     time.Duration
 	keepFixture    bool
-	storeRoot      string
 	repositoryRoot string
 	mode           string
-	managed        bool
 }
 
 type validateFlags struct {
@@ -296,26 +293,7 @@ func runFixture(arguments []string, stdout, stderr io.Writer) int {
 		writeSafeError(stderr, "FIXTURE_ARGUMENTS_REJECTED")
 		return 64
 	}
-	if parsed.managed {
-		return runManagedFixture(parsed, stdout, stderr)
-	}
-	summary, err := workflow.RunSynthetic(workflow.Options{
-		BlueprintPath:  parsed.blueprintPath,
-		SurfacesPath:   parsed.surfacesPath,
-		FixtureRoot:    parsed.fixtureRoot,
-		StoreRoot:      parsed.storeRoot,
-		RepositoryRoot: parsed.repositoryRoot,
-		Mode:           parsed.mode,
-	})
-	if err != nil {
-		writeRejected(stderr, err, "FIXTURE_RUN_REJECTED")
-		return 2
-	}
-	if err := renderSafe(stdout, summary); err != nil {
-		writeSafeError(stderr, "OUTPUT_REJECTED")
-		return 70
-	}
-	return 0
+	return runManagedFixture(parsed, stdout, stderr)
 }
 
 func runTestPolicy(arguments []string, stdout, stderr io.Writer) int {
@@ -560,26 +538,18 @@ func parseFixtureRunFlags(arguments []string) (fixtureRunFlags, error) {
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&parsed.blueprintPath, "blueprint", "", "")
 	flags.StringVar(&parsed.surfacesPath, "surfaces", "", "")
-	flags.StringVar(&parsed.fixtureRoot, "fixture-root", "", "")
 	flags.StringVar(&parsed.fixtureBase, "fixture-base", "", "")
 	flags.StringVar(&parsed.fixtureID, "fixture-id", "", "")
 	flags.DurationVar(&parsed.fixtureTTL, "fixture-ttl", 0, "")
 	flags.BoolVar(&parsed.keepFixture, "keep-fixture", false, "")
-	flags.StringVar(&parsed.storeRoot, "store-root", "", "")
 	flags.StringVar(&parsed.repositoryRoot, "repo-root", "", "")
 	flags.StringVar(&parsed.mode, "mode", "", "")
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 {
 		return fixtureRunFlags{}, errors.New("arguments rejected")
 	}
-	if parsed.blueprintPath == "" || parsed.surfacesPath == "" || parsed.repositoryRoot == "" || parsed.mode != "synthetic" {
+	if parsed.blueprintPath == "" || parsed.surfacesPath == "" || parsed.repositoryRoot == "" || parsed.mode != "synthetic" || parsed.fixtureBase == "" || parsed.fixtureID == "" {
 		return fixtureRunFlags{}, errors.New("arguments rejected")
 	}
-	legacy := parsed.fixtureRoot != "" && parsed.storeRoot != "" && parsed.fixtureBase == "" && parsed.fixtureID == "" && parsed.fixtureTTL == 0 && !parsed.keepFixture
-	managed := parsed.fixtureRoot == "" && parsed.storeRoot == "" && parsed.fixtureBase != "" && parsed.fixtureID != ""
-	if !legacy && !managed {
-		return fixtureRunFlags{}, errors.New("arguments rejected")
-	}
-	parsed.managed = managed
 	return parsed, nil
 }
 
