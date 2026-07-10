@@ -251,11 +251,6 @@ func assertRunnerRouteContract(t *testing.T) {
 			t.Fatalf("artifact-kinds runner route is not exact")
 		}
 	}
-	for _, future := range []string{"task:privacy-boundary", "task:bounded-capture", "wave:privacy"} {
-		if strings.Contains(text, future) {
-			t.Fatalf("future runner route registered early")
-		}
-	}
 }
 
 func loadKindCases(t *testing.T) []kindCase {

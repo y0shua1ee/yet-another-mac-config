@@ -528,11 +528,6 @@ func assertLineageRunnerContract(t *testing.T) {
 			t.Fatalf("lineage runner route is incomplete")
 		}
 	}
-	for _, future := range []string{"task:privacy-boundary", "task:bounded-capture", "wave:privacy"} {
-		if strings.Contains(text, future) {
-			t.Fatalf("Phase 3 runner route registered early")
-		}
-	}
 }
 
 func buildApplyBundle(t *testing.T, runID string, planOperations, receiptOperations []string) graphBundle {

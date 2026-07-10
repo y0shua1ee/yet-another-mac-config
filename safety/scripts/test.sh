@@ -311,10 +311,10 @@ case "${SCOPE}:${SUITE}" in
   task:artifact-lineage)
     run_artifact_lineage
     ;;
-  task:privacy-"boundary")
+  task:privacy-boundary)
     run_privacy_boundary
     ;;
-  task:bounded-"capture")
+  task:bounded-capture)
     run_bounded_capture
     ;;
   wave:skeleton)
@@ -323,7 +323,7 @@ case "${SCOPE}:${SUITE}" in
   wave:artifact-contracts)
     run_artifact_contracts_wave
     ;;
-  wave:"privacy")
+  wave:privacy)
     run_privacy_wave
     ;;
   *)

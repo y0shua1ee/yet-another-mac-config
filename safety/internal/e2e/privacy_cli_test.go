@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -115,18 +116,18 @@ func assertPrivacyRunnerContract(t *testing.T, safetyRoot string) {
 			t.Fatal("privacy runner package or pattern pair is not fixed")
 		}
 	}
-	for _, future := range []string{"task:fixture-lifecycle", "task:tier-network-policy", "wave:fixture-policy", "task:sentinel-manifest"} {
-		if strings.Contains(text, future) {
-			t.Fatal("Phase 4+ runner route registered early")
-		}
-	}
-	for _, arguments := range [][]string{
-		{},
-		{"task", "unknown-suite"},
-		{"task", "fixture-lifecycle"},
-		{"wave", "fixture-policy"},
-		{"phase"},
+	assertLiteralDispatchLabels(t, text)
+
+	for _, testCase := range []struct {
+		arguments       []string
+		wantUnsupported bool
+	}{
+		{arguments: []string{"task", "never-registered-task"}, wantUnsupported: true},
+		{arguments: []string{"wave", "never-registered-wave"}, wantUnsupported: true},
+		{arguments: []string{"never-registered-scope"}},
+		{arguments: []string{"phase", "unexpected-argument"}},
 	} {
+		arguments := testCase.arguments
 		command := exec.Command("/bin/bash", append([]string{scriptPath}, arguments...)...)
 		command.Env = os.Environ()
 		var stdout bytes.Buffer
@@ -134,10 +135,64 @@ func assertPrivacyRunnerContract(t *testing.T, safetyRoot string) {
 		command.Stdout = &stdout
 		command.Stderr = &stderr
 		if err := command.Run(); err == nil {
-			t.Fatal("unknown or future runner route succeeded")
+			t.Fatal("generic or malformed runner route succeeded")
 		}
 		if stdout.Len() > maxCLIOutput || stderr.Len() > maxCLIOutput {
 			t.Fatal("rejected runner route exceeded bounded output")
+		}
+		combined := stdout.String() + stderr.String()
+		if strings.Contains(combined, "expected-red-observed") || strings.Contains(combined, safetyRoot) {
+			t.Fatal("generic runner rejection leaked state or satisfied RED")
+		}
+		if testCase.wantUnsupported {
+			if !strings.Contains(combined, `"status":"harness-error"`) || !strings.Contains(combined, `"reason":"unsupported-suite"`) {
+				t.Fatal("generic task or wave rejection changed contract")
+			}
+		} else if !strings.Contains(combined, "usage:") {
+			t.Fatal("malformed scope or phase arguments bypassed usage rejection")
+		}
+	}
+}
+
+func assertLiteralDispatchLabels(t *testing.T, script string) {
+	t.Helper()
+	const marker = `case "${SCOPE}:${SUITE}" in`
+	start := strings.Index(script, marker)
+	if start < 0 {
+		t.Fatal("runner dispatch case is missing")
+	}
+	dispatch := script[start+len(marker):]
+	end := strings.Index(dispatch, "\nesac")
+	if end < 0 {
+		t.Fatal("runner dispatch case is unterminated")
+	}
+	dispatch = dispatch[:end]
+	literalPattern := regexp.MustCompile(`^(?:(?:task|wave):[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|phase)\)$`)
+	counts := make(map[string]int)
+	defaultCount := 0
+	for _, line := range strings.Split(dispatch, "\n") {
+		label := strings.TrimSpace(line)
+		if !strings.HasSuffix(label, ")") {
+			continue
+		}
+		if label == "*)" {
+			defaultCount++
+			continue
+		}
+		if !literalPattern.MatchString(label) || strings.ContainsAny(label, `"'$`+"`"+`{}[]?\\`) || strings.Contains(label, "|") || strings.Contains(label, "$(") {
+			t.Fatal("runner dispatch label is not one complete closed literal")
+		}
+		counts[label]++
+		if counts[label] != 1 {
+			t.Fatal("runner dispatch contains a duplicate literal label")
+		}
+	}
+	if defaultCount != 1 {
+		t.Fatal("runner dispatch must contain one default rejection")
+	}
+	for _, required := range []string{"task:privacy-boundary)", "task:bounded-capture)", "wave:privacy)"} {
+		if counts[required] != 1 {
+			t.Fatal("Phase 3 runner label is missing or not unique")
 		}
 	}
 }
