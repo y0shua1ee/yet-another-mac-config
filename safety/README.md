@@ -62,7 +62,7 @@ apply 路径因此是六种 kind、七个 instance：`desired -> observed-before
 | `nix-output:` | 公开、规范化的 Nix 输出标识 |
 | `profile:` | 公开 profile/surface 标识 |
 
-字段和值都采用 closed contract：`run_id`、`suite_id` 与 artifact `operation_ids` 必须遵守各自可信构造/固定 registry（Phase 1 operation 还必须使用 `fixture.` 前缀）；state、status、reason、tier、mode 与 verdict 只能取已注册值或其明确的 logical-ref 变体；digest、HMAC token 与 timestamp 分别使用独立 validator。未注册自由字符串默认拒绝，不能把 secret、真实身份、provider item 或路径伪装进合法字段名。walking-skeleton blueprint 因此分别保存已注册 public `operation_id` 与只供 policy 使用的 `fixture:` logical `operation_target`。
+字段和值都采用 closed contract：artifact `run_id` 只能由可信 builder 把结构输入变成 digest-derived opaque ID，`suite_id` 与 `operation_ids` 只能来自固定 registry（Phase 1 operation 还必须使用 `fixture.` 前缀）；blueprint 不接受 caller-supplied `run_id`。command-result 也使用封闭 field/type registry，未知 key、未知值类型与 numeric identity 一律在 renderer 前拒绝。state、status、reason、tier、mode 与 verdict 只能取已注册值或其明确的 logical-ref 变体；digest、HMAC token 与 timestamp 分别使用独立 validator。词法上看似中性的 identity、opaque credential、stable machine ID、secret、provider item 或路径都不能借合法字段名进入输出或 artifact。walking-skeleton blueprint 因此只保存固定 registry 中的 `suite_id` / `operation_id` 与只供 policy 使用的 `fixture:` logical `operation_target`。
 
 namespace 与 `surface_domain` 是两张不同的闭合表。当前五个 domain 与六个允许映射为：
 

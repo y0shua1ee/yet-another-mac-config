@@ -155,7 +155,11 @@ func assertEnvelopeRejectionsAndNoPersistence(t *testing.T, validCase kindCase) 
 		t.Fatalf("content_digest was included in its own digest domain")
 	}
 	changedCore := envelope
-	changedCore.Run.RunID = "synthetic-run-kind-contracts-changed"
+	changedRun, err := NewRunMetadata([]byte("kind-contracts-changed"), "offline-static", "artifact-kinds")
+	if err != nil {
+		t.Fatalf("changed run metadata unavailable")
+	}
+	changedCore.Run = changedRun
 	if digest, _ := digestCore(changedCore); digest == envelope.ContentDigest {
 		t.Fatalf("envelope field omitted from digest domain")
 	}
@@ -273,7 +277,11 @@ func loadKindCases(t *testing.T) []kindCase {
 }
 
 func syntheticRun() RunMetadata {
-	return RunMetadata{RunID: "synthetic-run-kind-contracts", Tier: "offline-static", SuiteID: "artifact-kinds"}
+	run, err := NewRunMetadata([]byte("kind-contracts"), "offline-static", "artifact-kinds")
+	if err != nil {
+		panic("synthetic run metadata unavailable")
+	}
+	return run
 }
 
 func syntheticProvenance() Provenance {

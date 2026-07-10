@@ -1,6 +1,5 @@
 {
   "schema_version": "1.0.0",
-  "run_id": "synthetic-run-walking-skeleton-001",
   "suite_id": "walking-skeleton",
   "profile": "profile:synthetic-developer",
   "desired": [

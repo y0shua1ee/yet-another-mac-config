@@ -220,7 +220,10 @@ func testStoreGateBeforeWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal("synthetic store setup failed")
 	}
-	run := artifact.RunMetadata{RunID: "synthetic-run-privacy", Tier: "offline-static", SuiteID: "privacy-boundary"}
+	run, err := artifact.NewRunMetadata([]byte("privacy-store"), "offline-static", "privacy-boundary")
+	if err != nil {
+		t.Fatal("trusted privacy run unavailable")
+	}
 	provenance := artifact.Provenance{Mode: "synthetic", InputDigests: []string{}}
 	if _, _, err := artifact.New(artifact.DesiredState, run, provenance, artifact.DesiredPayload{
 		Profile:      "profile:synthetic-developer",
@@ -260,7 +263,10 @@ func testClosedAllowedFieldContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal("closed field store setup failed")
 	}
-	validRun := artifact.RunMetadata{RunID: "synthetic-run-closed-fields", Tier: "offline-static", SuiteID: "privacy-boundary"}
+	validRun, err := artifact.NewRunMetadata([]byte("closed-fields"), "offline-static", "privacy-boundary")
+	if err != nil {
+		t.Fatal("closed field run metadata unavailable")
+	}
 	provenance := artifact.Provenance{Mode: "synthetic", InputDigests: []string{}}
 	valid, _, err := artifact.New(artifact.DesiredState, validRun, provenance, artifact.DesiredPayload{
 		Profile:      "profile:synthetic-developer",
@@ -274,8 +280,9 @@ func testClosedAllowedFieldContracts(t *testing.T) {
 		canary string
 		apply  func(map[string]any)
 	}{
-		{"run_id", "synthetic-run-secret-canary", func(value map[string]any) { value["run"].(map[string]any)["run_id"] = "synthetic-run-secret-canary" }},
-		{"suite_id", "synthetic-username-canary", func(value map[string]any) { value["run"].(map[string]any)["suite_id"] = "synthetic-username-canary" }},
+		{"neutral_identity_run_id", "alice", func(value map[string]any) { value["run"].(map[string]any)["run_id"] = "alice" }},
+		{"opaque_credential_run_id", "violetmarmotcobalt", func(value map[string]any) { value["run"].(map[string]any)["run_id"] = "violetmarmotcobalt" }},
+		{"stable_machine_suite_id", "c02x9ab12cd34", func(value map[string]any) { value["run"].(map[string]any)["suite_id"] = "c02x9ab12cd34" }},
 		{"state", "provider-account-reference", func(value map[string]any) {
 			value["payload"].(map[string]any)["declarations"].([]any)[0].(map[string]any)["state"] = "provider-account-reference"
 		}},
@@ -297,9 +304,30 @@ func testClosedAllowedFieldContracts(t *testing.T) {
 	}); err == nil {
 		t.Fatal("operation_ids secret crossed the artifact contract")
 	}
+	for _, operationID := range []string{"fixture.operation.alice", "fixture.operation.violetmarmotcobalt", "fixture.operation.c02x9ab12cd34"} {
+		if _, _, err := artifact.New(artifact.GeneratedPlan, validRun, provenance, artifact.GeneratedPlanPayload{
+			DesiredDigest: dummy, ObservedDigest: dummy, ExpectedPostconditionsDigest: dummy, OperationIDs: []string{operationID},
+		}); err == nil || strings.Contains(err.Error(), operationID) {
+			t.Fatal("unregistered operation identity crossed or was reflected by construction")
+		}
+	}
+	for _, run := range []artifact.RunMetadata{
+		{RunID: "alice", Tier: "offline-static", SuiteID: "privacy-boundary"},
+		{RunID: "violetmarmotcobalt", Tier: "offline-static", SuiteID: "privacy-boundary"},
+		{RunID: validRun.RunID, Tier: "offline-static", SuiteID: "c02x9ab12cd34"},
+	} {
+		_, _, buildErr := artifact.New(artifact.DesiredState, run, provenance, artifact.DesiredPayload{
+			Profile: "profile:synthetic-developer", Declarations: []artifact.Fact{{Ref: "repo:synthetic/config", State: "fixture:state/declared"}},
+		})
+		if buildErr == nil || strings.Contains(buildErr.Error(), run.RunID) || strings.Contains(buildErr.Error(), run.SuiteID) {
+			t.Fatal("caller supplied identity crossed artifact construction")
+		}
+	}
 	for _, candidate := range []map[string]any{
 		{"status": "sk-synthetic-token-canary"},
 		{"reason": "provider-account-reference"},
+		{"display_name": "alice"},
+		{"account_number": 501},
 	} {
 		var output bytes.Buffer
 		if rejection := privacy.Render(&output, privacy.Candidate{ArtifactKind: privacy.KindCommandResult, AdapterID: privacy.AdapterPrivacyTest, Value: candidate}); rejection == nil || output.Len() != 0 {
@@ -315,14 +343,14 @@ func testClosedAllowedFieldContracts(t *testing.T) {
 	if err := os.WriteFile(artifactPath, cliArtifact, 0o600); err != nil {
 		t.Fatal("closed field CLI candidate unavailable")
 	}
-	command := exec.Command("go", "run", "./cmd/yamc-safety", "validate", "--kind", "desired-state", "--artifact", artifactPath)
+	command := exec.Command("go", "run", "./cmd/yamc-safety", "validate", "--expect-kind", "desired-state", "--artifact", artifactPath)
 	command.Dir = safetyRoot
 	command.Env = os.Environ()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr
-	if err := command.Run(); err == nil || stdout.Len() != 0 || strings.Contains(stderr.String(), "synthetic-run-secret-canary") {
+	if err := command.Run(); err == nil || stdout.Len() != 0 || strings.Contains(stderr.String(), "alice") {
 		t.Fatal("closed run_id canary crossed or echoed from the CLI")
 	}
 	if entries, err := os.ReadDir(filepath.Join(storeRoot, "sha256")); err == nil && len(entries) != 0 {

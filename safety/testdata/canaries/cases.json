@@ -100,6 +100,38 @@
           "fixture.operation.secret-token"
         ]
       }
+    },
+    {
+      "name": "neutral-identity-without-marker",
+      "candidate": {
+        "run_id": "alice"
+      }
+    },
+    {
+      "name": "opaque-credential-without-prefix",
+      "candidate": {
+        "operation_ids": [
+          "fixture.operation.violetmarmotcobalt"
+        ]
+      }
+    },
+    {
+      "name": "stable-machine-id-without-marker",
+      "candidate": {
+        "suite_id": "c02x9ab12cd34"
+      }
+    },
+    {
+      "name": "unknown-command-result-key",
+      "candidate": {
+        "display_name": "alice"
+      }
+    },
+    {
+      "name": "numeric-uid-under-unknown-key",
+      "candidate": {
+        "account_number": 501
+      }
     }
   ]
 }

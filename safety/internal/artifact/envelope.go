@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"example.invalid/yamc/safety/internal/privacy"
 )
 
 const SchemaVersion = "1.0.0"
@@ -205,6 +207,26 @@ func IsPublicID(value string) bool {
 	return true
 }
 
+// NewRunMetadata derives the public run identifier from trusted structural input.
+// Callers provide a registered suite and cannot persist a human or machine identity as run metadata.
+func NewRunMetadata(seed []byte, tier, suiteID string) (RunMetadata, error) {
+	if len(seed) == 0 || !privacy.IsRegisteredSuiteID(suiteID) || (tier != "offline-static" && tier != "isolated-integration" && tier != "real-sentinel-envelope") {
+		return RunMetadata{}, contractError(CodeEnvelopeRejected, "/run")
+	}
+	domain := "synthetic-run"
+	if tier == "real-sentinel-envelope" {
+		domain = "real-run"
+	}
+	hash := sha256.New()
+	_, _ = hash.Write([]byte("yamc-safety-run-v1\x00"))
+	_, _ = hash.Write([]byte(tier))
+	_, _ = hash.Write([]byte{0})
+	_, _ = hash.Write([]byte(suiteID))
+	_, _ = hash.Write([]byte{0})
+	_, _ = hash.Write(seed)
+	return RunMetadata{RunID: domain + "-" + hex.EncodeToString(hash.Sum(nil)[:24]), Tier: tier, SuiteID: suiteID}, nil
+}
+
 func validateEnvelope(envelope Envelope) error {
 	if _, ok := kindRegistry[envelope.Kind]; !ok {
 		return contractError(CodeKindRejected, "/kind")
@@ -212,7 +234,7 @@ func validateEnvelope(envelope Envelope) error {
 	if envelope.SchemaVersion != SchemaVersion {
 		return contractError(CodeSchemaRejected, "/schema_version")
 	}
-	if !IsPublicID(envelope.Run.RunID) || (!strings.HasPrefix(envelope.Run.RunID, "synthetic-run-") && !strings.HasPrefix(envelope.Run.RunID, "real-run-")) || !IsPublicID(envelope.Run.SuiteID) || (envelope.Run.Tier != "offline-static" && envelope.Run.Tier != "isolated-integration" && envelope.Run.Tier != "real-sentinel-envelope") {
+	if !privacy.IsTrustedRunID(envelope.Run.RunID) || !privacy.IsRegisteredSuiteID(envelope.Run.SuiteID) || (envelope.Run.Tier != "offline-static" && envelope.Run.Tier != "isolated-integration" && envelope.Run.Tier != "real-sentinel-envelope") {
 		return contractError(CodeEnvelopeRejected, "/run")
 	}
 	if envelope.Producer.ID != "yamc-safety" || envelope.Producer.Version == "" {

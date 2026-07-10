@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"example.invalid/yamc/safety/internal/artifact"
 	"example.invalid/yamc/safety/internal/contract"
+	"example.invalid/yamc/safety/internal/privacy"
 )
 
 func TestNoCleanupCLI(t *testing.T) {
@@ -114,7 +114,7 @@ func testSyntheticFixtureReceipt(t *testing.T) {
 		t.Fatal("receipt escaped the synthetic fixture boundary")
 	}
 	operationID, ok := operationIDs[0].(string)
-	if !ok || !artifact.IsPublicID(operationID) || !strings.HasPrefix(operationID, "fixture.operation.") {
+	if !ok || !privacy.IsRegisteredOperationID(operationID) {
 		t.Fatal("receipt operation is not fixture scoped")
 	}
 

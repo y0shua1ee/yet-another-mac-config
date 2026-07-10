@@ -190,10 +190,89 @@ var (
 		"/canonical": {}, "/command": {}, "/artifact": {},
 	}
 	publicIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+	trustedRunID    = regexp.MustCompile(`^(synthetic|real)-run-[0-9a-f]{48}$`)
 	hex64Pattern    = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	integerPattern  = regexp.MustCompile(`^-?(0|[1-9][0-9]*)$`)
 	windowsPath     = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
 )
+
+var registeredSuiteIDs = map[string]struct{}{
+	"walking-skeleton":                      {},
+	"artifact-kinds":                        {},
+	"artifact-lineage":                      {},
+	"artifact-lineage-read-only":            {},
+	"privacy-boundary":                      {},
+	"phase-1-default":                       {},
+	"phase-01-offline-safety-v1":            {},
+	"negative.git-status.no-write.v1":       {},
+	"negative.git-ls-files.no-write.v1":     {},
+	"negative.go-lstat-file.no-write.v1":    {},
+	"negative.go-bounded-tree.no-write.v1":  {},
+	"negative.launchctl-print.no-write.v1":  {},
+	"negative.go-system-shells.no-write.v1": {},
+}
+
+var registeredOperationIDs = map[string]struct{}{
+	"fixture.operation.materialize-shell-policy": {},
+	"fixture.operation.synthetic":                {},
+	"fixture.operation.first":                    {},
+	"fixture.operation.second":                   {},
+	"fixture.operation.not-in-plan":              {},
+}
+
+var registeredCommandFields = stringSet(
+	"status", "schema_version", "state", "artifact_count", "kind_count", "manifest_digest", "artifacts",
+	"summary", "logical_ref", "retention_status", "expiry_category", "kind", "digest", "mode", "digests",
+	"layers", "facts", "owner", "roles", "scope", "executable", "declaration_owner", "manager_binary_owner",
+	"managed_payload_owner", "selected_executable_owner", "activation_context", "operations", "target",
+	"network_policy", "reason", "test_id", "probe_id", "contract_validated", "tier", "snapshot", "window_state",
+	"surfaces", "surface_id", "surface_domain", "opaque_snapshot", "evaluation", "verdict", "exit_code",
+	"change_code", "warnings", "claim", "evidence_digest", "sequence", "evidence", "teardown_status",
+	"suite_id", "suite_digest", "window", "window_digest", "window_id", "opened_at", "closed_at", "optional",
+	"excluded", "policy", "before_status", "after_status", "before_token", "after_token", "before_reason",
+	"after_reason", "provenance", "claim_eligible", "error_code", "artifact_kind", "adapter_id", "pointer",
+	"category", "remediation", "ref", "inner_status", "evidence_mode", "outer_sequence", "artifact_kinds",
+	"artifact_instances", "artifact_digests", "manifest_digests", "surface_evidence", "policy_statuses",
+	"current_host", "claim_binding", "profile", "declarations", "run", "run_id", "producer", "id", "version",
+	"input_digests", "storage_class", "lifecycle", "retention", "created_at", "expires_at", "terminal_state",
+	"terminal_receipt_digest", "abandonment_record_digest", "payload", "desired_digest", "observed_digest",
+	"expected_postconditions_digest", "operation_ids", "plan_digest", "outcome", "receipt_digest",
+	"fresh_observed_digest", "fresh_observed", "source_receipt_digest", "sentinel_before_digest",
+	"sentinel_after_digest", "evidence_digests",
+)
+
+var commandContainerFields = stringSet(
+	"artifacts", "summary", "digests", "layers", "roles", "facts", "operations", "snapshot", "surfaces",
+	"evaluation", "warnings", "sequence", "evidence", "window", "optional", "excluded", "outer_sequence",
+	"artifact_kinds", "artifact_digests", "manifest_digests", "surface_evidence", "policy_statuses", "current_host",
+	"claim_binding", "declarations", "run", "producer", "input_digests", "lifecycle", "payload", "operation_ids",
+	"fresh_observed", "evidence_digests",
+)
+
+var commandNumericFields = stringSet("artifact_count", "kind_count", "artifact_instances", "exit_code")
+var commandBooleanFields = stringSet("claim_eligible", "contract_validated")
+
+func stringSet(values ...string) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		result[value] = struct{}{}
+	}
+	return result
+}
+
+func IsTrustedRunID(value string) bool {
+	return trustedRunID.MatchString(value)
+}
+
+func IsRegisteredSuiteID(value string) bool {
+	_, ok := registeredSuiteIDs[value]
+	return ok
+}
+
+func IsRegisteredOperationID(value string) bool {
+	_, ok := registeredOperationIDs[value]
+	return ok
+}
 
 func ParseLogicalRef(raw string) (LogicalRef, error) {
 	if raw == "" || strings.ContainsRune(raw, '\x00') || strings.Count(raw, ":") != 1 {
@@ -341,7 +420,7 @@ func Gate(candidate Candidate) ([]byte, *ErrorEnvelope) {
 	if err != nil || (candidate.Canonical != nil && !bytes.Equal(canonical, candidate.Canonical)) {
 		return nil, newError(CodeCanonicalRejected, kind, candidate.AdapterID, "/canonical", CategoryCanonical, RemediationNormalization)
 	}
-	if found := scanValue(value, ""); found != nil {
+	if found := scanValue(value, "", kind == KindCommandResult, false); found != nil {
 		return nil, newError(found.code, kind, candidate.AdapterID, found.pointer, found.category, found.remediation)
 	}
 	return canonical, nil
@@ -419,9 +498,19 @@ func logicalCategory(err error) Category {
 	return CategoryInvalidLogicalRef
 }
 
-func scanValue(value any, field string) *violation {
+func scanValue(value any, field string, closedCommand, arrayElement bool) *violation {
 	switch typed := value.(type) {
 	case map[string]any:
+		if closedCommand {
+			if field != "" {
+				if _, ok := commandContainerFields[field]; !ok {
+					return unclassifiedViolation()
+				}
+			}
+			if isDigestMapField(field) {
+				return scanDigestMap(typed)
+			}
+		}
 		if domainValue, ok := typed["surface_domain"].(string); ok {
 			referenceValue, hasReference := typed["ref"].(string)
 			if !hasReference {
@@ -441,17 +530,38 @@ func scanValue(value any, field string) *violation {
 			if forbiddenField(normalized) {
 				return &violation{CodeDataRejected, "/payload/private-data", CategoryForbiddenData, RemediationPrivateData}
 			}
-			if found := scanValue(typed[key], normalized); found != nil {
+			if closedCommand {
+				if _, ok := registeredCommandFields[normalized]; !ok {
+					return unclassifiedViolation()
+				}
+			}
+			if found := scanValue(typed[key], normalized, closedCommand, false); found != nil {
 				return found
 			}
 		}
 	case []any:
+		if closedCommand {
+			if _, ok := commandContainerFields[field]; !ok {
+				return unclassifiedViolation()
+			}
+		}
 		for _, item := range typed {
-			if found := scanValue(item, field); found != nil {
+			if found := scanValue(item, field, closedCommand, true); found != nil {
 				return found
 			}
 		}
 	case string:
+		if closedCommand {
+			if _, ok := commandContainerFields[field]; ok && !arrayElement {
+				return unclassifiedViolation()
+			}
+			if _, ok := commandNumericFields[field]; ok {
+				return unclassifiedViolation()
+			}
+			if _, ok := commandBooleanFields[field]; ok {
+				return unclassifiedViolation()
+			}
+		}
 		if strings.ContainsRune(typed, '\x00') {
 			return &violation{CodeDataRejected, "/payload/unclassified", CategoryUnclassified, RemediationNormalization}
 		}
@@ -466,6 +576,46 @@ func scanValue(value any, field string) *violation {
 		}
 		if violation := validateStringField(field, typed); violation != nil {
 			return violation
+		}
+	case json.Number:
+		if !closedCommand {
+			return nil
+		}
+		if _, ok := commandNumericFields[field]; !ok {
+			return unclassifiedViolation()
+		}
+	case bool:
+		if !closedCommand {
+			return nil
+		}
+		if _, ok := commandBooleanFields[field]; !ok {
+			return unclassifiedViolation()
+		}
+	case nil:
+		if closedCommand {
+			return unclassifiedViolation()
+		}
+	}
+	return nil
+}
+
+func unclassifiedViolation() *violation {
+	return &violation{CodeDataRejected, "/payload/unclassified", CategoryUnclassified, RemediationNormalization}
+}
+
+func isDigestMapField(field string) bool {
+	return field == "artifacts" || field == "digests" || field == "artifact_digests" || field == "manifest_digests"
+}
+
+func scanDigestMap(values map[string]any) *violation {
+	allowedLabels := stringSet(
+		"desired-state", "observed-state", "generated-plan", "applied-receipt", "fresh-observed", "fresh-observed-state",
+		"verification-evidence", "readiness-report", "protected-surfaces", "real-adapters", "network-contract", "expected-report",
+	)
+	for label, raw := range values {
+		value, ok := raw.(string)
+		if _, allowed := allowedLabels[label]; !ok || !allowed || !isSHA256Digest(value) {
+			return unclassifiedViolation()
 		}
 	}
 	return nil
@@ -515,7 +665,19 @@ func validateStringField(field, value string) *violation {
 		return nil
 	}
 	switch field {
-	case "run_id", "suite_id", "operation_id", "operation_ids", "surface_id", "manifest_id", "test_id", "probe_id", "window_id", "task_suite", "wave", "id", "executable", "relative_id":
+	case "run_id":
+		if !IsTrustedRunID(value) {
+			return reject()
+		}
+	case "suite_id":
+		if !IsRegisteredSuiteID(value) {
+			return reject()
+		}
+	case "operation_id", "operation_ids":
+		if !IsRegisteredOperationID(value) {
+			return reject()
+		}
+	case "surface_id", "manifest_id", "test_id", "probe_id", "window_id", "task_suite", "wave", "id", "executable", "relative_id":
 		if !isSafePublicID(value) {
 			return reject()
 		}
@@ -595,10 +757,60 @@ func validateStringField(field, value string) *violation {
 		if _, ok := registeredRemediations[Remediation(value)]; !ok {
 			return reject()
 		}
-	default:
+	case "kind":
+		if !oneOf(value, "desired-state", "observed-state", "generated-plan", "applied-receipt", "verification-evidence", "readiness-report", "fixture-fake-write") {
+			return reject()
+		}
+	case "inner_status":
+		if !closedStatus(value) {
+			return reject()
+		}
+	case "evidence_mode":
+		if !oneOf(value, "isolated-proof-double", "replay-claim-ineligible", "controlled-real-envelope") {
+			return reject()
+		}
+	case "expiry_category":
+		if !oneOf(value, "within-24-hours", "expired", "invalid") {
+			return reject()
+		}
+	case "network_policy":
+		if value != "denied" {
+			return reject()
+		}
+	case "change_code":
+		if value != "change-detected-during-window" {
+			return reject()
+		}
+	case "provenance":
+		if !oneOf(value, "synthetic", "real", "real-run", "runtime") {
+			return reject()
+		}
+	case "logical_fixture_id":
+		if _, err := ParseLogicalRef(value); err != nil {
+			return logicalReject(err)
+		}
+	case "artifact_kinds":
+		if !oneOf(value, "desired-state", "observed-state", "generated-plan", "applied-receipt", "verification-evidence", "readiness-report") {
+			return reject()
+		}
+	case "policy_statuses":
+		if !oneOf(value, "extra", "unmanaged-present") {
+			return reject()
+		}
+	case "outer_sequence", "sequence":
+		if !oneOf(value, "proof-gate", "real-before", "isolated-workload", "freeze-primary", "fixture-finalize", "real-after", "monotonic-combine") {
+			return reject()
+		}
+	case "optional", "excluded":
+		if _, err := ParseLogicalRef(value); err != nil {
+			return logicalReject(err)
+		}
+	case "owner", "roles", "declaration_owner", "manager_binary_owner", "managed_payload_owner", "selected_executable_owner", "activation_context", "warnings":
 		if !isSafePublicID(value) {
 			return reject()
 		}
+	default:
+		return reject()
 	}
 	return nil
 }
@@ -706,7 +918,7 @@ func forbiddenField(field string) bool {
 
 func isLogicalField(field string) bool {
 	switch field {
-	case "ref", "logical_ref", "profile", "scope", "outcome", "cache_ref", "selected_executable":
+	case "ref", "logical_ref", "logical_fixture_id", "profile", "scope", "outcome", "cache_ref", "selected_executable", "target":
 		return true
 	default:
 		return false

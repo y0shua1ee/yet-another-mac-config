@@ -593,7 +593,7 @@ func assertLineageRunnerContract(t *testing.T) {
 func buildApplyBundle(t *testing.T, runID string, planOperations, receiptOperations []string) graphBundle {
 	t.Helper()
 	createdAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
-	run := artifact.RunMetadata{RunID: runID, Tier: "offline-static", SuiteID: "artifact-lineage"}
+	run := trustedArtifactRun(t, runID, "artifact-lineage")
 	bundle := newGraphBundle(createdAt)
 	desiredPayload := artifact.DesiredPayload{Profile: "profile:synthetic-developer", Declarations: []artifact.Fact{{Ref: "repo:synthetic/config", State: "fixture:state/declared"}}}
 	desiredCanonical, desired := makeArtifact(t, artifact.DesiredState, run, nil, desiredPayload, createdAt)
@@ -638,7 +638,7 @@ func buildApplyBundle(t *testing.T, runID string, planOperations, receiptOperati
 func buildReadOnlyBundle(t *testing.T, runID string) graphBundle {
 	t.Helper()
 	createdAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
-	run := artifact.RunMetadata{RunID: runID, Tier: "offline-static", SuiteID: "artifact-lineage-read-only"}
+	run := trustedArtifactRun(t, runID, "artifact-lineage-read-only")
 	bundle := newGraphBundle(createdAt)
 	desiredCanonical, desired := makeArtifact(t, artifact.DesiredState, run, nil, artifact.DesiredPayload{Profile: "profile:synthetic-developer", Declarations: []artifact.Fact{{Ref: "repo:synthetic/config", State: "fixture:state/declared"}}}, createdAt)
 	observedPayload := artifact.ObservedPayload{Scope: "fixture:scope/read-only", Facts: []artifact.Fact{{Ref: "fixture:fact/read-only", State: "fixture:state/fresh"}}}
@@ -662,7 +662,7 @@ func buildReadOnlyBundle(t *testing.T, runID string) graphBundle {
 
 func buildDesiredOnly(t *testing.T, runID string, createdAt time.Time, ref string) []byte {
 	t.Helper()
-	run := artifact.RunMetadata{RunID: runID, Tier: "offline-static", SuiteID: "artifact-lineage"}
+	run := trustedArtifactRun(t, runID, "artifact-lineage")
 	canonical, _ := makeArtifact(t, artifact.DesiredState, run, nil, artifact.DesiredPayload{Profile: "profile:synthetic-developer", Declarations: []artifact.Fact{{Ref: ref, State: "fixture:state/declared"}}}, createdAt)
 	return canonical
 }
@@ -706,6 +706,15 @@ func makeArtifact(t *testing.T, kind artifact.Kind, run artifact.RunMetadata, in
 		t.Fatalf("synthetic artifact construction failed")
 	}
 	return canonical, envelope
+}
+
+func trustedArtifactRun(t *testing.T, seed, suiteID string) artifact.RunMetadata {
+	t.Helper()
+	run, err := artifact.NewRunMetadata([]byte(seed), "offline-static", suiteID)
+	if err != nil {
+		t.Fatal("trusted artifact run metadata unavailable")
+	}
+	return run
 }
 
 func newGraphBundle(createdAt time.Time) graphBundle {

@@ -151,7 +151,6 @@ type fact struct {
 
 type blueprint struct {
 	SchemaVersion          string `json:"schema_version"`
-	RunID                  string `json:"run_id"`
 	SuiteID                string `json:"suite_id"`
 	Profile                string `json:"profile"`
 	Desired                []fact `json:"desired"`
@@ -221,7 +220,10 @@ func RunSynthetic(options Options) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
-	run := artifact.RunMetadata{RunID: input.RunID, Tier: "offline-static", SuiteID: input.SuiteID}
+	run, err := artifact.NewRunMetadata([]byte(blueprintDigest), "offline-static", input.SuiteID)
+	if err != nil {
+		return Summary{}, err
+	}
 	desired, err := makeArtifact(artifact.DesiredState, run, []string{blueprintDigest}, struct {
 		Profile      string `json:"profile"`
 		Declarations []fact `json:"declarations"`
@@ -407,9 +409,9 @@ func parseBlueprint(data []byte) (blueprint, error) {
 		return blueprint{}, errors.New("synthetic blueprint rejected")
 	}
 	if input.SchemaVersion != "1.0.0" ||
-		!artifact.IsPublicID(input.RunID) || !artifact.IsPublicID(input.SuiteID) ||
+		!privacy.IsRegisteredSuiteID(input.SuiteID) ||
 		!validLogicalRef(input.Profile) || !strings.HasPrefix(input.Profile, "profile:") ||
-		!artifact.IsPublicID(input.OperationID) ||
+		!privacy.IsRegisteredOperationID(input.OperationID) ||
 		!validLogicalRef(input.OperationTarget) || !strings.HasPrefix(input.OperationTarget, "fixture:") ||
 		len(input.Desired) == 0 || len(input.Observed) == 0 || len(input.ExpectedPostconditions) == 0 {
 		return blueprint{}, errors.New("synthetic blueprint rejected")

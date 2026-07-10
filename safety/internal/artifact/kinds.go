@@ -3,7 +3,6 @@ package artifact
 import (
 	"encoding/json"
 	"sort"
-	"strings"
 	"time"
 
 	"example.invalid/yamc/safety/internal/privacy"
@@ -324,7 +323,7 @@ func validOperationIDs(operationIDs []string) bool {
 	}
 	seen := make(map[string]struct{}, len(operationIDs))
 	for _, operationID := range operationIDs {
-		if !IsPublicID(operationID) || !strings.HasPrefix(operationID, "fixture.") {
+		if !privacy.IsRegisteredOperationID(operationID) {
 			return false
 		}
 		if _, exists := seen[operationID]; exists {
