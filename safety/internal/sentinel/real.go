@@ -137,7 +137,7 @@ type realAdapterSpec struct {
 }
 
 const (
-	negativeTestSourceDigest       = "sha256:9db0aab399a95926db5874d8c6767d6704b125ed9c5125792bc014411afb4997"
+	negativeTestSourceDigest       = "sha256:c84b1d49058f8854c6cf44b00199d251366f21252f10c3aa45219c27757b707a"
 	realImplementationSourceDigest = "sha256:0f33eba9d72f321aa10a11ee02c3bc7040db4951fb3ff31aae447c8178ca7a69"
 )
 
