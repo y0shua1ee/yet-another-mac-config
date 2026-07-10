@@ -80,7 +80,7 @@ namespace 与 `surface_domain` 是两张不同的闭合表。当前五个 domain
 
 公开 `fixture run` 不接受物理 child/store 路径。它只在经过 containment 检查的外部 base 下，以不可预测 nonce 原子建立本次 direct child；artifact store、HOME/XDG、manager roots、fake PATH 与 sentinel scratch 都由该 child 派生。existing/non-empty/HOME-shaped child、fixture/store overlap 和预先存在的 witness 不能通过参数成为写入目标；初始化失败的 rollback 与运行后 finalize 都只处理本次 marker-owned child。
 
-fixture base 和 artifact store 必须位于仓库外。每次运行只在显式 base 的直接子级创建一个新目录，并写入包含 logical ID、创建/过期时间、effective UID 与随机 nonce 的 ownership marker；删除前会重新验证 marker、UID、nonce、非 symlink、直接子级 containment 和最长 24 小时 TTL。
+fixture base 和 artifact store 必须位于仓库外。每次运行只在显式 base 的直接子级创建一个新目录；ownership marker 先写入同目录 temp、完成 `fsync`/close，再以 no-replace hard-link 原子发布，内容包含 logical ID、创建/过期时间、effective UID 与随机 nonce。若初始化期间发生无 marker、partial marker 或目录创建失败，rollback capability 只绑定本次 fresh child 的 directory inode、UID、nonce 与 direct-child containment；它会保留 base/sibling。运行后删除前仍会重新验证完整 marker、UID、nonce、非 symlink、直接子级 containment 和最长 24 小时 TTL。
 
 默认行为是在主 verdict 冻结后删除本次 marker-owned 外部 fixture 子目录。只有运行前明确选择 keep 才保留，且最多 24 小时；到期删除仍需相同 ownership 校验。这个“verdict 冻结后的 marker-owned fixture teardown”是唯一清理例外。禁止对真实 Mac、仓库、Home、manager root、Nix store、Homebrew、服务、defaults、链接或 trust state 做破坏性/收敛式 cleanup。
 

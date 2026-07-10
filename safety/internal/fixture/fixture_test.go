@@ -39,6 +39,15 @@ func testFixtureInitializationRollback(t *testing.T) {
 			}},
 		},
 		{
+			name: "partial marker write failure",
+			hooks: &createHooks{writeMarker: func(root string, _ ownershipMarker) error {
+				if err := os.WriteFile(filepath.Join(root, markerFileName), []byte("{\n"), 0o600); err != nil {
+					return err
+				}
+				return errors.New("injected partial marker failure")
+			}},
+		},
+		{
 			name: "mid-directory failure",
 			hooks: &createHooks{createDirectory: func() func(string) error {
 				created := 0
@@ -106,6 +115,9 @@ func testFixtureRoots(t *testing.T) {
 	markerInfo, err := os.Lstat(filepath.Join(paths.Root, markerFileName))
 	if err != nil || !markerInfo.Mode().IsRegular() || markerInfo.Mode().Perm() != 0o600 {
 		t.Fatal("ownership marker is missing or has unsafe permissions")
+	}
+	if matches, err := filepath.Glob(filepath.Join(paths.Root, markerFileName+".tmp-*")); err != nil || len(matches) != 0 {
+		t.Fatal("ownership marker publish left a temporary file")
 	}
 	frozen, _ := FreezePrimary(VerdictPassed)
 	if final := root.Retention().Finalize(frozen); final.Teardown.Status != TeardownRemoved {

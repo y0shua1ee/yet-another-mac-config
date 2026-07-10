@@ -297,15 +297,19 @@ func rollbackFreshFixture(base, root string, created os.FileInfo, expected owner
 	if markerErr == nil && marker != expected {
 		return errors.New("fixture rollback marker rejected")
 	}
-	if markerErr != nil && !errors.Is(markerFileError(root), os.ErrNotExist) {
-		return errors.New("fixture rollback marker rejected")
+	if markerErr != nil {
+		markerInfo, markerPathErr := os.Lstat(filepath.Join(root, markerFileName))
+		if markerPathErr != nil && !errors.Is(markerPathErr, os.ErrNotExist) {
+			return errors.New("fixture rollback marker rejected")
+		}
+		if markerPathErr == nil {
+			markerStat, ok := markerInfo.Sys().(*syscall.Stat_t)
+			if !ok || !markerInfo.Mode().IsRegular() || markerInfo.Mode()&os.ModeSymlink != 0 || int(markerStat.Uid) != effectiveUID {
+				return errors.New("fixture rollback marker rejected")
+			}
+		}
 	}
 	return os.RemoveAll(root)
-}
-
-func markerFileError(root string) error {
-	_, err := os.Lstat(filepath.Join(root, markerFileName))
-	return err
 }
 
 func writeMarker(root string, marker ownershipMarker) error {
@@ -314,16 +318,46 @@ func writeMarker(root string, marker ownershipMarker) error {
 		return errors.New("fixture marker unavailable")
 	}
 	encoded = append(encoded, '\n')
-	path := filepath.Join(root, markerFileName)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	temporaryPath := filepath.Join(root, markerFileName+".tmp-"+marker.Nonce)
+	finalPath := filepath.Join(root, markerFileName)
+	file, err := os.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return errors.New("fixture marker unavailable")
 	}
+	published := false
+	defer func() {
+		if !published {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
 	if _, err := file.Write(encoded); err != nil {
 		_ = file.Close()
 		return errors.New("fixture marker unavailable")
 	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return errors.New("fixture marker unavailable")
+	}
 	if err := file.Close(); err != nil {
+		return errors.New("fixture marker unavailable")
+	}
+	// 同目录 hard link 提供 no-replace 发布；final 已存在时绝不覆盖。
+	if err := os.Link(temporaryPath, finalPath); err != nil {
+		return errors.New("fixture marker unavailable")
+	}
+	if err := os.Remove(temporaryPath); err != nil {
+		return errors.New("fixture marker unavailable")
+	}
+	published = true
+	directory, err := os.Open(root)
+	if err != nil {
+		return errors.New("fixture marker unavailable")
+	}
+	if err := directory.Sync(); err != nil {
+		_ = directory.Close()
+		return errors.New("fixture marker unavailable")
+	}
+	if err := directory.Close(); err != nil {
 		return errors.New("fixture marker unavailable")
 	}
 	return nil
