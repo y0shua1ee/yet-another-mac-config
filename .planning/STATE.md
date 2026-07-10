@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-07-10T18:49:19.121Z"
+last_updated: "2026-07-10T21:02:14.125Z"
 last_activity: 2026-07-10
 progress:
   total_phases: 13
   completed_phases: 0
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 ## Current Position
 
 Phase: 01 (safety-privacy-and-state-foundation) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-07-10
 
-Progress: [███████░░░] 71%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [███████░░░] 71%
 | Phase 01 P03 | 17 min | 2 tasks | 11 files |
 | Phase 01 P04 | 21 min | 2 tasks | 10 files |
 | Phase 01 P05 | 2h 3m | 3 tasks | 14 files |
+| Phase 01 P06 | 17 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Require a private registry-issued source-bound capability plus current implementation and negative-suite digests before a real adapter can run. — Proof metadata alone can drift or be forged and therefore cannot authorize host observation.
 - [Phase 01]: Keep the tracked launchctl proof explicitly missing and return indeterminate/manual-required with exit 32 before any adapter or workload call. — Available public Apple material does not establish current no-side-effect semantics strongly enough for the required proof.
 - [Phase 01]: Deliver the controlled real-envelope mechanism in Plan 01-05 and leave complete phase-runner outer-envelope wiring to Plan 01-07. — This preserves the approved vertical plan boundary and prevents the standalone proof gate from being misrepresented as final phase wiring.
+- [Phase 01]: Keep Determinate Nix, nix-darwin, and Home Manager as exact closed role layers while declaration, manager binary, payload, selected owner, and activation context remain separate. — Module availability must not collapse delegated ownership.
+- [Phase 01]: Treat extra and unmanaged-present as report-only statuses with an explicit empty operation list. — Observed extra state never grants cleanup or convergence authority.
+- [Phase 01]: Allow only one fixture-fake-write operation with a fixture logical target and synthetic mode in Phase 1. — This preserves the walking-skeleton receipt without introducing a live mutable executor.
 
 ### Pending Todos
 
@@ -98,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-10T18:49:19.118Z
-Stopped at: Completed 01-05-PLAN.md
+Last session: 2026-07-10T21:01:52.086Z
+Stopped at: Completed 01-06-PLAN.md
 Resume file: None
