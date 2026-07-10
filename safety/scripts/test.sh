@@ -670,6 +670,51 @@ run_sentinels_wave() {
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"sentinels"}'
 }
 
+run_controlplane_contract() {
+  local contract_status=0
+  local e2e_status=0
+  local contract_output=''
+  local e2e_output=''
+
+  run_exact_go_suite \
+    './internal/contract' \
+    '^TestControlPlaneContract$' \
+    'TestControlPlaneContract' \
+    'controlplane-contract-unit' \
+    'EXPECTED_RED: controlplane-ownership-behavior-missing' >/dev/null 2>&1 || contract_status=$?
+  contract_output="${TEST_OUTPUT:-}"
+
+  run_exact_go_suite \
+    './internal/e2e' \
+    '^TestControlPlaneCLI$' \
+    'TestControlPlaneCLI' \
+    'controlplane-contract-e2e' \
+    'EXPECTED_RED: controlplane-ownership-behavior-missing' >/dev/null 2>&1 || e2e_status=$?
+  e2e_output="${TEST_OUTPUT:-}"
+
+  if [[ "${contract_status}" -eq 124 || "${e2e_status}" -eq 124 ]]; then
+    print_runner_deadline 'controlplane-contract'
+    return 124
+  fi
+  if [[ "${contract_status}" -eq 70 || "${e2e_status}" -eq 70 ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"controlplane-contract-selection-failed"}' >&2
+    return 70
+  fi
+  if [[ "${contract_status}" -ne 0 && "${contract_output}" != *'EXPECTED_RED: controlplane-ownership-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"controlplane-contract-unit-failed"}' >&2
+    return 1
+  fi
+  if [[ "${e2e_status}" -ne 0 && "${e2e_output}" != *'EXPECTED_RED: controlplane-ownership-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"controlplane-contract-e2e-failed"}' >&2
+    return 1
+  fi
+  if [[ "${contract_status}" -ne 0 || "${e2e_status}" -ne 0 ]]; then
+    printf '%s\n' '{"status":"expected-red-observed","suite":"controlplane-contract"}' >&2
+    return 1
+  fi
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"controlplane-contract"}'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -703,6 +748,9 @@ case "${SCOPE}:${SUITE}" in
     ;;
   task:real-sentinel-envelope)
     run_real_sentinel_envelope
+    ;;
+  task:controlplane-contract)
+    run_controlplane_contract
     ;;
   wave:skeleton)
     run_green_walking_skeleton

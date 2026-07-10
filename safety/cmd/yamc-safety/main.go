@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"example.invalid/yamc/safety/internal/artifact"
+	"example.invalid/yamc/safety/internal/contract"
 	"example.invalid/yamc/safety/internal/fixture"
 	"example.invalid/yamc/safety/internal/privacy"
 	"example.invalid/yamc/safety/internal/sentinel"
@@ -37,6 +38,10 @@ type fixtureRunFlags struct {
 type validateFlags struct {
 	expectedKind string
 	artifactPath string
+}
+
+type controlPlaneValidateFlags struct {
+	contractPath string
 }
 
 type storeFlags struct {
@@ -380,6 +385,9 @@ func runManagedFixture(parsed fixtureRunFlags, stdout, stderr io.Writer) int {
 }
 
 func runValidate(arguments []string, stdout, stderr io.Writer) int {
+	if len(arguments) > 0 && arguments[0] == "controlplane" {
+		return runValidateControlPlane(arguments[1:], stdout, stderr)
+	}
 	parsed, err := parseValidateFlags(arguments)
 	if err != nil || !knownKind(artifact.Kind(parsed.expectedKind)) {
 		writeSafeError(stderr, "VALIDATE_ARGUMENTS_REJECTED")
@@ -408,6 +416,34 @@ func runValidate(arguments []string, stdout, stderr io.Writer) int {
 		Kind   artifact.Kind `json:"kind"`
 		Digest string        `json:"digest"`
 	}{Status: "valid", Kind: envelope.Kind, Digest: envelope.ContentDigest}
+	if err := renderSafe(stdout, result); err != nil {
+		writeSafeError(stderr, "OUTPUT_REJECTED")
+		return 70
+	}
+	return 0
+}
+
+func runValidateControlPlane(arguments []string, stdout, stderr io.Writer) int {
+	parsed, err := parseControlPlaneValidateFlags(arguments)
+	if err != nil {
+		writeSafeError(stderr, "CONTROLPLANE_ARGUMENTS_REJECTED")
+		return 64
+	}
+	data, err := readBoundedArtifact(parsed.contractPath)
+	if err != nil {
+		writeSafeError(stderr, "CONTROLPLANE_READ_REJECTED")
+		return 2
+	}
+	validated, err := contract.ParseControlPlane(data)
+	if err != nil {
+		writeSafeError(stderr, "CONTROLPLANE_VALIDATION_REJECTED")
+		return 2
+	}
+	result := struct {
+		Status string                       `json:"status"`
+		Layers []contract.ControlPlaneLayer `json:"layers"`
+		Facts  []contract.ControlPlaneFact  `json:"facts"`
+	}{Status: "valid", Layers: validated.Layers, Facts: validated.Facts}
 	if err := renderSafe(stdout, result); err != nil {
 		writeSafeError(stderr, "OUTPUT_REJECTED")
 		return 70
@@ -486,6 +522,17 @@ func parseValidateFlags(arguments []string) (validateFlags, error) {
 	flags.StringVar(&parsed.artifactPath, "artifact", "", "")
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.expectedKind == "" || parsed.artifactPath == "" {
 		return validateFlags{}, errors.New("arguments rejected")
+	}
+	return parsed, nil
+}
+
+func parseControlPlaneValidateFlags(arguments []string) (controlPlaneValidateFlags, error) {
+	var parsed controlPlaneValidateFlags
+	flags := flag.NewFlagSet("validate-controlplane", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&parsed.contractPath, "contract", "", "")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.contractPath == "" {
+		return controlPlaneValidateFlags{}, errors.New("arguments rejected")
 	}
 	return parsed, nil
 }
