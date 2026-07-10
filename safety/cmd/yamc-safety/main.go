@@ -49,6 +49,14 @@ type storeFlags struct {
 	reportPath        string
 }
 
+type testPolicyFlags struct {
+	tier                string
+	networkManifestPath string
+	repositoryRoot      string
+	networkTestID       string
+	liveProbeID         string
+}
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -69,6 +77,8 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		return runValidate(arguments[1:], stdout, stderr)
 	case "store":
 		return runStore(arguments[1:], stdout, stderr)
+	case "test-policy":
+		return runTestPolicy(arguments[1:], stdout, stderr)
 	default:
 		writeSafeError(stderr, "UNSUPPORTED_COMMAND")
 		return 64
@@ -101,6 +111,53 @@ func runFixture(arguments []string, stdout, stderr io.Writer) int {
 		return 70
 	}
 	return 0
+}
+
+func runTestPolicy(arguments []string, stdout, stderr io.Writer) int {
+	parsed, err := parseTestPolicyFlags(arguments)
+	if err != nil {
+		writeSafeError(stderr, "TEST_POLICY_ARGUMENTS_REJECTED")
+		return 64
+	}
+	tier, err := fixture.ParseTier(parsed.tier)
+	if err != nil {
+		writeSafeError(stderr, "TEST_POLICY_TIER_REJECTED")
+		return 64
+	}
+	switch tier {
+	case fixture.TierOfflineStatic:
+		return renderPolicyDecision(stdout, stderr, fixture.DefaultPolicyDecision(tier), 0)
+	case fixture.TierIsolatedIntegration:
+		if parsed.networkTestID == "" {
+			return renderPolicyDecision(stdout, stderr, fixture.DefaultPolicyDecision(tier), 0)
+		}
+		policy, loadErr := fixture.LoadNetworkPolicy(parsed.networkManifestPath, parsed.repositoryRoot)
+		if loadErr != nil {
+			decision := fixture.PolicyDecision{
+				Status:        fixture.PolicyManualRequired,
+				Tier:          tier,
+				NetworkPolicy: "denied",
+				Reason:        "network-manifest-rejected",
+			}
+			return renderPolicyDecision(stdout, stderr, decision, 32)
+		}
+		decision := policy.Authorize(parsed.networkTestID, tier, presentPolicyEnvironmentKeys())
+		return renderPolicyDecision(stdout, stderr, decision, 32)
+	case fixture.TierLiveCheck:
+		decision := (fixture.LivePolicy{}).Evaluate(parsed.liveProbeID)
+		return renderPolicyDecision(stdout, stderr, decision, 32)
+	default:
+		writeSafeError(stderr, "TEST_POLICY_TIER_REJECTED")
+		return 64
+	}
+}
+
+func renderPolicyDecision(stdout, stderr io.Writer, decision fixture.PolicyDecision, exitCode int) int {
+	if err := renderSafe(stdout, decision); err != nil {
+		writeSafeError(stderr, "OUTPUT_REJECTED")
+		return 70
+	}
+	return exitCode
 }
 
 func runManagedFixture(parsed fixtureRunFlags, stdout, stderr io.Writer) int {
@@ -304,6 +361,58 @@ func parseStoreFlags(arguments []string) (storeFlags, error) {
 		return storeFlags{}, errors.New("arguments rejected")
 	}
 	return parsed, nil
+}
+
+func parseTestPolicyFlags(arguments []string) (testPolicyFlags, error) {
+	var parsed testPolicyFlags
+	flags := flag.NewFlagSet("test-policy", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&parsed.tier, "tier", "", "")
+	flags.StringVar(&parsed.networkManifestPath, "network-manifest", "", "")
+	flags.StringVar(&parsed.repositoryRoot, "repo-root", "", "")
+	flags.StringVar(&parsed.networkTestID, "allow-network-test", "", "")
+	flags.StringVar(&parsed.liveProbeID, "live-probe", "", "")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 {
+		return testPolicyFlags{}, errors.New("arguments rejected")
+	}
+	tier, err := fixture.ParseTier(parsed.tier)
+	if err != nil {
+		return testPolicyFlags{}, errors.New("arguments rejected")
+	}
+	switch tier {
+	case fixture.TierOfflineStatic:
+		if parsed.networkManifestPath != "" || parsed.repositoryRoot != "" || parsed.networkTestID != "" || parsed.liveProbeID != "" {
+			return testPolicyFlags{}, errors.New("arguments rejected")
+		}
+	case fixture.TierIsolatedIntegration:
+		if parsed.liveProbeID != "" {
+			return testPolicyFlags{}, errors.New("arguments rejected")
+		}
+		requested := parsed.networkManifestPath != "" || parsed.repositoryRoot != "" || parsed.networkTestID != ""
+		complete := parsed.networkManifestPath != "" && parsed.repositoryRoot != "" && parsed.networkTestID != ""
+		if requested && !complete {
+			return testPolicyFlags{}, errors.New("arguments rejected")
+		}
+	case fixture.TierLiveCheck:
+		if parsed.networkManifestPath != "" || parsed.repositoryRoot != "" || parsed.networkTestID != "" {
+			return testPolicyFlags{}, errors.New("arguments rejected")
+		}
+	}
+	return parsed, nil
+}
+
+func presentPolicyEnvironmentKeys() []string {
+	keys := []string{
+		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK",
+	}
+	present := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, ok := os.LookupEnv(key); ok {
+			present = append(present, key)
+		}
+	}
+	return present
 }
 
 func readLineageGraph(parsed storeFlags) (artifact.LineageGraph, error) {

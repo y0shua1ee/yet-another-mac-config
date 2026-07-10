@@ -307,6 +307,54 @@ run_fixture_lifecycle() {
     'EXPECTED_RED: fixture-lifecycle-behavior-missing'
 }
 
+run_tier_network_policy() {
+  local fixture_status=0
+  local e2e_status=0
+  local fixture_output=''
+  local e2e_output=''
+
+  run_exact_go_suite \
+    './internal/fixture' \
+    '^TestTierNetworkPolicy$' \
+    'TestTierNetworkPolicy' \
+    'tier-network-policy-fixture' \
+    'EXPECTED_RED: tier-network-policy-behavior-missing' >/dev/null 2>&1 || fixture_status=$?
+  fixture_output="${TEST_OUTPUT:-}"
+
+  run_exact_go_suite \
+    './internal/e2e' \
+    '^TestTierCLI$' \
+    'TestTierCLI' \
+    'tier-network-policy-e2e' \
+    'EXPECTED_RED: tier-network-policy-behavior-missing' >/dev/null 2>&1 || e2e_status=$?
+  e2e_output="${TEST_OUTPUT:-}"
+
+  if [[ "${fixture_status}" -eq 70 || "${e2e_status}" -eq 70 ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"tier-network-policy-selection-failed"}' >&2
+    return 70
+  fi
+  if [[ "${fixture_status}" -ne 0 && "${fixture_output}" != *'EXPECTED_RED: tier-network-policy-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"tier-network-policy-fixture-contract-failed"}' >&2
+    return 1
+  fi
+  if [[ "${e2e_status}" -ne 0 && "${e2e_output}" != *'EXPECTED_RED: tier-network-policy-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"tier-network-policy-e2e-contract-failed"}' >&2
+    return 1
+  fi
+  if [[ "${fixture_status}" -ne 0 || "${e2e_status}" -ne 0 ]]; then
+    printf '%s\n' '{"status":"expected-red-observed","suite":"tier-network-policy"}' >&2
+    return 1
+  fi
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"tier-network-policy"}'
+}
+
+run_fixture_policy_wave() {
+  # 两个已完成 handler 各自启动新的子 runner，保持 tier、fixture 与 cache 互不复用。
+  /bin/bash "${SCRIPT_DIR}/test.sh" task fixture-lifecycle >/dev/null
+  /bin/bash "${SCRIPT_DIR}/test.sh" task tier-network-policy >/dev/null
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"fixture-policy"}'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -329,6 +377,9 @@ case "${SCOPE}:${SUITE}" in
   task:fixture-lifecycle)
     run_fixture_lifecycle
     ;;
+  task:tier-network-policy)
+    run_tier_network_policy
+    ;;
   wave:skeleton)
     run_green_walking_skeleton
     ;;
@@ -337,6 +388,9 @@ case "${SCOPE}:${SUITE}" in
     ;;
   wave:privacy)
     run_privacy_wave
+    ;;
+  wave:fixture-policy)
+    run_fixture_policy_wave
     ;;
   *)
     printf '%s\n' '{"status":"harness-error","reason":"unsupported-suite"}' >&2
