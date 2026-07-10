@@ -192,15 +192,86 @@
 
 ## Traceability
 
-路线图创建时填充；每条 v1 requirement 必须且只能映射到一个 phase。
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| SAFE-01 | Phase 1 | Pending |
+| SAFE-02 | Phase 1 | Pending |
+| SAFE-03 | Phase 1 | Pending |
+| SAFE-04 | Phase 1 | Pending |
+| SAFE-05 | Phase 1 | Pending |
+| SAFE-06 | Phase 1 | Pending |
+| SAFE-07 | Phase 1 | Pending |
+| SAFE-08 | Phase 1 | Pending |
+| OWN-01 | Phase 2 | Pending |
+| OWN-02 | Phase 2 | Pending |
+| OWN-03 | Phase 2 | Pending |
+| OWN-04 | Phase 2 | Pending |
+| OWN-05 | Phase 2 | Pending |
+| OWN-06 | Phase 2 | Pending |
+| NODE-01 | Phase 3 | Pending |
+| NODE-02 | Phase 3 | Pending |
+| NODE-03 | Phase 3 | Pending |
+| NODE-04 | Phase 3 | Pending |
+| NODE-05 | Phase 3 | Pending |
+| GO-01 | Phase 4 | Pending |
+| GO-02 | Phase 4 | Pending |
+| GO-03 | Phase 4 | Pending |
+| GO-04 | Phase 4 | Pending |
+| PY-01 | Phase 5 | Pending |
+| PY-02 | Phase 5 | Pending |
+| PY-03 | Phase 5 | Pending |
+| PY-04 | Phase 5 | Pending |
+| RUST-01 | Phase 6 | Pending |
+| RUST-02 | Phase 6 | Pending |
+| RUST-03 | Phase 6 | Pending |
+| RUST-04 | Phase 6 | Pending |
+| DBUN-01 | Phase 7 | Pending |
+| DBUN-02 | Phase 7 | Pending |
+| DBUN-03 | Phase 7 | Pending |
+| DBUN-04 | Phase 7 | Pending |
+| DBUN-05 | Phase 7 | Pending |
+| JVM-01 | Phase 8 | Pending |
+| JVM-02 | Phase 8 | Pending |
+| JVM-03 | Phase 8 | Pending |
+| JVM-04 | Phase 8 | Pending |
+| JVM-05 | Phase 8 | Pending |
+| HOST-01 | Phase 9 | Pending |
+| HOST-02 | Phase 9 | Pending |
+| HOST-03 | Phase 9 | Pending |
+| HOST-04 | Phase 9 | Pending |
+| HOST-05 | Phase 9 | Pending |
+| HOST-06 | Phase 9 | Pending |
+| SECR-01 | Phase 10 | Pending |
+| SECR-02 | Phase 10 | Pending |
+| SECR-03 | Phase 10 | Pending |
+| OBS-01 | Phase 10 | Pending |
+| OBS-02 | Phase 10 | Pending |
+| OBS-03 | Phase 10 | Pending |
+| OBS-04 | Phase 10 | Pending |
+| OBS-05 | Phase 10 | Pending |
+| OBS-06 | Phase 10 | Pending |
+| LINK-01 | Phase 11 | Pending |
+| LINK-02 | Phase 11 | Pending |
+| LINK-03 | Phase 11 | Pending |
+| LINK-04 | Phase 11 | Pending |
+| LINK-05 | Phase 11 | Pending |
+| RCVR-01 | Phase 12 | Pending |
+| RCVR-02 | Phase 12 | Pending |
+| RCVR-03 | Phase 12 | Pending |
+| RCVR-04 | Phase 12 | Pending |
+| RCVR-05 | Phase 12 | Pending |
+| RCVR-06 | Phase 12 | Pending |
+| RCVR-07 | Phase 12 | Pending |
+| RCVR-08 | Phase 12 | Pending |
+| EVID-01 | Phase 13 | Pending |
+| EVID-02 | Phase 13 | Pending |
+| EVID-03 | Phase 13 | Pending |
+| EVID-04 | Phase 13 | Pending |
 
 **Coverage:**
 - v1 requirements: 73 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 73 (expected before roadmap)
+- Mapped to phases: 73
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-07-10*
