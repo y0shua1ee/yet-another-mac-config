@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0.0",
+  "cases": [
+    {
+      "kind": "desired-state",
+      "payload": {
+        "profile": "profile:synthetic-developer",
+        "declarations": [
+          {
+            "ref": "repo:synthetic/config",
+            "state": "fixture:state/declared"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "observed-state",
+      "payload": {
+        "scope": "fixture:scope/synthetic",
+        "facts": [
+          {
+            "ref": "fixture:fact/synthetic",
+            "state": "fixture:state/observed"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "generated-plan",
+      "payload": {
+        "desired_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "observed_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "expected_postconditions_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "operation_ids": [
+          "fixture.operation.synthetic"
+        ]
+      }
+    },
+    {
+      "kind": "applied-receipt",
+      "payload": {
+        "plan_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "mode": "synthetic",
+        "operation_ids": [
+          "fixture.operation.synthetic"
+        ],
+        "outcome": "fixture:outcome/completed"
+      }
+    },
+    {
+      "kind": "verification-evidence",
+      "payload": {
+        "plan_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "receipt_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "expected_postconditions_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "fresh_observed_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "fresh_observed": {
+          "scope": "fixture:scope/synthetic",
+          "state": "fixture:state/fresh",
+          "source_receipt_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "content_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+        },
+        "manifest_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "sentinel_before_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+        "sentinel_after_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    },
+    {
+      "kind": "readiness-report",
+      "payload": {
+        "evidence_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        "state": "synthetic-sentinel-passed"
+      }
+    }
+  ]
+}

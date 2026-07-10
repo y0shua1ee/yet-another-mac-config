@@ -137,11 +137,12 @@ readonly -a OFFLINE_ENV=(
 )
 
 run_go_suite() {
-  local test_pattern="$1"
+  local package_path="$1"
+  local test_pattern="$2"
   local output=''
   local status=0
 
-  output="$(cd -- "${SAFETY_ROOT}" && "${OFFLINE_ENV[@]}" "${GO_BIN}" test -count=1 -run "${test_pattern}" ./internal/e2e 2>&1)" || status=$?
+  output="$(cd -- "${SAFETY_ROOT}" && "${OFFLINE_ENV[@]}" "${GO_BIN}" test -count=1 -run "${test_pattern}" "${package_path}" 2>&1)" || status=$?
 
   if (( ${#output} > 65536 )); then
     printf '%s\n' '{"status":"harness-error","reason":"bounded-output-exceeded"}' >&2
@@ -152,8 +153,43 @@ run_go_suite() {
   return "${status}"
 }
 
+run_exact_go_suite() {
+  local package_path="$1"
+  local test_pattern="$2"
+  local test_name="$3"
+  local suite_name="$4"
+  local red_marker="$5"
+  local listing=''
+  local selected=0
+
+  listing="$(cd -- "${SAFETY_ROOT}" && "${OFFLINE_ENV[@]}" "${GO_BIN}" test -list "${test_pattern}" "${package_path}" 2>&1)" || {
+    printf '%s\n' '{"status":"harness-error","reason":"test-selection-failed"}' >&2
+    return 70
+  }
+  if (( ${#listing} > 65536 )); then
+    printf '%s\n' '{"status":"harness-error","reason":"bounded-output-exceeded"}' >&2
+    return 70
+  fi
+  selected="$(printf '%s\n' "${listing}" | /usr/bin/grep -Ec "^${test_name}$" || true)"
+  if [[ "${selected}" -ne 1 ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"test-selection-not-exact"}' >&2
+    return 70
+  fi
+
+  if run_go_suite "${package_path}" "${test_pattern}"; then
+    printf '{"status":"synthetic-sentinel-passed","suite":"%s"}\n' "${suite_name}"
+    return 0
+  fi
+  if [[ -n "${red_marker}" && "${TEST_OUTPUT}" == *"${red_marker}"* ]]; then
+    printf '{"status":"expected-red-observed","suite":"%s"}\n' "${suite_name}" >&2
+    return 1
+  fi
+  printf '{"status":"harness-error","reason":"%s-contract-failed"}\n' "${suite_name}" >&2
+  return 1
+}
+
 run_green_walking_skeleton() {
-  if run_go_suite '^TestWalkingSkeletonContract$'; then
+  if run_go_suite './internal/e2e' '^TestWalkingSkeletonContract$'; then
     printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"walking-skeleton"}'
     return 0
   fi
@@ -162,7 +198,7 @@ run_green_walking_skeleton() {
 }
 
 run_red_walking_skeleton() {
-  if run_go_suite '^TestWalkingSkeletonContract$'; then
+  if run_go_suite './internal/e2e' '^TestWalkingSkeletonContract$'; then
     printf '%s\n' '{"status":"harness-error","reason":"red-contract-unexpectedly-passed"}' >&2
     return 1
   fi
@@ -180,12 +216,24 @@ run_red_walking_skeleton() {
   printf '%s\n' '{"status":"expected-red-observed","reason":"round-trip-capability-missing"}'
 }
 
+run_artifact_kinds() {
+  run_exact_go_suite \
+    './internal/artifact' \
+    '^TestArtifactKinds$' \
+    'TestArtifactKinds' \
+    'artifact-kinds' \
+    'EXPECTED_RED: artifact-kind-behavior-missing'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
     ;;
   task:walking-skeleton)
     run_green_walking_skeleton
+    ;;
+  task:artifact-kinds)
+    run_artifact_kinds
     ;;
   wave:skeleton)
     run_green_walking_skeleton
