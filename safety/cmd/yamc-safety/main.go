@@ -65,6 +65,12 @@ type sentinelVerifyFlags struct {
 	fixtureRoot  string
 }
 
+type sentinelEvaluateFlags struct {
+	manifestPath string
+	evidencePath string
+	claim        string
+}
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -88,11 +94,19 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 	case "test-policy":
 		return runTestPolicy(arguments[1:], stdout, stderr)
 	case "sentinel":
-		if len(arguments) < 2 || arguments[1] != "verify" {
+		if len(arguments) < 2 {
 			writeSafeError(stderr, "UNSUPPORTED_COMMAND")
 			return 64
 		}
-		return runSentinelVerify(arguments[2:], stdout, stderr)
+		switch arguments[1] {
+		case "verify":
+			return runSentinelVerify(arguments[2:], stdout, stderr)
+		case "evaluate":
+			return runSentinelEvaluate(arguments[2:], stdout, stderr)
+		default:
+			writeSafeError(stderr, "UNSUPPORTED_COMMAND")
+			return 64
+		}
 	default:
 		writeSafeError(stderr, "UNSUPPORTED_COMMAND")
 		return 64
@@ -144,7 +158,7 @@ func runSentinelVerify(arguments []string, stdout, stderr io.Writer) int {
 			complete = false
 		}
 	}
-	status := "synthetic-sentinel-passed"
+	status := workflow.SyntheticSentinelState()
 	exitCode := 0
 	if !complete {
 		status = "indeterminate"
@@ -159,6 +173,53 @@ func runSentinelVerify(arguments []string, stdout, stderr io.Writer) int {
 		return 70
 	}
 	return exitCode
+}
+
+func runSentinelEvaluate(arguments []string, stdout, stderr io.Writer) int {
+	parsed, err := parseSentinelEvaluateFlags(arguments)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_ARGUMENTS_REJECTED")
+		return 64
+	}
+	manifestData, err := readBoundedArtifact(parsed.manifestPath)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_MANIFEST_REJECTED")
+		return 2
+	}
+	manifest, err := sentinel.ParseProtectedManifest(manifestData)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_MANIFEST_REJECTED")
+		return 2
+	}
+	evidenceData, err := readBoundedArtifact(parsed.evidencePath)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_EVIDENCE_REJECTED")
+		return 2
+	}
+	evidence, err := sentinel.ParseEvidence(evidenceData)
+	if err != nil {
+		writeSafeError(stderr, "SENTINEL_EVIDENCE_REJECTED")
+		return 2
+	}
+	evaluation := sentinel.Evaluate(manifest, evidence)
+	if parsed.claim != "" {
+		if _, err := sentinel.RequestClaim(evidence, evaluation, parsed.claim); err != nil {
+			evaluation = sentinel.Evaluation{Verdict: sentinel.VerdictHarnessError, ExitCode: sentinel.ExitHarnessError, Reason: "claim-rejected", EvidenceDigest: evaluation.EvidenceDigest}
+		}
+	}
+	status := string(evaluation.Verdict)
+	if evaluation.Verdict == sentinel.VerdictPassed && evidence.Provenance == "synthetic" && workflow.IsSyntheticSentinelState(workflow.SyntheticSentinelState()) {
+		status = workflow.SyntheticSentinelState()
+	}
+	result := struct {
+		Status     string              `json:"status"`
+		Evaluation sentinel.Evaluation `json:"evaluation"`
+	}{Status: status, Evaluation: evaluation}
+	if err := renderSafe(stdout, result); err != nil {
+		writeSafeError(stderr, "OUTPUT_REJECTED")
+		return 70
+	}
+	return evaluation.ExitCode
 }
 
 func runFixture(arguments []string, stdout, stderr io.Writer) int {
@@ -486,6 +547,19 @@ func parseSentinelVerifyFlags(arguments []string) (sentinelVerifyFlags, error) {
 	flags.StringVar(&parsed.fixtureRoot, "fixture-root", "", "")
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.mode != "synthetic" || parsed.manifestPath == "" || parsed.fixtureRoot == "" {
 		return sentinelVerifyFlags{}, errors.New("arguments rejected")
+	}
+	return parsed, nil
+}
+
+func parseSentinelEvaluateFlags(arguments []string) (sentinelEvaluateFlags, error) {
+	var parsed sentinelEvaluateFlags
+	flags := flag.NewFlagSet("sentinel-evaluate", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&parsed.manifestPath, "manifest", "", "")
+	flags.StringVar(&parsed.evidencePath, "evidence", "", "")
+	flags.StringVar(&parsed.claim, "claim", "", "")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || parsed.manifestPath == "" || parsed.evidencePath == "" {
+		return sentinelEvaluateFlags{}, errors.New("arguments rejected")
 	}
 	return parsed, nil
 }

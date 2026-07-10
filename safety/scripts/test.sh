@@ -364,6 +364,47 @@ run_sentinel_manifest() {
     'EXPECTED_RED: sentinel-manifest-behavior-missing'
 }
 
+run_sentinel_verdicts() {
+  local sentinel_status=0
+  local e2e_status=0
+  local sentinel_output=''
+  local e2e_output=''
+
+  run_exact_go_suite \
+    './internal/sentinel' \
+    '^TestSentinelVerdicts$' \
+    'TestSentinelVerdicts' \
+    'sentinel-verdicts-unit' \
+    'EXPECTED_RED: sentinel-verdicts-behavior-missing' >/dev/null 2>&1 || sentinel_status=$?
+  sentinel_output="${TEST_OUTPUT:-}"
+
+  run_exact_go_suite \
+    './internal/e2e' \
+    '^TestSentinelCLI$' \
+    'TestSentinelCLI' \
+    'sentinel-verdicts-e2e' \
+    'EXPECTED_RED: sentinel-verdicts-behavior-missing' >/dev/null 2>&1 || e2e_status=$?
+  e2e_output="${TEST_OUTPUT:-}"
+
+  if [[ "${sentinel_status}" -eq 70 || "${e2e_status}" -eq 70 ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"sentinel-verdicts-selection-failed"}' >&2
+    return 70
+  fi
+  if [[ "${sentinel_status}" -ne 0 && "${sentinel_output}" != *'EXPECTED_RED: sentinel-verdicts-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"sentinel-verdicts-unit-contract-failed"}' >&2
+    return 1
+  fi
+  if [[ "${e2e_status}" -ne 0 && "${e2e_output}" != *'EXPECTED_RED: sentinel-verdicts-behavior-missing'* ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"sentinel-verdicts-e2e-contract-failed"}' >&2
+    return 1
+  fi
+  if [[ "${sentinel_status}" -ne 0 || "${e2e_status}" -ne 0 ]]; then
+    printf '%s\n' '{"status":"expected-red-observed","suite":"sentinel-verdicts"}' >&2
+    return 1
+  fi
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"sentinel-verdicts"}'
+}
+
 case "${SCOPE}:${SUITE}" in
   task:walking-skeleton-red)
     run_red_walking_skeleton
@@ -391,6 +432,9 @@ case "${SCOPE}:${SUITE}" in
     ;;
   task:sentinel-manifest)
     run_sentinel_manifest
+    ;;
+  task:sentinel-verdicts)
+    run_sentinel_verdicts
     ;;
   wave:skeleton)
     run_green_walking_skeleton

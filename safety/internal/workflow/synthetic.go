@@ -17,6 +17,14 @@ import (
 
 const successState = "synthetic-sentinel-passed"
 
+func SyntheticSentinelState() string {
+	return successState
+}
+
+func IsSyntheticSentinelState(state string) bool {
+	return state == successState
+}
+
 type Options struct {
 	BlueprintPath  string
 	SurfacesPath   string
