@@ -4,7 +4,7 @@
     {
       "adapter_id": "git-worktree-readonly-v1",
       "version": "1.0.0",
-      "implementation_digest": "sha256:984fa658ed2c5e8739d6799939a67bc03b76fcfae9b6080809d1c2a9ab6c6cd6",
+      "implementation_digest": "sha256:ad28167a62fe656dd2e9d41cae91b513c717f5add65d12e58208d9f0dee23bc5",
       "surface_domain": "worktree",
       "logical_refs": ["repo:sentinel/worktree/tracked"],
       "proof_state": "current",
@@ -15,7 +15,7 @@
       ],
       "reviewed_at": "2026-07-10",
       "valid_until": "2026-08-09",
-      "negative_suite": { "suite_id": "negative.git-status.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:dd4ccd9cb8387462b08acfc06d04d742ead18d546a2411f6bb5544b02a1a99ce", "digest": "sha256:fbf8b34495ef6019508d8636b7b0f311afdf5c6027247ffb3b4bb2e0db99ec04", "status": "passed" },
+      "negative_suite": { "suite_id": "negative.git-status.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:a20141dc2ffa896505e78d87140f018f7dad8f3e333471d459ce325b01bbdfd8", "digest": "sha256:6ff122bac314f140072efa01b6229bb71aa85ae1eaed4a2ab1a110d0672685fd", "status": "passed" },
       "invocations": [
         { "kind": "executable", "executable": "git", "argv": ["--no-lazy-fetch", "--version"], "environment": ["GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin"] },
         { "kind": "executable", "executable": "git", "argv": ["--no-lazy-fetch", "-c", "core.fsmonitor=false", "status", "--porcelain=v2", "--untracked-files=no", "--ignore-submodules=all"], "environment": ["GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"] },
@@ -29,7 +29,7 @@
     {
       "adapter_id": "git-index-readonly-v1",
       "version": "1.0.0",
-      "implementation_digest": "sha256:984fa658ed2c5e8739d6799939a67bc03b76fcfae9b6080809d1c2a9ab6c6cd6",
+      "implementation_digest": "sha256:ad28167a62fe656dd2e9d41cae91b513c717f5add65d12e58208d9f0dee23bc5",
       "surface_domain": "worktree",
       "logical_refs": ["repo:sentinel/worktree/index"],
       "proof_state": "current",
@@ -39,7 +39,7 @@
       ],
       "reviewed_at": "2026-07-10",
       "valid_until": "2026-08-09",
-      "negative_suite": { "suite_id": "negative.git-ls-files.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:dd4ccd9cb8387462b08acfc06d04d742ead18d546a2411f6bb5544b02a1a99ce", "digest": "sha256:b3fd0e9017a998c3867fcea1ee3cecef91a49461ab78b2bfd04016ff62508ff8", "status": "passed" },
+      "negative_suite": { "suite_id": "negative.git-ls-files.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:a20141dc2ffa896505e78d87140f018f7dad8f3e333471d459ce325b01bbdfd8", "digest": "sha256:e47d0d6b3c1365f8994ba45d8ed9697b1424e513bb1d81316734e83c86e160bf", "status": "passed" },
       "invocations": [
         { "kind": "executable", "executable": "git", "argv": ["--no-lazy-fetch", "--version"], "environment": ["GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin"] },
         { "kind": "executable", "executable": "git", "argv": ["--no-lazy-fetch", "ls-files", "-z", "--stage"], "environment": ["GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"] }
@@ -52,7 +52,7 @@
     {
       "adapter_id": "go-lstat-file-v1",
       "version": "1.0.0",
-      "implementation_digest": "sha256:984fa658ed2c5e8739d6799939a67bc03b76fcfae9b6080809d1c2a9ab6c6cd6",
+      "implementation_digest": "sha256:ad28167a62fe656dd2e9d41cae91b513c717f5add65d12e58208d9f0dee23bc5",
       "surface_domain": "named-home",
       "logical_refs": ["home:.zshrc"],
       "proof_state": "current",
@@ -64,7 +64,7 @@
       ],
       "reviewed_at": "2026-07-10",
       "valid_until": "2026-08-09",
-      "negative_suite": { "suite_id": "negative.go-lstat-file.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:dd4ccd9cb8387462b08acfc06d04d742ead18d546a2411f6bb5544b02a1a99ce", "digest": "sha256:7bc53accba0c6153465dfb02325d80a3d6a3408a8c3f326b1888eaf2fb084a3b", "status": "passed" },
+      "negative_suite": { "suite_id": "negative.go-lstat-file.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:a20141dc2ffa896505e78d87140f018f7dad8f3e333471d459ce325b01bbdfd8", "digest": "sha256:164e3ab34fb377f05183120dba9989048fd10338a18ea5aef38045bdf6a989f4", "status": "passed" },
       "invocations": [{ "kind": "go-api", "api": "os.OpenRoot+Root.Lstat+Root.OpenFile+Root.Readlink+File.Stat+os.SameFile+io.LimitReader", "argv": [], "environment": [] }],
       "limits": { "max_files": 1, "max_bytes": 1048576, "timeout_ms": 1000, "max_processes": 0 },
       "statuses": ["complete", "indeterminate", "manual-required"],
@@ -74,7 +74,7 @@
     {
       "adapter_id": "go-bounded-tree-v1",
       "version": "1.0.0",
-      "implementation_digest": "sha256:984fa658ed2c5e8739d6799939a67bc03b76fcfae9b6080809d1c2a9ab6c6cd6",
+      "implementation_digest": "sha256:ad28167a62fe656dd2e9d41cae91b513c717f5add65d12e58208d9f0dee23bc5",
       "surface_domain": "manager-root",
       "logical_refs": ["home:sentinel/manager/mise-data"],
       "proof_state": "current",
@@ -86,7 +86,7 @@
       ],
       "reviewed_at": "2026-07-10",
       "valid_until": "2026-08-09",
-      "negative_suite": { "suite_id": "negative.go-bounded-tree.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:dd4ccd9cb8387462b08acfc06d04d742ead18d546a2411f6bb5544b02a1a99ce", "digest": "sha256:29d2499d7f2643a141369a237dcd59df09dab159c1faa0d6283a46c241a12525", "status": "passed" },
+      "negative_suite": { "suite_id": "negative.go-bounded-tree.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:a20141dc2ffa896505e78d87140f018f7dad8f3e333471d459ce325b01bbdfd8", "digest": "sha256:21ca55b09a0c7b65c320251e55686bcbd73f504567be2a5ff68decd78a9b784b", "status": "passed" },
       "invocations": [{ "kind": "go-api", "api": "os.OpenRoot+io/fs.WalkDir+Root.Lstat+Root.OpenFile+Root.Readlink+File.Stat+os.SameFile+io.LimitReader", "argv": [], "environment": [] }],
       "limits": { "max_files": 2048, "max_bytes": 16777216, "timeout_ms": 5000, "max_processes": 0 },
       "statuses": ["complete", "indeterminate", "manual-required"],
@@ -96,7 +96,7 @@
     {
       "adapter_id": "launchctl-print-service-v1",
       "version": "1.0.0",
-      "implementation_digest": "sha256:984fa658ed2c5e8739d6799939a67bc03b76fcfae9b6080809d1c2a9ab6c6cd6",
+      "implementation_digest": "sha256:ad28167a62fe656dd2e9d41cae91b513c717f5add65d12e58208d9f0dee23bc5",
       "surface_domain": "service",
       "logical_refs": ["profile:sentinel/service/homebrew-mxcl-nginx"],
       "proof_state": "missing",
@@ -105,7 +105,7 @@
       ],
       "reviewed_at": "2026-07-10",
       "valid_until": null,
-      "negative_suite": { "suite_id": "negative.launchctl-print.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:dd4ccd9cb8387462b08acfc06d04d742ead18d546a2411f6bb5544b02a1a99ce", "status": "missing" },
+      "negative_suite": { "suite_id": "negative.launchctl-print.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:a20141dc2ffa896505e78d87140f018f7dad8f3e333471d459ce325b01bbdfd8", "status": "missing" },
       "invocations": [{ "kind": "executable", "executable": "launchctl", "argv": ["print", "gui/<uid>/homebrew.mxcl.nginx"], "environment": [] }],
       "limits": { "max_files": 1, "max_bytes": 65536, "timeout_ms": 2000, "max_processes": 1 },
       "statuses": ["complete", "indeterminate", "manual-required"],
@@ -115,7 +115,7 @@
     {
       "adapter_id": "go-system-shells-file-v1",
       "version": "1.0.0",
-      "implementation_digest": "sha256:984fa658ed2c5e8739d6799939a67bc03b76fcfae9b6080809d1c2a9ab6c6cd6",
+      "implementation_digest": "sha256:ad28167a62fe656dd2e9d41cae91b513c717f5add65d12e58208d9f0dee23bc5",
       "surface_domain": "named-target",
       "logical_refs": ["profile:sentinel/named-target/system-shells"],
       "proof_state": "current",
@@ -127,7 +127,7 @@
       ],
       "reviewed_at": "2026-07-10",
       "valid_until": "2026-08-09",
-      "negative_suite": { "suite_id": "negative.go-system-shells.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:dd4ccd9cb8387462b08acfc06d04d742ead18d546a2411f6bb5544b02a1a99ce", "digest": "sha256:abdcff0b992cbd6f090e47f5a2cbf1b4beb9d89e55bde859103dd2ce5790106e", "status": "passed" },
+      "negative_suite": { "suite_id": "negative.go-system-shells.no-write.v1", "evidence_contract": "isolated-fixture-byte-identical-v1", "test_source_digest": "sha256:a20141dc2ffa896505e78d87140f018f7dad8f3e333471d459ce325b01bbdfd8", "digest": "sha256:b5edf4df1a458f5797259533ddee657f5359d5d278e608b7ead10500c4e0bc9e", "status": "passed" },
       "invocations": [{ "kind": "go-api", "api": "os.OpenRoot+Root.Lstat+Root.OpenFile+Root.Readlink+File.Stat+os.SameFile+io.LimitReader", "argv": [], "environment": [] }],
       "limits": { "max_files": 1, "max_bytes": 1048576, "timeout_ms": 1000, "max_processes": 0 },
       "statuses": ["complete", "indeterminate", "manual-required"],

@@ -74,7 +74,7 @@ namespace 与 `surface_domain` 是两张不同的闭合表。当前五个 domain
 | `service` | `profile:sentinel/service/homebrew-mxcl-nginx` |
 | `named-target` | `profile:sentinel/named-target/system-shells` |
 
-未知 namespace/domain、跨域搭配、绝对 suffix、`..` traversal、resolver escape、raw output、真实 home/root、UID、host identity、HMAC key 与未规范化路径都 fail closed。公共 surface token 只使用 opaque HMAC 结果。
+未知 namespace/domain、跨域搭配、绝对 suffix、`..` traversal、resolver escape、raw output、真实 home/root、UID、host identity、HMAC key 与未规范化路径都 fail closed。manager-tree 会解析树内每个 symlink 的最终 target；relative、absolute 或 chain target 只要离开 exact manager root，就固定为 `symlink-escape` / incomplete，既不产生 token 也不能产生 claim。公共 surface token 只使用 opaque HMAC 结果。
 
 ## Fixture、tier 与网络边界
 

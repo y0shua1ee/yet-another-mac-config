@@ -137,8 +137,8 @@ type realAdapterSpec struct {
 }
 
 const (
-	negativeTestSourceDigest       = "sha256:dd4ccd9cb8387462b08acfc06d04d742ead18d546a2411f6bb5544b02a1a99ce"
-	realImplementationSourceDigest = "sha256:984fa658ed2c5e8739d6799939a67bc03b76fcfae9b6080809d1c2a9ab6c6cd6"
+	negativeTestSourceDigest       = "sha256:a20141dc2ffa896505e78d87140f018f7dad8f3e333471d459ce325b01bbdfd8"
+	realImplementationSourceDigest = "sha256:ad28167a62fe656dd2e9d41cae91b513c717f5add65d12e58208d9f0dee23bc5"
 )
 
 var gitVersionInvocation = AdapterInvocation{Kind: "executable", Executable: "git", Argv: []string{"--no-lazy-fetch", "--version"}, Environment: []string{"GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin"}}
@@ -1029,6 +1029,17 @@ func fingerprintExactTree(surface ProtectedSurface, path, root string, deadline 
 	if reason != "" {
 		return nil, reason
 	}
+	treeRoot, err := canonicalDirectory(path)
+	if err != nil {
+		return nil, ReasonUnreadable
+	}
+	canonicalObservationRoot, err := canonicalDirectory(root)
+	if err != nil {
+		return nil, ReasonUnreadable
+	}
+	if inside, err := withinRoot(canonicalObservationRoot, treeRoot); err != nil || !inside {
+		return nil, ReasonSymlinkEscape
+	}
 	rootHandle, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, ReasonUnreadable
@@ -1065,8 +1076,11 @@ func fingerprintExactTree(surface ProtectedSurface, path, root string, deadline 
 		if info.Mode()&os.ModeSymlink != 0 {
 			remaining := surface.Bounds.MaxBytes - bytesRead
 			candidate := filepath.Join(root, filepath.FromSlash(current))
-			canonical, reason := readExactSymlink(candidate, root, remaining, deadline)
+			observation, reason := observeExactSymlink(candidate, root, remaining, deadline)
 			if reason != "" {
+				return errors.New(string(reason))
+			}
+			if reason := validateTreeSymlinkTarget(candidate, observation.target, treeRoot); reason != "" {
 				return errors.New(string(reason))
 			}
 			entryAfter, err := rootHandle.Lstat(current)
@@ -1078,7 +1092,7 @@ func fingerprintExactTree(surface ProtectedSurface, path, root string, deadline 
 			if err != nil {
 				return errors.New(string(ReasonUnreadable))
 			}
-			facts = append(facts, filepath.ToSlash(relative)+"\x00symlink\x00"+hex.EncodeToString(canonical))
+			facts = append(facts, filepath.ToSlash(relative)+"\x00symlink\x00"+hex.EncodeToString(observation.canonical))
 			return nil
 		}
 		relative, err := filepath.Rel(filepath.FromSlash(relativeRoot), filepath.FromSlash(current))
@@ -1118,6 +1132,48 @@ func fingerprintExactTree(surface ProtectedSurface, path, root string, deadline 
 	sort.Strings(facts)
 	canonical, _ := json.Marshal(facts)
 	return canonical, ""
+}
+
+func validateTreeSymlinkTarget(linkPath, target, treeRoot string) IncompleteReason {
+	canonicalTreeRoot, err := filepath.EvalSymlinks(treeRoot)
+	if err != nil {
+		return ReasonUnreadable
+	}
+	canonicalTreeRoot, err = filepath.Abs(canonicalTreeRoot)
+	if err != nil {
+		return ReasonUnreadable
+	}
+	targetPath := target
+	if !filepath.IsAbs(targetPath) {
+		canonicalParent, err := filepath.EvalSymlinks(filepath.Dir(linkPath))
+		if err != nil {
+			return ReasonUnreadable
+		}
+		canonicalParent, err = filepath.Abs(canonicalParent)
+		if err != nil {
+			return ReasonUnreadable
+		}
+		targetPath = filepath.Join(canonicalParent, filepath.FromSlash(targetPath))
+		targetPath = filepath.Clean(targetPath)
+		inside, err := withinRoot(canonicalTreeRoot, targetPath)
+		if err != nil || !inside {
+			return ReasonSymlinkEscape
+		}
+	}
+	targetPath = filepath.Clean(targetPath)
+	resolved, err := filepath.EvalSymlinks(targetPath)
+	if err != nil {
+		return ReasonUnreadable
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return ReasonUnreadable
+	}
+	inside, err := withinRoot(canonicalTreeRoot, resolved)
+	if err != nil || !inside {
+		return ReasonSymlinkEscape
+	}
+	return ""
 }
 
 func readExactNamedEntry(path, root, allowedSymlinkRoot string, maxBytes int, deadline time.Time) ([]byte, IncompleteReason) {

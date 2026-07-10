@@ -64,7 +64,7 @@ func testRealAdapterRegistry(t *testing.T) {
 		}
 		definition := registry.definitions[adapterID]
 		if definition.ImplementationDigest != realImplementationSourceDigest || definition.NegativeSuite.TestSourceDigest != negativeTestSourceDigest || (wantUsable && definition.NegativeSuite.Digest != expectedNegativeDigest(definition)) {
-			t.Fatalf("negative evidence is not exact for %s", adapterID)
+			t.Fatalf("negative evidence is not exact for %s: want=%s got=%s", adapterID, expectedNegativeDigest(definition), definition.NegativeSuite.Digest)
 		}
 	}
 
@@ -181,12 +181,22 @@ func testReadOnlyGoAdapters(t *testing.T) {
 	key := bytes.Repeat([]byte{0x42}, 32)
 	fileSurface := surfaceByRef(t, manifest, "home:.zshrc")
 	treeSurface := surfaceByRef(t, manifest, "home:sentinel/manager/mise-data")
+	if reason := validateTreeSymlinkTarget(filepath.Join(tree, "versions", "current"), "state", tree); reason != "" {
+		t.Fatalf("internal tree symlink target validator rejected containment: %s", reason)
+	}
+	observedLink, observedReason := observeExactSymlink(filepath.Join(tree, "versions", "current"), root, treeSurface.Bounds.MaxBytes, time.Now().Add(time.Second))
+	if observedReason != "" || validateTreeSymlinkTarget(filepath.Join(tree, "versions", "current"), observedLink.target, tree) != "" {
+		t.Fatalf("internal tree symlink observation rejected containment: %s", observedReason)
+	}
 	before := captureTreeState(t, root)
 	fileSnapshot := snapshotExactFile(fileSurface, exact, root, "", key)
 	treeSnapshot := snapshotExactTree(treeSurface, tree, root, key)
 	after := captureTreeState(t, root)
-	if !reflect.DeepEqual(before, after) || fileSnapshot.Status != ObservationComplete || treeSnapshot.Status != ObservationComplete {
-		t.Fatal("bounded Go observation wrote to or failed on isolated paths")
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("bounded Go observation wrote to isolated paths")
+	}
+	if fileSnapshot.Status != ObservationComplete || treeSnapshot.Status != ObservationComplete {
+		t.Fatalf("bounded Go observation failed closed unexpectedly: file=%s/%s tree=%s/%s", fileSnapshot.Status, fileSnapshot.Reason, treeSnapshot.Status, treeSnapshot.Reason)
 	}
 
 	overflowSurface := fileSurface
@@ -200,6 +210,91 @@ func testReadOnlyGoAdapters(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("outside-state"), 0o600); err != nil {
 		t.Fatal("symlink escape setup failed")
+	}
+	for _, testCase := range []struct {
+		name   string
+		setup  func(string) error
+		reason IncompleteReason
+	}{
+		{
+			name: "internal relative escape",
+			setup: func(treeRoot string) error {
+				relative, err := filepath.Rel(treeRoot, filepath.Join(outside, "secret"))
+				if err != nil {
+					return err
+				}
+				return os.Symlink(relative, filepath.Join(treeRoot, "current"))
+			},
+			reason: ReasonSymlinkEscape,
+		},
+		{
+			name: "internal absolute escape",
+			setup: func(treeRoot string) error {
+				return os.Symlink(filepath.Join(outside, "secret"), filepath.Join(treeRoot, "current"))
+			},
+			reason: ReasonSymlinkEscape,
+		},
+		{
+			name: "internal chain escape",
+			setup: func(treeRoot string) error {
+				if err := os.Symlink(filepath.Join(outside, "secret"), filepath.Join(treeRoot, "outside-hop")); err != nil {
+					return err
+				}
+				return os.Symlink("outside-hop", filepath.Join(treeRoot, "current"))
+			},
+			reason: ReasonSymlinkEscape,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			escapingTree := filepath.Join(root, strings.ReplaceAll(testCase.name, " ", "-"))
+			if err := os.Mkdir(escapingTree, 0o700); err != nil || testCase.setup(escapingTree) != nil {
+				t.Fatal("internal tree symlink escape setup failed")
+			}
+			snapshot := snapshotExactTree(treeSurface, escapingTree, root, key)
+			if snapshot.Status != ObservationIncomplete || snapshot.Reason != testCase.reason || snapshot.OpaqueState != "" {
+				t.Fatal("internal tree symlink escape produced a complete token")
+			}
+		})
+	}
+	absoluteEscapeTree := filepath.Join(root, "external-change-tree")
+	if err := os.Mkdir(absoluteEscapeTree, 0o700); err != nil || os.Symlink(filepath.Join(outside, "secret"), filepath.Join(absoluteEscapeTree, "current")) != nil {
+		t.Fatal("external target change setup failed")
+	}
+	escapeBefore := snapshotExactTree(treeSurface, absoluteEscapeTree, root, key)
+	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("outside-state-tree-change"), 0o600); err != nil {
+		t.Fatal("external target change setup failed")
+	}
+	escapeAfter := snapshotExactTree(treeSurface, absoluteEscapeTree, root, key)
+	if escapeBefore.Status != ObservationIncomplete || escapeAfter.Status != ObservationIncomplete || escapeBefore.Reason != ReasonSymlinkEscape || escapeAfter.Reason != ReasonSymlinkEscape || escapeBefore.OpaqueState != "" || escapeAfter.OpaqueState != "" {
+		t.Fatal("external target change completed a manager-tree observation")
+	}
+	beforeSurfaces := make([]SurfaceSnapshot, 0, len(manifest.Surfaces))
+	afterSurfaces := make([]SurfaceSnapshot, 0, len(manifest.Surfaces))
+	for _, surface := range manifest.Surfaces {
+		if surface.LogicalRef == treeSurface.LogicalRef {
+			beforeSurfaces = append(beforeSurfaces, escapeBefore)
+			afterSurfaces = append(afterSurfaces, escapeAfter)
+			continue
+		}
+		beforeSurfaces = append(beforeSurfaces, completeSurface(surface, key, []byte("stable")))
+		afterSurfaces = append(afterSurfaces, completeSurface(surface, key, []byte("stable")))
+	}
+	opened := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
+	evidence, err := BuildEvidence(
+		manifest,
+		ProtectedSnapshot{ManifestDigest: manifest.Digest, WindowState: "closed", Surfaces: beforeSurfaces},
+		ProtectedSnapshot{ManifestDigest: manifest.Digest, WindowState: "closed", Surfaces: afterSurfaces},
+		EvidenceOptions{SuiteID: manifest.SuiteID, Tier: "offline-static", WindowID: "synthetic-window-tree-escape", OpenedAt: opened, ClosedAt: opened.Add(time.Second), Provenance: "synthetic"},
+	)
+	if err != nil {
+		t.Fatal("tree escape evidence setup failed")
+	}
+	evaluation := Evaluate(manifest, evidence)
+	if evaluation.Verdict != VerdictIndeterminate || evaluation.ExitCode == 0 {
+		t.Fatal("tree escape evidence was not indeterminate")
+	}
+	if claim, err := RequestClaim(&evidence, evaluation, ScopedUnchangedClaim); err == nil || claim != "" {
+		t.Fatal("tree escape evidence produced a claim")
 	}
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
 		t.Fatal("symlink escape setup failed")
