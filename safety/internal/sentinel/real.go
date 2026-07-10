@@ -137,8 +137,8 @@ type realAdapterSpec struct {
 }
 
 const (
-	negativeTestSourceDigest       = "sha256:c84b1d49058f8854c6cf44b00199d251366f21252f10c3aa45219c27757b707a"
-	realImplementationSourceDigest = "sha256:0f33eba9d72f321aa10a11ee02c3bc7040db4951fb3ff31aae447c8178ca7a69"
+	negativeTestSourceDigest       = "sha256:dd4ccd9cb8387462b08acfc06d04d742ead18d546a2411f6bb5544b02a1a99ce"
+	realImplementationSourceDigest = "sha256:984fa658ed2c5e8739d6799939a67bc03b76fcfae9b6080809d1c2a9ab6c6cd6"
 )
 
 var gitVersionInvocation = AdapterInvocation{Kind: "executable", Executable: "git", Argv: []string{"--no-lazy-fetch", "--version"}, Environment: []string{"GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin"}}
@@ -395,15 +395,16 @@ type realAdapter struct {
 }
 
 type RealEnvelopeOptions struct {
-	Manifest  ProtectedManifest
-	Registry  *RealAdapterRegistry
-	Adapters  map[string]realAdapter
-	Retention *fixture.Retention
-	Context   context.Context
-	Workload  func(context.Context) (string, error)
-	Clock     func() time.Time
-	Key       []byte
-	WindowID  string
+	Manifest      ProtectedManifest
+	Registry      *RealAdapterRegistry
+	Adapters      map[string]realAdapter
+	Retention     *fixture.Retention
+	Context       context.Context
+	Workload      func(context.Context) (string, error)
+	Clock         func() time.Time
+	Key           []byte
+	WindowID      string
+	ClaimConsumer func(*Evidence, Evaluation, []string) (string, error)
 }
 
 type RealEnvelope struct {
@@ -499,10 +500,27 @@ func RunRealEnvelope(options RealEnvelopeOptions) RealEnvelope {
 	if finalVerdict != evaluation.Verdict {
 		evaluation = evaluationForVerdict(finalVerdict, evaluation.EvidenceDigest)
 	}
+	sequence = append(sequence, "monotonic-combine")
 	if finalVerdict != VerdictPassed {
 		evaluation.Claim = ""
+	} else if evidenceErr == nil {
+		var claim string
+		var claimErr error
+		if options.ClaimConsumer != nil {
+			claim, claimErr = options.ClaimConsumer(&evidence, evaluation, append([]string(nil), sequence...))
+		} else {
+			claim, claimErr = RequestClaim(&evidence, evaluation, ScopedUnchangedClaim)
+		}
+		if claimErr != nil || claim != ScopedUnchangedClaim || evidence.realBinding != nil {
+			finalVerdict = VerdictHarnessError
+			evaluation = evaluationForVerdict(VerdictHarnessError, evaluation.EvidenceDigest)
+		} else {
+			evaluation.Claim = claim
+		}
 	}
-	sequence = append(sequence, "monotonic-combine")
+	if evidenceErr == nil {
+		evidence.realBinding = nil
+	}
 	status := string(finalVerdict)
 	if evaluation.Claim != "" {
 		status = evaluation.Claim

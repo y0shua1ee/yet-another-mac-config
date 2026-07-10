@@ -271,6 +271,7 @@ func testRealEnvelopePass(t *testing.T) {
 	workloadFixture, _ := createEnvelopeFixture(t, surfaceRoot, false)
 	workloadRoot := workloadFixture.Paths().Root
 	key := bytes.Repeat([]byte{0x53}, 32)
+	var claimMaterial ClaimMaterial
 	result := runRealEnvelope(t, RealEnvelopeOptions{
 		Manifest:  callerManifest,
 		Registry:  registry,
@@ -287,6 +288,16 @@ func testRealEnvelopePass(t *testing.T) {
 		Clock:    envelopeClock(),
 		Key:      key,
 		WindowID: "real-envelope-window-01",
+		ClaimConsumer: func(evidence *Evidence, evaluation Evaluation, sequence []string) (string, error) {
+			if !reflect.DeepEqual(sequence, []string{"real-before", "isolated-workload", "freeze-primary", "fixture-finalize", "real-after", "monotonic-combine"}) {
+				return "", errors.New("claim consumer sequence rejected")
+			}
+			material, err := ConsumeClaim(evidence, evaluation, ScopedUnchangedClaim)
+			if err == nil {
+				claimMaterial = material
+			}
+			return material.Claim, err
+		},
 	})
 	wantSequence := []string{"real-before", "isolated-workload", "freeze-primary", "fixture-finalize", "real-after", "monotonic-combine"}
 	if !reflect.DeepEqual(result.Sequence, wantSequence) || result.Evaluation.Verdict != VerdictPassed || result.Evaluation.ExitCode != ExitPassed || result.Evaluation.Claim != ScopedUnchangedClaim || result.Status != ScopedUnchangedClaim || result.TeardownStatus != fixture.TeardownRemoved || result.Evidence == nil || len(result.Evidence.Surfaces) != 6 {
@@ -301,12 +312,14 @@ func testRealEnvelopePass(t *testing.T) {
 	if _, err := os.Lstat(surfaceRoot); err != nil {
 		t.Fatal("fixture teardown reached the protected analog root")
 	}
-	claim, err := RequestClaim(*result.Evidence, result.Evaluation, ScopedUnchangedClaim)
-	if err != nil || claim != ScopedUnchangedClaim {
-		t.Fatal("in-process real binding did not authorize the exact scoped claim")
+	if claimMaterial.Claim != ScopedUnchangedClaim || claimMaterial.EvidenceDigest != result.Evaluation.EvidenceDigest || claimMaterial.ManifestDigest != result.Evidence.ManifestDigest || claimMaterial.SuiteDigest != result.Evidence.SuiteDigest || claimMaterial.Window != result.Evidence.Window || claimMaterial.WindowDigest != result.Evidence.WindowDigest || len(claimMaterial.Surfaces) != len(result.Evidence.Surfaces) {
+		t.Fatal("controlled claim consumer did not bind the actual evidence window")
+	}
+	if claim, err := RequestClaim(result.Evidence, result.Evaluation, ScopedUnchangedClaim); err == nil || claim != "" {
+		t.Fatal("returned evidence retained a replayable claim capability")
 	}
 	for _, overclaim := range []string{"whole-Mac-unchanged", "recovery-ready-on-current-host", "multi-host-verified", "fresh-install-verified"} {
-		if claim, err := RequestClaim(*result.Evidence, result.Evaluation, overclaim); err == nil || claim != "" {
+		if claim, err := RequestClaim(result.Evidence, result.Evaluation, overclaim); err == nil || claim != "" {
 			t.Fatalf("real envelope authorized overclaim %s", overclaim)
 		}
 	}

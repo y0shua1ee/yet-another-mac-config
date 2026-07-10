@@ -56,10 +56,22 @@ type PhaseReportOptions struct {
 }
 
 type PhaseSurfaceEvidence struct {
+	SurfaceID     string `json:"surface_id"`
 	SurfaceDomain string `json:"surface_domain"`
 	LogicalRef    string `json:"logical_ref"`
+	Policy        string `json:"policy"`
+	BeforeStatus  string `json:"before_status"`
+	AfterStatus   string `json:"after_status"`
 	BeforeToken   string `json:"before_token"`
 	AfterToken    string `json:"after_token"`
+}
+
+type PhaseClaimBinding struct {
+	EvidenceDigest string                     `json:"evidence_digest"`
+	SuiteDigest    string                     `json:"suite_digest"`
+	ManifestDigest string                     `json:"manifest_digest"`
+	Window         sentinel.ObservationWindow `json:"window"`
+	WindowDigest   string                     `json:"window_digest"`
 }
 
 type PhaseCurrentHostStatus struct {
@@ -70,6 +82,7 @@ type PhaseCurrentHostStatus struct {
 }
 
 type PhaseReport struct {
+	Status            string                 `json:"status"`
 	SchemaVersion     string                 `json:"schema_version"`
 	SuiteID           string                 `json:"suite_id"`
 	Tier              string                 `json:"tier"`
@@ -86,6 +99,7 @@ type PhaseReport struct {
 	PolicyStatuses    []string               `json:"policy_statuses"`
 	Operations        []contract.Operation   `json:"operations"`
 	CurrentHost       PhaseCurrentHostStatus `json:"current_host"`
+	ClaimBinding      *PhaseClaimBinding     `json:"claim_binding,omitempty"`
 }
 
 type offlineSuite struct {
@@ -118,22 +132,16 @@ type negativeBinding struct {
 }
 
 type phaseReportTemplate struct {
-	SchemaVersion        string                 `json:"schema_version"`
-	SuiteID              string                 `json:"suite_id"`
-	Tier                 string                 `json:"tier"`
-	EvidenceMode         string                 `json:"evidence_mode"`
-	InnerStatus          string                 `json:"inner_status"`
-	OuterSequence        []string               `json:"outer_sequence"`
-	Verdict              string                 `json:"verdict"`
-	Claim                string                 `json:"claim"`
-	ArtifactKinds        []string               `json:"artifact_kinds"`
-	ArtifactInstances    int                    `json:"artifact_instances"`
-	ArtifactDigestLabels []string               `json:"artifact_digest_labels"`
-	ManifestBindingIDs   []string               `json:"manifest_binding_ids"`
-	SurfaceEvidence      []PhaseSurfaceEvidence `json:"surface_evidence"`
-	PolicyStatuses       []string               `json:"policy_statuses"`
-	Operations           []contract.Operation   `json:"operations"`
-	CurrentHost          PhaseCurrentHostStatus `json:"current_host"`
+	SchemaVersion        string               `json:"schema_version"`
+	SuiteID              string               `json:"suite_id"`
+	EvidenceMode         string               `json:"evidence_mode"`
+	InnerStatus          string               `json:"inner_status"`
+	ArtifactKinds        []string             `json:"artifact_kinds"`
+	ArtifactInstances    int                  `json:"artifact_instances"`
+	ArtifactDigestLabels []string             `json:"artifact_digest_labels"`
+	ManifestBindingIDs   []string             `json:"manifest_binding_ids"`
+	PolicyStatuses       []string             `json:"policy_statuses"`
+	Operations           []contract.Operation `json:"operations"`
 }
 
 type fact struct {
@@ -533,19 +541,20 @@ func BuildPhaseReport(options PhaseReportOptions) (PhaseReport, error) {
 	}
 
 	report := PhaseReport{
+		Status:            "synthetic-report-claim-ineligible",
 		SchemaVersion:     expected.SchemaVersion,
 		SuiteID:           expected.SuiteID,
-		Tier:              expected.Tier,
+		Tier:              suite.Tier,
 		EvidenceMode:      expected.EvidenceMode,
 		InnerStatus:       expected.InnerStatus,
-		OuterSequence:     append([]string(nil), expected.OuterSequence...),
-		Verdict:           expected.Verdict,
-		Claim:             expected.Claim,
+		OuterSequence:     make([]string, 0),
+		Verdict:           string(sentinel.VerdictIndeterminate),
+		Claim:             "",
 		ArtifactKinds:     append([]string(nil), expected.ArtifactKinds...),
 		ArtifactInstances: expected.ArtifactInstances,
 		ArtifactDigests:   cloneStrings(summary.Artifacts),
 		ManifestDigests:   manifestDigests,
-		SurfaceEvidence:   append([]PhaseSurfaceEvidence(nil), expected.SurfaceEvidence...),
+		SurfaceEvidence:   make([]PhaseSurfaceEvidence, 0),
 		PolicyStatuses:    append([]string(nil), expected.PolicyStatuses...),
 		Operations:        make([]contract.Operation, 0),
 		CurrentHost:       currentHost,
@@ -555,6 +564,56 @@ func BuildPhaseReport(options PhaseReportOptions) (PhaseReport, error) {
 		return PhaseReport{}, errors.New("phase report privacy rejected")
 	}
 	return report, nil
+}
+
+func BindPhaseReport(report PhaseReport, evidence *sentinel.Evidence, evaluation sentinel.Evaluation, sequence []string) (PhaseReport, string, error) {
+	if report.Status != "synthetic-report-claim-ineligible" || report.Claim != "" || report.Verdict != string(sentinel.VerdictIndeterminate) || report.ClaimBinding != nil || len(report.OuterSequence) != 0 || len(report.SurfaceEvidence) != 0 || report.CurrentHost.ClaimEligible || len(report.Operations) != 0 {
+		return PhaseReport{}, "", errors.New("phase report claim base rejected")
+	}
+	wantSequence := []string{"real-before", "isolated-workload", "freeze-primary", "fixture-finalize", "real-after", "monotonic-combine"}
+	if !equalPhaseStrings(sequence, wantSequence) {
+		return PhaseReport{}, "", errors.New("phase report claim sequence rejected")
+	}
+	material, err := sentinel.ConsumeClaim(evidence, evaluation, sentinel.ScopedUnchangedClaim)
+	if err != nil || material.Claim != sentinel.ScopedUnchangedClaim || material.EvidenceDigest != evaluation.EvidenceDigest {
+		return PhaseReport{}, "", errors.New("phase report claim evidence rejected")
+	}
+	surfaces := make([]PhaseSurfaceEvidence, 0, len(material.Surfaces))
+	for _, surface := range material.Surfaces {
+		surfaces = append(surfaces, PhaseSurfaceEvidence{
+			SurfaceID: surface.SurfaceID, SurfaceDomain: surface.SurfaceDomain, LogicalRef: surface.LogicalRef, Policy: string(surface.Policy),
+			BeforeStatus: string(surface.BeforeStatus), AfterStatus: string(surface.AfterStatus), BeforeToken: surface.BeforeToken, AfterToken: surface.AfterToken,
+		})
+	}
+	report.Status = material.Claim
+	report.EvidenceMode = "controlled-real-envelope"
+	report.OuterSequence = append([]string(nil), sequence...)
+	report.Verdict = string(evaluation.Verdict)
+	report.Claim = material.Claim
+	report.SurfaceEvidence = surfaces
+	report.ClaimBinding = &PhaseClaimBinding{
+		EvidenceDigest: material.EvidenceDigest, SuiteDigest: material.SuiteDigest, ManifestDigest: material.ManifestDigest,
+		Window: material.Window, WindowDigest: material.WindowDigest,
+	}
+	approved, rejection := privacy.Gate(privacy.Candidate{ArtifactKind: privacy.KindCommandResult, AdapterID: privacy.AdapterCLIRenderer, Value: report})
+	if rejection != nil || len(approved) == 0 {
+		return PhaseReport{}, "", errors.New("phase claimed report privacy rejected")
+	}
+	return report, material.Claim, nil
+}
+
+func PhaseReportClaimConsumer(base PhaseReport, destination *PhaseReport) func(*sentinel.Evidence, sentinel.Evaluation, []string) (string, error) {
+	return func(evidence *sentinel.Evidence, evaluation sentinel.Evaluation, sequence []string) (string, error) {
+		if destination == nil {
+			return "", errors.New("phase report destination rejected")
+		}
+		bound, claim, err := BindPhaseReport(base, evidence, evaluation, sequence)
+		if err != nil {
+			return "", err
+		}
+		*destination = bound
+		return claim, nil
+	}
 }
 
 func validateOfflineSuite(suite offlineSuite) error {
@@ -650,7 +709,6 @@ func assessCurrentHostProof(repositoryRoot string) (PhaseCurrentHostStatus, erro
 }
 
 func validatePhaseTemplate(expected phaseReportTemplate, suite offlineSuite, currentHost PhaseCurrentHostStatus) error {
-	wantSequence := []string{"real-before", "isolated-workload", "freeze-primary", "fixture-finalize", "real-after", "monotonic-combine"}
 	wantKinds := []string{"applied-receipt", "desired-state", "generated-plan", "observed-state", "readiness-report", "verification-evidence"}
 	wantLabels := []string{"applied-receipt", "desired-state", "fresh-observed-state", "generated-plan", "observed-state", "readiness-report", "verification-evidence"}
 	bindingIDs := make([]string, 0, len(suite.Manifests))
@@ -658,33 +716,14 @@ func validatePhaseTemplate(expected phaseReportTemplate, suite offlineSuite, cur
 		bindingIDs = append(bindingIDs, binding.ID)
 	}
 	sort.Strings(bindingIDs)
-	if expected.SchemaVersion != suite.SchemaVersion || expected.SuiteID != suite.SuiteID || expected.Tier != suite.Tier || expected.EvidenceMode != suite.EvidenceMode || expected.InnerStatus != successState || expected.Verdict != "passed" || expected.Claim != suite.ExpectedClaim || expected.ArtifactInstances != 7 {
+	if expected.SchemaVersion != suite.SchemaVersion || expected.SuiteID != suite.SuiteID || expected.EvidenceMode != "replay-claim-ineligible" || expected.InnerStatus != successState || expected.ArtifactInstances != 7 {
 		return errors.New("phase expected report identity rejected")
 	}
-	if !equalPhaseStrings(expected.OuterSequence, wantSequence) || !equalPhaseStrings(expected.ArtifactKinds, wantKinds) || !equalPhaseStrings(expected.ArtifactDigestLabels, wantLabels) || !equalPhaseStrings(expected.ManifestBindingIDs, bindingIDs) || len(expected.Operations) != 0 {
+	if !equalPhaseStrings(expected.ArtifactKinds, wantKinds) || !equalPhaseStrings(expected.ArtifactDigestLabels, wantLabels) || !equalPhaseStrings(expected.ManifestBindingIDs, bindingIDs) || len(expected.Operations) != 0 {
 		return errors.New("phase expected report composition rejected")
 	}
-	if !samePhaseValue(expected.CurrentHost, currentHost) || !equalPhaseStrings(expected.PolicyStatuses, []string{"extra", "unmanaged-present"}) || len(expected.SurfaceEvidence) != 6 {
+	if currentHost.Status != "manual-required" || currentHost.ClaimEligible || !equalPhaseStrings(expected.PolicyStatuses, []string{"extra", "unmanaged-present"}) {
 		return errors.New("phase expected report policy rejected")
-	}
-	wantSurfaces := map[string]privacy.SurfaceDomain{
-		"repo:sentinel/worktree/tracked":               privacy.SurfaceWorktree,
-		"repo:sentinel/worktree/index":                 privacy.SurfaceWorktree,
-		"home:.zshrc":                                  privacy.SurfaceNamedHome,
-		"home:sentinel/manager/mise-data":              privacy.SurfaceManagerRoot,
-		"profile:sentinel/service/homebrew-mxcl-nginx": privacy.SurfaceService,
-		"profile:sentinel/named-target/system-shells":  privacy.SurfaceNamedTarget,
-	}
-	seen := make(map[string]struct{}, len(wantSurfaces))
-	for _, surface := range expected.SurfaceEvidence {
-		domain, ok := wantSurfaces[surface.LogicalRef]
-		if !ok || string(domain) != surface.SurfaceDomain || privacy.ValidateSurface(domain, surface.LogicalRef) != nil || !validOpaquePhaseToken(surface.BeforeToken) || surface.BeforeToken != surface.AfterToken {
-			return errors.New("phase expected surface rejected")
-		}
-		if _, duplicate := seen[surface.LogicalRef]; duplicate {
-			return errors.New("phase expected surface rejected")
-		}
-		seen[surface.LogicalRef] = struct{}{}
 	}
 	return nil
 }
@@ -808,14 +847,6 @@ func readBoundedNoSymlink(path string) ([]byte, error) {
 func digestPhaseBytes(data []byte) string {
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-func validOpaquePhaseToken(value string) bool {
-	if !strings.HasPrefix(value, "hmac-sha256:") {
-		return false
-	}
-	decoded, err := hex.DecodeString(strings.TrimPrefix(value, "hmac-sha256:"))
-	return err == nil && len(decoded) == sha256.Size
 }
 
 func mustRelative(root, candidate string) string {

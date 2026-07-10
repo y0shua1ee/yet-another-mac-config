@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -18,29 +17,43 @@ import (
 )
 
 type phaseReport struct {
-	SchemaVersion     string            `json:"schema_version"`
-	SuiteID           string            `json:"suite_id"`
-	Tier              string            `json:"tier"`
-	EvidenceMode      string            `json:"evidence_mode"`
-	InnerStatus       string            `json:"inner_status"`
-	OuterSequence     []string          `json:"outer_sequence"`
-	Verdict           string            `json:"verdict"`
-	Claim             string            `json:"claim"`
-	ArtifactKinds     []string          `json:"artifact_kinds"`
-	ArtifactInstances int               `json:"artifact_instances"`
-	ArtifactDigests   map[string]string `json:"artifact_digests"`
-	ManifestDigests   map[string]string `json:"manifest_digests"`
-	SurfaceEvidence   []phaseSurface    `json:"surface_evidence"`
-	PolicyStatuses    []string          `json:"policy_statuses"`
-	Operations        []any             `json:"operations"`
-	CurrentHost       currentHostStatus `json:"current_host"`
+	Status            string             `json:"status"`
+	SchemaVersion     string             `json:"schema_version"`
+	SuiteID           string             `json:"suite_id"`
+	Tier              string             `json:"tier"`
+	EvidenceMode      string             `json:"evidence_mode"`
+	InnerStatus       string             `json:"inner_status"`
+	OuterSequence     []string           `json:"outer_sequence"`
+	Verdict           string             `json:"verdict"`
+	Claim             string             `json:"claim"`
+	ArtifactKinds     []string           `json:"artifact_kinds"`
+	ArtifactInstances int                `json:"artifact_instances"`
+	ArtifactDigests   map[string]string  `json:"artifact_digests"`
+	ManifestDigests   map[string]string  `json:"manifest_digests"`
+	SurfaceEvidence   []phaseSurface     `json:"surface_evidence"`
+	PolicyStatuses    []string           `json:"policy_statuses"`
+	Operations        []any              `json:"operations"`
+	CurrentHost       currentHostStatus  `json:"current_host"`
+	ClaimBinding      *phaseClaimBinding `json:"claim_binding,omitempty"`
 }
 
 type phaseSurface struct {
+	SurfaceID     string `json:"surface_id"`
 	SurfaceDomain string `json:"surface_domain"`
 	LogicalRef    string `json:"logical_ref"`
+	Policy        string `json:"policy"`
+	BeforeStatus  string `json:"before_status"`
+	AfterStatus   string `json:"after_status"`
 	BeforeToken   string `json:"before_token"`
 	AfterToken    string `json:"after_token"`
+}
+
+type phaseClaimBinding struct {
+	EvidenceDigest string                     `json:"evidence_digest"`
+	SuiteDigest    string                     `json:"suite_digest"`
+	ManifestDigest string                     `json:"manifest_digest"`
+	Window         sentinel.ObservationWindow `json:"window"`
+	WindowDigest   string                     `json:"window_digest"`
 }
 
 type currentHostStatus struct {
@@ -96,6 +109,10 @@ func testPhaseReportRoundTrip(t *testing.T) {
 	if _, err := os.Stat(expectedPath); errors.Is(err, os.ErrNotExist) {
 		t.Fatal("EXPECTED_RED: phase-integration-behavior-missing")
 	}
+	expectedBytes, err := os.ReadFile(expectedPath)
+	if err != nil || bytes.Contains(expectedBytes, []byte(`"verdict":"passed"`)) || bytes.Contains(expectedBytes, []byte(sentinel.ScopedUnchangedClaim)) || bytes.Contains(expectedBytes, []byte("hmac-sha256:")) {
+		t.Fatal("checked-in report expectation contains claim evidence")
+	}
 
 	base := t.TempDir()
 	root, err := fixture.Create(fixture.CreateOptions{
@@ -124,7 +141,6 @@ func testPhaseReportRoundTrip(t *testing.T) {
 	}
 	summaryPath := filepath.Join(root.Paths().Temporary, "summary.json")
 
-	assertIsolatedRealEnvelopeSuite(t, safetyRoot)
 	stdout, stderr, runErr := runCLI(safetyRoot,
 		"report",
 		"--suite", suitePath,
@@ -140,6 +156,16 @@ func testPhaseReportRoundTrip(t *testing.T) {
 	var report phaseReport
 	decodeStrict(t, stdout, &report)
 	assertPhaseReport(t, report, summary)
+	replayBase, err := workflow.BuildPhaseReport(workflow.PhaseReportOptions{
+		SuitePath: suitePath, ExpectedReportPath: expectedPath, SummaryPath: summaryPath,
+		StoreRoot: root.Paths().ArtifactStore, RepositoryRoot: repositoryRoot,
+	})
+	if err != nil {
+		t.Fatal("standalone report replay setup failed")
+	}
+	if _, _, err := workflow.BindPhaseReport(replayBase, &sentinel.Evidence{}, sentinel.Evaluation{}, nil); err == nil {
+		t.Fatal("standalone report acquired a claim from replayable input")
+	}
 
 	if _, err := workflow.BuildPhaseReport(workflow.PhaseReportOptions{
 		SuitePath:          suitePath,
@@ -186,51 +212,20 @@ func testPhaseReportRoundTrip(t *testing.T) {
 	}
 }
 
-func assertIsolatedRealEnvelopeSuite(t *testing.T, safetyRoot string) {
-	t.Helper()
-	command := exec.Command("go", "test", "-count=1", "-timeout=10s", "-run", "^TestRealSentinelEnvelope$", "./internal/sentinel")
-	command.Dir = safetyRoot
-	command.Env = os.Environ()
-	var output bytes.Buffer
-	command.Stdout = &output
-	command.Stderr = &output
-	if err := command.Run(); err != nil || output.Len() > maxCLIOutput {
-		t.Fatal("isolated proof-valid outer envelope suite failed")
-	}
-}
-
 func assertPhaseReport(t *testing.T, report phaseReport, summary workflow.Summary) {
 	t.Helper()
-	wantSequence := []string{"real-before", "isolated-workload", "freeze-primary", "fixture-finalize", "real-after", "monotonic-combine"}
 	wantKinds := []string{"applied-receipt", "desired-state", "generated-plan", "observed-state", "readiness-report", "verification-evidence"}
-	if report.SchemaVersion != "1.0.0" || report.SuiteID != "phase-01-offline-safety-v1" || report.Tier != "offline-static" || report.EvidenceMode != "isolated-proof-double" {
+	if report.Status != "synthetic-report-claim-ineligible" || report.SchemaVersion != "1.0.0" || report.SuiteID != "phase-01-offline-safety-v1" || report.Tier != "offline-static" || report.EvidenceMode != "replay-claim-ineligible" {
 		t.Fatal("phase report identity is not exact")
 	}
-	if report.InnerStatus != wantSuccessState || report.Verdict != "passed" || report.Claim != sentinel.ScopedUnchangedClaim || !reflect.DeepEqual(report.OuterSequence, wantSequence) {
-		t.Fatal("phase report sequence, verdict, or scoped claim changed")
+	if report.InnerStatus != wantSuccessState || report.Verdict != "indeterminate" || report.Claim != "" || len(report.OuterSequence) != 0 || report.ClaimBinding != nil {
+		t.Fatal("standalone phase report recovered a real claim or evidence binding")
 	}
 	if report.ArtifactInstances != 7 || !reflect.DeepEqual(report.ArtifactKinds, wantKinds) || !reflect.DeepEqual(report.ArtifactDigests, summary.Artifacts) || len(report.ManifestDigests) != 4 {
 		t.Fatal("phase report did not reverse-bind the exact artifact and manifest digests")
 	}
-	if len(report.SurfaceEvidence) != 6 {
-		t.Fatal("phase report surface evidence is incomplete")
-	}
-	wantSurfaces := map[string]string{
-		"repo:sentinel/worktree/tracked":               "worktree",
-		"repo:sentinel/worktree/index":                 "worktree",
-		"home:.zshrc":                                  "named-home",
-		"home:sentinel/manager/mise-data":              "manager-root",
-		"profile:sentinel/service/homebrew-mxcl-nginx": "service",
-		"profile:sentinel/named-target/system-shells":  "named-target",
-	}
-	for _, surface := range report.SurfaceEvidence {
-		if wantSurfaces[surface.LogicalRef] != surface.SurfaceDomain || !strings.HasPrefix(surface.BeforeToken, "hmac-sha256:") || surface.BeforeToken != surface.AfterToken {
-			t.Fatal("phase report substituted a surface mapping or opaque token")
-		}
-		delete(wantSurfaces, surface.LogicalRef)
-	}
-	if len(wantSurfaces) != 0 || !reflect.DeepEqual(report.PolicyStatuses, []string{"extra", "unmanaged-present"}) || len(report.Operations) != 0 {
-		t.Fatal("phase report omitted a required surface or added convergence authority")
+	if len(report.SurfaceEvidence) != 0 || !reflect.DeepEqual(report.PolicyStatuses, []string{"extra", "unmanaged-present"}) || len(report.Operations) != 0 {
+		t.Fatal("standalone report copied surface proof or added convergence authority")
 	}
 	if report.CurrentHost.Status != "manual-required" || report.CurrentHost.Verdict != "indeterminate" || report.CurrentHost.Reason != "required-real-adapter-proof-unavailable" || report.CurrentHost.ClaimEligible {
 		t.Fatal("isolated proof report overstates current-host readiness")

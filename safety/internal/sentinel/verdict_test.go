@@ -109,7 +109,7 @@ func testSyntheticClaimCeiling(t *testing.T) {
 	manifest, evidence := validSyntheticEvidence(t)
 	result := Evaluate(manifest, evidence)
 	for _, claim := range []string{ScopedUnchangedClaim, "whole-Mac-unchanged", "recovery-ready-on-current-host", "multi-host-verified", "fresh-install-verified"} {
-		if rendered, err := RequestClaim(evidence, result, claim); err == nil || rendered != "" {
+		if rendered, err := RequestClaim(&evidence, result, claim); err == nil || rendered != "" {
 			t.Fatalf("synthetic evidence rendered forbidden claim: %s", claim)
 		}
 	}

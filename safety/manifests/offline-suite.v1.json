@@ -51,7 +51,7 @@
     {
       "id": "real-adapters",
       "logical_ref": "repo:safety/manifests/real-adapters.v1.json",
-      "digest": "sha256:f7121eac8d375c3c8e29e39af227a64f4db00e8541b711e754cab33cd9406a32"
+      "digest": "sha256:263917e8b7dee23d33fb3608d386f44e3e2b4ff0080a7f017b62f30e62396fb0"
     },
     {
       "id": "network-contract",
@@ -61,7 +61,7 @@
     {
       "id": "expected-report",
       "logical_ref": "repo:safety/testdata/blueprints/walking-skeleton/expected-report.json",
-      "digest": "sha256:9d1e5fb19b96f6a0ad5436c615d1a0ad76e19fc1d0e88d377822dc77869f8dc7"
+      "digest": "sha256:107bf7de995cf9f5e87af46903ff23063506d56f1672f1e4931ac01806fca5f1"
     }
   ],
   "expected_claim": "covered-surfaces-unchanged-for-run",

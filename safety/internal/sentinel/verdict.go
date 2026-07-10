@@ -87,6 +87,16 @@ type Evaluation struct {
 	EvidenceDigest string   `json:"evidence_digest,omitempty"`
 }
 
+type ClaimMaterial struct {
+	Claim          string
+	EvidenceDigest string
+	SuiteDigest    string
+	ManifestDigest string
+	Window         ObservationWindow
+	WindowDigest   string
+	Surfaces       []SurfaceEvidence
+}
+
 type realEvidenceBinding struct {
 	ManifestDigest string
 	SuiteDigest    string
@@ -271,7 +281,6 @@ func Evaluate(manifest ProtectedManifest, evidence Evidence) Evaluation {
 		if !validRealBinding(evidence, digest) {
 			return Evaluation{Verdict: VerdictIndeterminate, ExitCode: ExitIndeterminate, Reason: "real-envelope-binding-missing", EvidenceDigest: digest}
 		}
-		result.Claim = ScopedUnchangedClaim
 	}
 	return result
 }
@@ -305,15 +314,32 @@ func observationWindowDigest(window ObservationWindow) string {
 	return sha256Digest(canonical)
 }
 
-func RequestClaim(evidence Evidence, evaluation Evaluation, requested string) (string, error) {
-	if requested != ScopedUnchangedClaim || evaluation.Verdict != VerdictPassed || evaluation.ExitCode != ExitPassed || evaluation.Claim != ScopedUnchangedClaim {
+func RequestClaim(evidence *Evidence, evaluation Evaluation, requested string) (string, error) {
+	if evidence == nil || requested != ScopedUnchangedClaim || evaluation.Verdict != VerdictPassed || evaluation.ExitCode != ExitPassed {
 		return "", errors.New("sentinel claim rejected")
 	}
-	digest, err := EvidenceDigest(evidence)
-	if err != nil || !validRealBinding(evidence, digest) {
+	digest, err := EvidenceDigest(*evidence)
+	if err != nil || evaluation.EvidenceDigest != digest || !validRealBinding(*evidence, digest) {
 		return "", errors.New("sentinel claim rejected")
 	}
+	evidence.realBinding = nil
 	return ScopedUnchangedClaim, nil
+}
+
+func ConsumeClaim(evidence *Evidence, evaluation Evaluation, requested string) (ClaimMaterial, error) {
+	claim, err := RequestClaim(evidence, evaluation, requested)
+	if err != nil {
+		return ClaimMaterial{}, err
+	}
+	return ClaimMaterial{
+		Claim:          claim,
+		EvidenceDigest: evaluation.EvidenceDigest,
+		SuiteDigest:    evidence.SuiteDigest,
+		ManifestDigest: evidence.ManifestDigest,
+		Window:         evidence.Window,
+		WindowDigest:   evidence.WindowDigest,
+		Surfaces:       append([]SurfaceEvidence(nil), evidence.Surfaces...),
+	}, nil
 }
 
 func MonotonicCombine(primary, after Verdict) Verdict {

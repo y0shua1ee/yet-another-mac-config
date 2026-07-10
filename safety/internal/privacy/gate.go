@@ -655,7 +655,7 @@ func closedState(value string) bool {
 
 func closedStatus(value string) bool {
 	return oneOf(value,
-		"synthetic-sentinel-passed", "synthetic-fixture", "valid", "stored", "normalized", "unknown", "ready", "manual-required",
+		"synthetic-sentinel-passed", "synthetic-report-claim-ineligible", "synthetic-fixture", "valid", "stored", "normalized", "unknown", "ready", "manual-required",
 		"complete", "incomplete", "passed", "violation", "indeterminate", "harness-error", "extra", "unmanaged-present",
 		"removed", "retained", "teardown-failed", "covered-surfaces-unchanged-for-run")
 }

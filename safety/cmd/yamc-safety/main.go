@@ -271,7 +271,7 @@ func runSentinelEvaluate(arguments []string, stdout, stderr io.Writer) int {
 	}
 	evaluation := sentinel.Evaluate(manifest, evidence)
 	if parsed.claim != "" {
-		if _, err := sentinel.RequestClaim(evidence, evaluation, parsed.claim); err != nil {
+		if _, err := sentinel.RequestClaim(&evidence, evaluation, parsed.claim); err != nil {
 			evaluation = sentinel.Evaluation{Verdict: sentinel.VerdictHarnessError, ExitCode: sentinel.ExitHarnessError, Reason: "claim-rejected", EvidenceDigest: evaluation.EvidenceDigest}
 		}
 	}
