@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"example.invalid/yamc/safety/internal/artifact"
 	"example.invalid/yamc/safety/internal/contract"
 )
 
@@ -112,7 +113,7 @@ func testSyntheticFixtureReceipt(t *testing.T) {
 		t.Fatal("receipt escaped the synthetic fixture boundary")
 	}
 	operationID, ok := operationIDs[0].(string)
-	if !ok || !strings.HasPrefix(operationID, "fixture:") {
+	if !ok || !artifact.IsPublicID(operationID) || !strings.HasPrefix(operationID, "fixture.operation.") {
 		t.Fatal("receipt operation is not fixture scoped")
 	}
 

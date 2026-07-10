@@ -67,7 +67,7 @@ func testCaptureSuccess(t *testing.T, registry *privacy.Registry) {
 	if rejection != nil || observation.Status != "normalized" || len(observation.Facts) != 1 {
 		t.Fatal("registered fixture adapter did not normalize its output")
 	}
-	if observation.Facts[0].Ref != "fixture:observed/shell-policy" || observation.Facts[0].State != "declared" {
+	if observation.Facts[0].Ref != "fixture:observed/shell-policy" || observation.Facts[0].State != "fixture:state/declared" {
 		t.Fatal("normalized fixture fact changed")
 	}
 	encoded, err := json.Marshal(observation)

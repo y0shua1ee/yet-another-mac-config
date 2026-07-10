@@ -62,6 +62,44 @@
       "candidate": {
         "raw_output": "synthetic-private-value-never-output-raw"
       }
+    },
+    {
+      "name": "secret-in-run-id",
+      "candidate": {
+        "run_id": "synthetic-run-secret-canary"
+      }
+    },
+    {
+      "name": "identity-in-suite-id",
+      "candidate": {
+        "suite_id": "synthetic-username-canary"
+      }
+    },
+    {
+      "name": "path-in-state",
+      "candidate": {
+        "state": "Users/synthetic-home/private-item"
+      }
+    },
+    {
+      "name": "provider-in-reason",
+      "candidate": {
+        "reason": "provider-account-reference"
+      }
+    },
+    {
+      "name": "token-in-status",
+      "candidate": {
+        "status": "sk-synthetic-token-canary"
+      }
+    },
+    {
+      "name": "secret-in-operation-ids",
+      "candidate": {
+        "operation_ids": [
+          "fixture.operation.secret-token"
+        ]
+      }
     }
   ]
 }

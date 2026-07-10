@@ -4,7 +4,7 @@
   "facts": [
     {
       "ref": "fixture:observed/shell-policy",
-      "state": "declared"
+      "state": "fixture:state/declared"
     }
   ]
 }

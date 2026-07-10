@@ -54,7 +54,7 @@ func assertNormalizedFreshObservation(t *testing.T, artifacts map[string]envelop
 		t.Fatal("fresh observation does not contain one normalized fact")
 	}
 	fact, ok := facts[0].(map[string]any)
-	if !ok || len(fact) != 2 || fact["ref"] != "fixture:observed/shell-policy" || fact["state"] != "declared" {
+	if !ok || len(fact) != 2 || fact["ref"] != "fixture:observed/shell-policy" || fact["state"] != "fixture:state/declared" {
 		t.Fatal("fresh observation contains non-normalized adapter data")
 	}
 	encoded, err := json.Marshal(payload)

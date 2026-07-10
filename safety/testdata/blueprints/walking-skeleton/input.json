@@ -1,25 +1,26 @@
 {
   "schema_version": "1.0.0",
-  "run_id": "fixture:run/walking-skeleton-001",
-  "suite_id": "fixture:suite/walking-skeleton",
+  "run_id": "synthetic-run-walking-skeleton-001",
+  "suite_id": "walking-skeleton",
   "profile": "profile:synthetic-developer",
   "desired": [
     {
       "ref": "repo:synthetic/shell-policy",
-      "state": "declared"
+      "state": "fixture:state/declared"
     }
   ],
   "observed": [
     {
       "ref": "fixture:observed/shell-policy",
-      "state": "absent"
+      "state": "fixture:state/absent"
     }
   ],
   "expected_postconditions": [
     {
       "ref": "fixture:observed/shell-policy",
-      "state": "declared"
+      "state": "fixture:state/declared"
     }
   ],
-  "operation_id": "fixture:operation/materialize-shell-policy"
+  "operation_id": "fixture.operation.materialize-shell-policy",
+  "operation_target": "fixture:operation/materialize-shell-policy"
 }

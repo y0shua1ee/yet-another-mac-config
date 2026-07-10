@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -189,6 +190,7 @@ var (
 		"/canonical": {}, "/command": {}, "/artifact": {},
 	}
 	publicIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+	hex64Pattern    = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	integerPattern  = regexp.MustCompile(`^-?(0|[1-9][0-9]*)$`)
 	windowsPath     = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
 )
@@ -462,17 +464,218 @@ func scanValue(value any, field string) *violation {
 		if looksAbsoluteReference(typed) || looksPrivateNetwork(typed) {
 			return &violation{CodeLogicalRefRejected, "/logical_ref", CategoryAbsoluteRef, RemediationLogicalRef}
 		}
-		if isLogicalField(field) {
-			if _, err := ParseLogicalRef(typed); err != nil {
-				return &violation{CodeLogicalRefRejected, "/logical_ref", logicalCategory(err), RemediationLogicalRef}
-			}
-		} else if hasRegisteredPrefix(typed) {
-			if _, err := ParseLogicalRef(typed); err != nil {
-				return &violation{CodeLogicalRefRejected, "/logical_ref", logicalCategory(err), RemediationLogicalRef}
-			}
+		if violation := validateStringField(field, typed); violation != nil {
+			return violation
 		}
 	}
 	return nil
+}
+
+func validateStringField(field, value string) *violation {
+	reject := func() *violation {
+		return &violation{CodeDataRejected, "/payload/unclassified", CategoryUnclassified, RemediationNormalization}
+	}
+	logicalReject := func(err error) *violation {
+		return &violation{CodeLogicalRefRejected, "/logical_ref", logicalCategory(err), RemediationLogicalRef}
+	}
+	if field == "pointer" {
+		if _, ok := registeredPointers[value]; !ok {
+			return reject()
+		}
+		return nil
+	}
+	if isLogicalField(field) {
+		if _, err := ParseLogicalRef(value); err != nil {
+			return logicalReject(err)
+		}
+		return nil
+	}
+	if hasRegisteredPrefix(value) {
+		if _, err := ParseLogicalRef(value); err != nil {
+			return logicalReject(err)
+		}
+		return nil
+	}
+	if isDigestField(field) || isSHA256Digest(value) {
+		if !isSHA256Digest(value) {
+			return reject()
+		}
+		return nil
+	}
+	if isOpaqueTokenField(field) {
+		if !isOpaqueToken(value) {
+			return reject()
+		}
+		return nil
+	}
+	if isTimestampField(field) {
+		if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+			return reject()
+		}
+		return nil
+	}
+	switch field {
+	case "run_id", "suite_id", "operation_id", "operation_ids", "surface_id", "manifest_id", "test_id", "probe_id", "window_id", "task_suite", "wave", "id", "executable", "relative_id":
+		if !isSafePublicID(value) {
+			return reject()
+		}
+	case "decision_id":
+		if !regexp.MustCompile(`^D-[0-9]{2}$`).MatchString(value) {
+			return reject()
+		}
+	case "schema_version", "version":
+		if !regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(value) {
+			return reject()
+		}
+	case "state", "window_state", "terminal_state":
+		if !closedState(value) {
+			return reject()
+		}
+	case "status", "before_status", "after_status", "retention_status":
+		if !closedStatus(value) {
+			return reject()
+		}
+	case "reason", "before_reason", "after_reason":
+		if !closedReason(value) {
+			return reject()
+		}
+	case "verdict":
+		if !oneOf(value, "passed", "violation", "indeterminate", "harness-error") {
+			return reject()
+		}
+	case "tier":
+		if !oneOf(value, "offline-static", "isolated-integration", "live-check", "real-sentinel-envelope") {
+			return reject()
+		}
+	case "mode":
+		if !oneOf(value, "synthetic", "real-run", "real", "report-only", "apply", "read-only") {
+			return reject()
+		}
+	case "claim", "expected_claim":
+		if value != "" && value != "covered-surfaces-unchanged-for-run" {
+			return reject()
+		}
+	case "surface_domain":
+		if !oneOf(value, string(SurfaceWorktree), string(SurfaceNamedHome), string(SurfaceManagerRoot), string(SurfaceService), string(SurfaceNamedTarget)) {
+			return reject()
+		}
+	case "policy":
+		if !oneOf(value, "required", "optional", "excluded") {
+			return reject()
+		}
+	case "proof_state":
+		if !oneOf(value, "current", "missing") {
+			return reject()
+		}
+	case "storage_class":
+		if !oneOf(value, "synthetic-golden", "external-local-state") {
+			return reject()
+		}
+	case "retention":
+		if !oneOf(value, "snapshot-24h", "append-only-plan", "append-only-evidence-bundle") {
+			return reject()
+		}
+	case "error_code":
+		if _, ok := registeredCodes[ErrorCode(value)]; !ok {
+			return reject()
+		}
+	case "artifact_kind":
+		if _, ok := registeredKinds[ArtifactKind(value)]; !ok {
+			return reject()
+		}
+	case "adapter_id":
+		if !isSafePublicID(value) {
+			return reject()
+		}
+	case "category":
+		if _, ok := registeredCategories[Category(value)]; !ok {
+			return reject()
+		}
+	case "remediation":
+		if _, ok := registeredRemediations[Remediation(value)]; !ok {
+			return reject()
+		}
+	default:
+		if !isSafePublicID(value) {
+			return reject()
+		}
+	}
+	return nil
+}
+
+func isDigestField(field string) bool {
+	return field == "digest" || strings.HasSuffix(field, "_digest") || strings.HasSuffix(field, "_digests")
+}
+
+func isOpaqueTokenField(field string) bool {
+	return field == "opaque_snapshot" || strings.HasSuffix(field, "_token")
+}
+
+func isTimestampField(field string) bool {
+	return strings.HasSuffix(field, "_at") || field == "valid_until"
+}
+
+func isSHA256Digest(value string) bool {
+	return strings.HasPrefix(value, "sha256:") && hex64Pattern.MatchString(strings.TrimPrefix(value, "sha256:"))
+}
+
+func isOpaqueToken(value string) bool {
+	return strings.HasPrefix(value, "hmac-sha256:") && hex64Pattern.MatchString(strings.TrimPrefix(value, "hmac-sha256:"))
+}
+
+func isSafePublicID(value string) bool {
+	if !publicIDPattern.MatchString(value) {
+		return false
+	}
+	lower := strings.ToLower(value)
+	for _, marker := range []string{"api-key", "api_key", "private-key", "private_key"} {
+		if strings.Contains(lower, marker) {
+			return false
+		}
+	}
+	for _, segment := range strings.FieldsFunc(lower, func(r rune) bool { return r == '.' || r == '_' || r == '-' }) {
+		if oneOf(segment, "secret", "token", "password", "credential", "private", "provider", "username", "hostname", "apikey") {
+			return false
+		}
+	}
+	for _, prefix := range []string{"sk-", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "xox", "akia", "eyj"} {
+		if strings.HasPrefix(lower, prefix) {
+			return false
+		}
+	}
+	return true
+}
+
+func closedState(value string) bool {
+	if _, err := ParseLogicalRef(value); err == nil {
+		return true
+	}
+	return oneOf(value, "closed", "nonterminal", "applied", "abandoned", "synthetic-sentinel-passed", "manual-required", "indeterminate", "violation", "harness-error", "covered-surfaces-unchanged-for-run")
+}
+
+func closedStatus(value string) bool {
+	return oneOf(value,
+		"synthetic-sentinel-passed", "synthetic-fixture", "valid", "stored", "normalized", "unknown", "ready", "manual-required",
+		"complete", "incomplete", "passed", "violation", "indeterminate", "harness-error", "extra", "unmanaged-present",
+		"removed", "retained", "teardown-failed", "covered-surfaces-unchanged-for-run")
+}
+
+func closedReason(value string) bool {
+	return oneOf(value,
+		"unreadable", "race-detected", "bound-exceeded", "symlink-escape", "window-exceeded",
+		"offline-default", "isolated-offline", "tier-unknown", "exact-network-test-required", "network-execution-unavailable-phase-1", "network-test-unknown", "tier-network-denied", "live-probe-unapproved", "network-manifest-rejected", "ambient-state-forbidden",
+		"fixture-not-expired", "fixture-not-retained", "owned-child-remove-failed", "owned-child-remove-incomplete", "ownership-validation-failed", "primary-verdict-not-frozen",
+		"controlled-real-envelope-runner-required", "all-required-real-adapters-proven", "real-adapter-registry-rejected", "required-real-adapter-proof-unavailable", "required-real-adapter-unavailable", "real-manifest-freeze-rejected", "real-envelope-input-rejected", "real-adapter-implementation-rejected", "real-evidence-build-rejected", "primary-run-indeterminate", "primary-run-harness-error",
+		"evidence-binding-rejected", "manifest-binding-rejected", "evidence-provenance-rejected", "observation-window-rejected", "observation-window-binding-rejected", "surface-policy-substitution-rejected", "surface-evidence-count-rejected", "surface-evidence-substitution-rejected", "surface-evidence-duplicate-rejected", "surface-observation-rejected", "surface-evidence-missing", "required-observation-incomplete", "real-envelope-binding-missing", "claim-rejected")
+}
+
+func oneOf(value string, candidates ...string) bool {
+	for _, candidate := range candidates {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeField(field string) string {
@@ -488,7 +691,7 @@ func forbiddenField(field string) bool {
 		"environment": {}, "env": {}, "stdout": {}, "stderr": {}, "raw": {}, "raw_output": {},
 		"raw_bytes": {}, "physical_path": {}, "absolute_path": {}, "path": {}, "resolver_mapping": {},
 		"uid": {}, "host_identity": {}, "service_output": {}, "query_bytes": {}, "hmac_key": {},
-		"identity": {}, "value": {},
+		"identity": {}, "value": {}, "effective_uid": {}, "ownership_nonce": {},
 	}
 	if _, ok := forbidden[field]; ok {
 		return true

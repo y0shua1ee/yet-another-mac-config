@@ -5,8 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,6 +22,7 @@ func TestPrivacyBoundary(t *testing.T) {
 	t.Run("process local resolver containment", testResolverContainment)
 	t.Run("canaries never reach output", testCanariesNeverReachOutput)
 	t.Run("artifact store gates before write", testStoreGateBeforeWrite)
+	t.Run("allowed string fields use closed value contracts", testClosedAllowedFieldContracts)
 	t.Run("writers share the privacy gate", testWriterStructure)
 }
 
@@ -173,7 +174,7 @@ func testCanariesNeverReachOutput(t *testing.T) {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&fixture); err != nil || fixture.SchemaVersion != "1.0.0" || len(fixture.Cases) < 10 {
+	if err := decoder.Decode(&fixture); err != nil || fixture.SchemaVersion != "1.0.0" || len(fixture.Cases) < 16 {
 		t.Fatal("synthetic canary cases rejected")
 	}
 	for _, item := range fixture.Cases {
@@ -221,35 +222,136 @@ func testStoreGateBeforeWrite(t *testing.T) {
 	}
 	run := artifact.RunMetadata{RunID: "synthetic-run-privacy", Tier: "offline-static", SuiteID: "privacy-boundary"}
 	provenance := artifact.Provenance{Mode: "synthetic", InputDigests: []string{}}
-	unsafe, _, err := artifact.New(artifact.DesiredState, run, provenance, artifact.DesiredPayload{
+	if _, _, err := artifact.New(artifact.DesiredState, run, provenance, artifact.DesiredPayload{
 		Profile:      "profile:synthetic-developer",
-		Declarations: []artifact.Fact{{Ref: "repo:/synthetic/private", State: "declared"}},
+		Declarations: []artifact.Fact{{Ref: "repo:/synthetic/private", State: "fixture:state/declared"}},
+	}); err == nil {
+		t.Fatal("privacy-negative artifact crossed the closed kind contract")
+	}
+	safe, _, err := artifact.New(artifact.DesiredState, run, provenance, artifact.DesiredPayload{
+		Profile:      "profile:synthetic-developer",
+		Declarations: []artifact.Fact{{Ref: "repo:synthetic/config", State: "fixture:state/declared"}},
 	})
 	if err != nil {
-		t.Fatal("privacy-negative artifact should pass the earlier kind contract")
+		t.Fatal("safe artifact construction failed")
 	}
+	unsafe := mutateArtifactCanonical(t, safe, func(value map[string]any) {
+		value["payload"].(map[string]any)["declarations"].([]any)[0].(map[string]any)["ref"] = "repo:/synthetic/private"
+	})
 	if _, err := store.Write(unsafe); err == nil {
 		t.Fatal("privacy-negative artifact reached the store")
-	} else {
-		var envelope *privacy.ErrorEnvelope
-		if !errors.As(err, &envelope) {
-			t.Fatal("store did not return the shared privacy envelope")
-		}
+	} else if strings.Contains(err.Error(), "repo:/synthetic/private") {
+		t.Fatal("privacy-negative value reached the store diagnostic")
 	}
 	if entries, err := os.ReadDir(filepath.Join(storeRoot, "sha256")); err == nil && len(entries) != 0 {
 		t.Fatal("privacy rejection left a stored object")
 	}
 
-	safe, _, err := artifact.New(artifact.DesiredState, run, provenance, artifact.DesiredPayload{
-		Profile:      "profile:synthetic-developer",
-		Declarations: []artifact.Fact{{Ref: "repo:synthetic/config", State: "declared"}},
-	})
-	if err != nil {
-		t.Fatal("safe artifact construction failed")
-	}
 	if _, err := store.Write(safe); err != nil {
 		t.Fatal("safe artifact rejected by the privacy gate")
 	}
+}
+
+func testClosedAllowedFieldContracts(t *testing.T) {
+	t.Helper()
+	repositoryRoot := t.TempDir()
+	storeRoot := filepath.Join(t.TempDir(), "store")
+	store, err := artifact.NewStore(storeRoot, repositoryRoot)
+	if err != nil {
+		t.Fatal("closed field store setup failed")
+	}
+	validRun := artifact.RunMetadata{RunID: "synthetic-run-closed-fields", Tier: "offline-static", SuiteID: "privacy-boundary"}
+	provenance := artifact.Provenance{Mode: "synthetic", InputDigests: []string{}}
+	valid, _, err := artifact.New(artifact.DesiredState, validRun, provenance, artifact.DesiredPayload{
+		Profile:      "profile:synthetic-developer",
+		Declarations: []artifact.Fact{{Ref: "repo:synthetic/config", State: "fixture:state/declared"}},
+	})
+	if err != nil {
+		t.Fatal("closed field baseline unavailable")
+	}
+	mutations := []struct {
+		name   string
+		canary string
+		apply  func(map[string]any)
+	}{
+		{"run_id", "synthetic-run-secret-canary", func(value map[string]any) { value["run"].(map[string]any)["run_id"] = "synthetic-run-secret-canary" }},
+		{"suite_id", "synthetic-username-canary", func(value map[string]any) { value["run"].(map[string]any)["suite_id"] = "synthetic-username-canary" }},
+		{"state", "provider-account-reference", func(value map[string]any) {
+			value["payload"].(map[string]any)["declarations"].([]any)[0].(map[string]any)["state"] = "provider-account-reference"
+		}},
+	}
+	var cliArtifact []byte
+	for index, mutation := range mutations {
+		candidate := mutateArtifactCanonical(t, valid, mutation.apply)
+		if index == 0 {
+			cliArtifact = candidate
+		}
+		if _, err := store.Write(candidate); err == nil || strings.Contains(err.Error(), mutation.canary) {
+			t.Fatalf("closed %s canary crossed or echoed from Store.Write", mutation.name)
+		}
+	}
+	dummy := "sha256:" + strings.Repeat("1", 64)
+	if _, _, err := artifact.New(artifact.GeneratedPlan, validRun, provenance, artifact.GeneratedPlanPayload{
+		DesiredDigest: dummy, ObservedDigest: dummy, ExpectedPostconditionsDigest: dummy,
+		OperationIDs: []string{"fixture.operation.secret-token"},
+	}); err == nil {
+		t.Fatal("operation_ids secret crossed the artifact contract")
+	}
+	for _, candidate := range []map[string]any{
+		{"status": "sk-synthetic-token-canary"},
+		{"reason": "provider-account-reference"},
+	} {
+		var output bytes.Buffer
+		if rejection := privacy.Render(&output, privacy.Candidate{ArtifactKind: privacy.KindCommandResult, AdapterID: privacy.AdapterPrivacyTest, Value: candidate}); rejection == nil || output.Len() != 0 {
+			t.Fatal("closed command-result field crossed the renderer")
+		}
+	}
+
+	safetyRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal("closed field CLI root unavailable")
+	}
+	artifactPath := filepath.Join(t.TempDir(), "candidate.json")
+	if err := os.WriteFile(artifactPath, cliArtifact, 0o600); err != nil {
+		t.Fatal("closed field CLI candidate unavailable")
+	}
+	command := exec.Command("go", "run", "./cmd/yamc-safety", "validate", "--kind", "desired-state", "--artifact", artifactPath)
+	command.Dir = safetyRoot
+	command.Env = os.Environ()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	if err := command.Run(); err == nil || stdout.Len() != 0 || strings.Contains(stderr.String(), "synthetic-run-secret-canary") {
+		t.Fatal("closed run_id canary crossed or echoed from the CLI")
+	}
+	if entries, err := os.ReadDir(filepath.Join(storeRoot, "sha256")); err == nil && len(entries) != 0 {
+		t.Fatal("closed field canary left a stored object")
+	}
+}
+
+func mutateArtifactCanonical(t *testing.T, canonical []byte, mutate func(map[string]any)) []byte {
+	t.Helper()
+	var value map[string]any
+	if err := json.Unmarshal(canonical, &value); err != nil {
+		t.Fatal("artifact mutation setup failed")
+	}
+	delete(value, "content_digest")
+	mutate(value)
+	digest, err := artifact.DigestValue(value)
+	if err != nil {
+		t.Fatal("artifact mutation digest failed")
+	}
+	value["content_digest"] = digest
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal("artifact mutation encoding failed")
+	}
+	result, err := artifact.Canonicalize(encoded)
+	if err != nil {
+		t.Fatal("artifact mutation canonicalization failed")
+	}
+	return result
 }
 
 func testWriterStructure(t *testing.T) {

@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"example.invalid/yamc/safety/internal/privacy"
 )
 
 type Kind string
@@ -228,7 +230,7 @@ func validateDesiredPayload(raw json.RawMessage) error {
 	if err := decodeClosed(raw, &payload, "/payload"); err != nil {
 		return err
 	}
-	if payload.Profile == "" || len(payload.Declarations) == 0 || !validFacts(payload.Declarations) {
+	if !validLogicalRef(payload.Profile) || len(payload.Declarations) == 0 || !validFacts(payload.Declarations) {
 		return contractError(CodePayloadRejected, "/payload")
 	}
 	return nil
@@ -239,7 +241,7 @@ func validateObservedPayload(raw json.RawMessage) error {
 	if err := decodeClosed(raw, &payload, "/payload"); err != nil {
 		return err
 	}
-	if payload.Scope == "" || len(payload.Facts) == 0 || !validFacts(payload.Facts) {
+	if !validLogicalRef(payload.Scope) || len(payload.Facts) == 0 || !validFacts(payload.Facts) {
 		return contractError(CodePayloadRejected, "/payload")
 	}
 	return nil
@@ -261,7 +263,7 @@ func validateAppliedReceiptPayload(raw json.RawMessage) error {
 	if err := decodeClosed(raw, &payload, "/payload"); err != nil {
 		return err
 	}
-	if !IsDigest(payload.PlanDigest) || (payload.Mode != "synthetic" && payload.Mode != "real-run") || !validOperationIDs(payload.OperationIDs) || payload.Outcome == "" {
+	if !IsDigest(payload.PlanDigest) || (payload.Mode != "synthetic" && payload.Mode != "real-run") || !validOperationIDs(payload.OperationIDs) || !validLogicalRef(payload.Outcome) {
 		return contractError(CodePayloadRejected, "/payload")
 	}
 	return nil
@@ -282,7 +284,7 @@ func validateVerificationEvidencePayload(raw json.RawMessage) error {
 			return contractError(CodePayloadRejected, "/payload")
 		}
 	}
-	if payload.FreshObserved.Scope == "" || payload.FreshObserved.State == "" || payload.FreshObservedDigest != payload.FreshObserved.ContentDigest {
+	if !validLogicalRef(payload.FreshObserved.Scope) || !validLogicalRef(payload.FreshObserved.State) || payload.FreshObservedDigest != payload.FreshObserved.ContentDigest {
 		return contractError(CodePayloadRejected, "/payload/fresh_observed")
 	}
 	return nil
@@ -293,7 +295,7 @@ func validateReadinessReportPayload(raw json.RawMessage) error {
 	if err := decodeClosed(raw, &payload, "/payload"); err != nil {
 		return err
 	}
-	if payload.State == "" || (payload.EvidenceDigest == "") == (len(payload.EvidenceDigests) == 0) {
+	if !validReadinessState(payload.State) || (payload.EvidenceDigest == "") == (len(payload.EvidenceDigests) == 0) {
 		return contractError(CodePayloadRejected, "/payload")
 	}
 	if payload.EvidenceDigest != "" && !IsDigest(payload.EvidenceDigest) {
@@ -309,7 +311,7 @@ func validateReadinessReportPayload(raw json.RawMessage) error {
 
 func validFacts(facts []Fact) bool {
 	for _, fact := range facts {
-		if fact.Ref == "" || fact.State == "" {
+		if !validLogicalRef(fact.Ref) || !validLogicalRef(fact.State) {
 			return false
 		}
 	}
@@ -322,7 +324,7 @@ func validOperationIDs(operationIDs []string) bool {
 	}
 	seen := make(map[string]struct{}, len(operationIDs))
 	for _, operationID := range operationIDs {
-		if operationID == "" || strings.ContainsAny(operationID, " \t\r\n") {
+		if !IsPublicID(operationID) || !strings.HasPrefix(operationID, "fixture.") {
 			return false
 		}
 		if _, exists := seen[operationID]; exists {
@@ -331,4 +333,18 @@ func validOperationIDs(operationIDs []string) bool {
 		seen[operationID] = struct{}{}
 	}
 	return true
+}
+
+func validLogicalRef(value string) bool {
+	_, err := privacy.ParseLogicalRef(value)
+	return err == nil
+}
+
+func validReadinessState(value string) bool {
+	switch value {
+	case "synthetic-sentinel-passed", "manual-required", "indeterminate", "violation", "harness-error", "covered-surfaces-unchanged-for-run":
+		return true
+	default:
+		return false
+	}
 }

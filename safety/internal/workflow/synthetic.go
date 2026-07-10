@@ -150,6 +150,7 @@ type blueprint struct {
 	Observed               []fact `json:"observed"`
 	ExpectedPostconditions []fact `json:"expected_postconditions"`
 	OperationID            string `json:"operation_id"`
+	OperationTarget        string `json:"operation_target"`
 }
 
 type preparedArtifact struct {
@@ -181,14 +182,14 @@ func RunSynthetic(options Options) (Summary, error) {
 		Status:        contract.StatusSyntheticFixture,
 		Operations: []contract.Operation{{
 			Kind:   contract.OperationFixtureFakeWrite,
-			Target: input.OperationID,
+			Target: input.OperationTarget,
 			Mode:   "synthetic",
 		}},
 	})
 	if err != nil || len(policyDecision.Operations) != 1 {
 		return Summary{}, errors.New("synthetic operation policy rejected")
 	}
-	operationID := policyDecision.Operations[0].Target
+	operationID := input.OperationID
 	surfacesBytes, err := readBounded(surfacesPath)
 	if err != nil {
 		return Summary{}, err
@@ -398,16 +399,16 @@ func parseBlueprint(data []byte) (blueprint, error) {
 		return blueprint{}, errors.New("synthetic blueprint rejected")
 	}
 	if input.SchemaVersion != "1.0.0" ||
-		!validLogicalRef(input.RunID) || !strings.HasPrefix(input.RunID, "fixture:") ||
-		!validLogicalRef(input.SuiteID) || !strings.HasPrefix(input.SuiteID, "fixture:") ||
+		!artifact.IsPublicID(input.RunID) || !artifact.IsPublicID(input.SuiteID) ||
 		!validLogicalRef(input.Profile) || !strings.HasPrefix(input.Profile, "profile:") ||
-		!validLogicalRef(input.OperationID) || !strings.HasPrefix(input.OperationID, "fixture:") ||
+		!artifact.IsPublicID(input.OperationID) ||
+		!validLogicalRef(input.OperationTarget) || !strings.HasPrefix(input.OperationTarget, "fixture:") ||
 		len(input.Desired) == 0 || len(input.Observed) == 0 || len(input.ExpectedPostconditions) == 0 {
 		return blueprint{}, errors.New("synthetic blueprint rejected")
 	}
 	for _, group := range [][]fact{input.Desired, input.Observed, input.ExpectedPostconditions} {
 		for _, item := range group {
-			if !validLogicalRef(item.Ref) || item.State == "" {
+			if !validLogicalRef(item.Ref) || !validLogicalRef(item.State) {
 				return blueprint{}, errors.New("synthetic blueprint rejected")
 			}
 		}

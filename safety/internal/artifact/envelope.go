@@ -5,12 +5,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const SchemaVersion = "1.0.0"
+
+var publicIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,95}$`)
 
 type RunMetadata struct {
 	RunID   string `json:"run_id"`
@@ -176,6 +179,32 @@ func IsDigest(value string) bool {
 	return err == nil && len(decoded) == sha256.Size && raw == strings.ToLower(raw)
 }
 
+// IsPublicID accepts only bounded, non-secret structural identifiers.
+func IsPublicID(value string) bool {
+	if !publicIDPattern.MatchString(value) {
+		return false
+	}
+	lower := strings.ToLower(value)
+	for _, marker := range []string{"api-key", "api_key", "private-key", "private_key"} {
+		if strings.Contains(lower, marker) {
+			return false
+		}
+	}
+	for _, marker := range []string{"secret", "token", "password", "credential", "private", "provider", "username", "hostname", "api-key", "apikey"} {
+		for _, segment := range strings.FieldsFunc(lower, func(r rune) bool { return r == '.' || r == '_' || r == '-' }) {
+			if segment == marker {
+				return false
+			}
+		}
+	}
+	for _, prefix := range []string{"sk-", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "xox", "akia", "eyj"} {
+		if strings.HasPrefix(lower, prefix) {
+			return false
+		}
+	}
+	return true
+}
+
 func validateEnvelope(envelope Envelope) error {
 	if _, ok := kindRegistry[envelope.Kind]; !ok {
 		return contractError(CodeKindRejected, "/kind")
@@ -183,7 +212,7 @@ func validateEnvelope(envelope Envelope) error {
 	if envelope.SchemaVersion != SchemaVersion {
 		return contractError(CodeSchemaRejected, "/schema_version")
 	}
-	if envelope.Run.RunID == "" || envelope.Run.Tier == "" || envelope.Run.SuiteID == "" {
+	if !IsPublicID(envelope.Run.RunID) || (!strings.HasPrefix(envelope.Run.RunID, "synthetic-run-") && !strings.HasPrefix(envelope.Run.RunID, "real-run-")) || !IsPublicID(envelope.Run.SuiteID) || (envelope.Run.Tier != "offline-static" && envelope.Run.Tier != "isolated-integration" && envelope.Run.Tier != "real-sentinel-envelope") {
 		return contractError(CodeEnvelopeRejected, "/run")
 	}
 	if envelope.Producer.ID != "yamc-safety" || envelope.Producer.Version == "" {
