@@ -135,14 +135,18 @@ func testReadOnlyGitAdapters(t *testing.T) {
 	key := bytes.Repeat([]byte{0x31}, 32)
 	tracked := surfaceByRef(t, manifest, "repo:sentinel/worktree/tracked")
 	index := surfaceByRef(t, manifest, "repo:sentinel/worktree/index")
-	trackedSnapshot := snapshotGitWorktree(context.Background(), tracked, resolver, key)
-	indexSnapshot := snapshotGitIndex(context.Background(), index, resolver, key)
+	gitCapability := newGitVersionCapability(repository)
+	trackedSnapshot := snapshotGitWorktree(context.Background(), tracked, resolver, key, gitCapability)
+	indexSnapshot := snapshotGitIndex(context.Background(), index, resolver, key, gitCapability)
 	after := captureTreeState(t, repository)
 
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("read-only Git observation changed the isolated repository")
 	}
-	if supportedGitVersion(context.Background(), repository) {
+	if gitCapability.probes != 1 {
+		t.Fatal("Git capability was probed more than once for one adapter set")
+	}
+	if gitCapability.supported {
 		if trackedSnapshot.Status != ObservationComplete || indexSnapshot.Status != ObservationComplete || !validOpaqueToken(trackedSnapshot.OpaqueState) || !validOpaqueToken(indexSnapshot.OpaqueState) {
 			t.Fatal("supported isolated Git adapters did not produce bounded opaque observations")
 		}
@@ -223,6 +227,19 @@ func testReadOnlyGoAdapters(t *testing.T) {
 	if snapshot := snapshotExactTree(treeSurface, filepath.Join(root, "escape"), root, key); snapshot.Status != ObservationIncomplete || snapshot.OpaqueState != "" {
 		t.Fatal("tree symlink escape produced a token")
 	}
+	if err := os.WriteFile(filepath.Join(root, ".zshrc"), []byte("frozen-resolver-state"), 0o600); err != nil {
+		t.Fatal("frozen resolver setup failed")
+	}
+	registry := testOnlyReadyRegistry(t)
+	callerResolver := &realResolver{repositoryRoot: root, homeRoot: root, managerRoot: tree, systemShells: exact}
+	defaultAdapters := defaultRealAdapters(registry, callerResolver)
+	callerResolver.repositoryRoot = outside
+	callerResolver.homeRoot = outside
+	callerResolver.managerRoot = outside
+	callerResolver.systemShells = filepath.Join(outside, "secret")
+	if snapshot := defaultAdapters["go-lstat-file-v1"].snapshot(context.Background(), fileSurface, nil, key); snapshot.Status != ObservationComplete || !validOpaqueToken(snapshot.OpaqueState) {
+		t.Fatal("caller resolver mutation redirected an authorized default adapter")
+	}
 	fifo := filepath.Join(root, "fifo")
 	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
 		t.Fatal("FIFO negative setup failed")
@@ -254,12 +271,12 @@ func testRealEnvelopePass(t *testing.T) {
 	workloadFixture, _ := createEnvelopeFixture(t, surfaceRoot, false)
 	workloadRoot := workloadFixture.Paths().Root
 	key := bytes.Repeat([]byte{0x53}, 32)
-	result := RunRealEnvelope(RealEnvelopeOptions{
+	result := runRealEnvelope(t, RealEnvelopeOptions{
 		Manifest:  callerManifest,
 		Registry:  registry,
 		Adapters:  isolatedRealAdapters(manifest, registry, resolver, ""),
 		Retention: workloadFixture.Retention(),
-		Workload: func() (string, error) {
+		Workload: func(_ context.Context) (string, error) {
 			if _, err := os.Lstat(workloadRoot); err != nil {
 				return "", errors.New("isolated workload fixture unavailable")
 			}
@@ -325,7 +342,7 @@ func testRealEnvelopeMonotonicity(t *testing.T) {
 		}
 		root, _ := createEnvelopeFixture(t, surfaceRoot, false)
 		physicalRoot := root.Paths().Root
-		result := RunRealEnvelope(RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: isolatedRealAdapters(manifest, registry, resolver, ""), Retention: root.Retention(), Workload: func() (string, error) {
+		result := runRealEnvelope(t, RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: isolatedRealAdapters(manifest, registry, resolver, ""), Retention: root.Retention(), Workload: func(_ context.Context) (string, error) {
 			return "", errors.New("isolated workload failed")
 		}, Clock: envelopeClock(), Key: key, WindowID: "real-envelope-workload-failure"})
 		if !reflect.DeepEqual(result.Sequence, wantSequence) || result.Evaluation.Verdict != VerdictHarnessError || result.Evaluation.ExitCode == 0 || result.Evaluation.Claim != "" || result.TeardownStatus != fixture.TeardownRemoved {
@@ -346,7 +363,7 @@ func testRealEnvelopeMonotonicity(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root.Paths().Root, ".yamc-fixture-marker.json"), []byte("{\n"), 0o600); err != nil {
 			t.Fatal("teardown failure setup failed")
 		}
-		result := RunRealEnvelope(RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: isolatedRealAdapters(manifest, registry, resolver, ""), Retention: root.Retention(), Workload: func() (string, error) {
+		result := runRealEnvelope(t, RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: isolatedRealAdapters(manifest, registry, resolver, ""), Retention: root.Retention(), Workload: func(_ context.Context) (string, error) {
 			return innerSyntheticSuccess, nil
 		}, Clock: envelopeClock(), Key: key, WindowID: "real-envelope-teardown-failure"})
 		if !reflect.DeepEqual(result.Sequence, wantSequence) || result.Evaluation.Verdict != VerdictHarnessError || result.Evaluation.ExitCode == 0 || result.Evaluation.Claim != "" || result.TeardownStatus != fixture.TeardownFailed {
@@ -362,7 +379,7 @@ func testRealEnvelopeMonotonicity(t *testing.T) {
 		}
 		root, advance := createEnvelopeFixture(t, surfaceRoot, true)
 		physicalRoot := root.Paths().Root
-		result := RunRealEnvelope(RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: isolatedRealAdapters(manifest, registry, resolver, ""), Retention: root.Retention(), Workload: func() (string, error) {
+		result := runRealEnvelope(t, RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: isolatedRealAdapters(manifest, registry, resolver, ""), Retention: root.Retention(), Workload: func(_ context.Context) (string, error) {
 			return innerSyntheticSuccess, nil
 		}, Clock: envelopeClock(), Key: key, WindowID: "real-envelope-retained"})
 		if result.Evaluation.Verdict != VerdictPassed || result.Evaluation.Claim != ScopedUnchangedClaim || result.TeardownStatus != fixture.TeardownRetained {
@@ -392,11 +409,47 @@ func testRealEnvelopeMonotonicity(t *testing.T) {
 			t.Fatal("isolated analog setup failed")
 		}
 		root, _ := createEnvelopeFixture(t, surfaceRoot, false)
-		result := RunRealEnvelope(RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: isolatedRealAdapters(manifest, registry, resolver, "home:.zshrc"), Retention: root.Retention(), Workload: func() (string, error) {
+		result := runRealEnvelope(t, RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: isolatedRealAdapters(manifest, registry, resolver, "home:.zshrc"), Retention: root.Retention(), Workload: func(_ context.Context) (string, error) {
 			return innerSyntheticSuccess, nil
 		}, Clock: envelopeClock(), Key: key, WindowID: "real-envelope-after-incomplete"})
 		if !reflect.DeepEqual(result.Sequence, wantSequence) || result.Evaluation.Verdict != VerdictIndeterminate || result.Evaluation.ExitCode == 0 || result.Evaluation.Claim != "" || result.TeardownStatus != fixture.TeardownRemoved {
 			t.Fatal("after observation failure was masked")
+		}
+	})
+
+	t.Run("freezes authorized adapter implementations across the workload", func(t *testing.T) {
+		surfaceRoot := t.TempDir()
+		resolver, err := PrepareProtectedSynthetic(surfaceRoot)
+		if err != nil {
+			t.Fatal("isolated analog setup failed")
+		}
+		root, _ := createEnvelopeFixture(t, surfaceRoot, false)
+		adapters := isolatedRealAdapters(manifest, registry, resolver, "")
+		authorizedCalls := 0
+		substitutedCalls := 0
+		for adapterID, adapter := range adapters {
+			original := adapter.snapshot
+			adapter.snapshot = func(ctx context.Context, surface ProtectedSurface, resolver *realResolver, key []byte) SurfaceSnapshot {
+				authorizedCalls++
+				return original(ctx, surface, resolver, key)
+			}
+			adapters[adapterID] = adapter
+		}
+		result := runRealEnvelope(t, RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: adapters, Retention: root.Retention(), Workload: func(_ context.Context) (string, error) {
+			for adapterID, adapter := range adapters {
+				adapter.snapshot = func(_ context.Context, surface ProtectedSurface, _ *realResolver, key []byte) SurfaceSnapshot {
+					substitutedCalls++
+					return completeSurface(surface, key, []byte("post-gate-substitution"))
+				}
+				adapters[adapterID] = adapter
+			}
+			return innerSyntheticSuccess, nil
+		}, Clock: envelopeClock(), Key: key, WindowID: "real-envelope-frozen-adapters"})
+		if result.Evaluation.Verdict != VerdictPassed || result.Evaluation.Claim != ScopedUnchangedClaim || result.TeardownStatus != fixture.TeardownRemoved {
+			t.Fatal("post-gate adapter substitution changed the authorized envelope")
+		}
+		if authorizedCalls != 2*len(manifest.Surfaces) || substitutedCalls != 0 {
+			t.Fatal("after observation did not use the frozen authorized adapter set")
 		}
 	})
 
@@ -421,11 +474,64 @@ func testRealEnvelopeMonotonicity(t *testing.T) {
 			return completeSurface(surface, key, state)
 		}
 		adapters[adapterID] = adapter
-		result := RunRealEnvelope(RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: adapters, Retention: root.Retention(), Workload: func() (string, error) {
+		result := runRealEnvelope(t, RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: adapters, Retention: root.Retention(), Workload: func(_ context.Context) (string, error) {
 			return "", errors.New("isolated workload failed before drift")
 		}, Clock: envelopeClock(), Key: key, WindowID: "real-envelope-failure-and-drift"})
 		if result.Evaluation.Verdict != VerdictViolation || result.Evaluation.ExitCode != ExitViolation || result.Evaluation.ChangeCode != ChangeDetectedCode || result.Evaluation.Claim != "" || result.TeardownStatus != fixture.TeardownRemoved {
 			t.Fatal("required drift was hidden by an earlier non-pass")
+		}
+	})
+
+	t.Run("shares one outer deadline across every stage", func(t *testing.T) {
+		surfaceRoot := t.TempDir()
+		resolver, err := PrepareProtectedSynthetic(surfaceRoot)
+		if err != nil {
+			t.Fatal("isolated analog setup failed")
+		}
+		root, _ := createEnvelopeFixture(t, surfaceRoot, false)
+		physicalRoot := root.Paths().Root
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		adapters := isolatedRealAdapters(manifest, registry, resolver, "")
+		adapterCalls := 0
+		contextMismatch := false
+		for adapterID, adapter := range adapters {
+			original := adapter.snapshot
+			adapter.snapshot = func(got context.Context, surface ProtectedSurface, resolver *realResolver, key []byte) SurfaceSnapshot {
+				if got != ctx {
+					contextMismatch = true
+				}
+				adapterCalls++
+				return original(got, surface, resolver, key)
+			}
+			adapters[adapterID] = adapter
+		}
+		workloadCalls := 0
+		result := RunRealEnvelope(RealEnvelopeOptions{
+			Manifest: manifest, Registry: registry, Adapters: adapters, Retention: root.Retention(), Context: ctx,
+			Workload: func(got context.Context) (string, error) {
+				workloadCalls++
+				if got != ctx {
+					contextMismatch = true
+				}
+				cancel()
+				return innerSyntheticSuccess, nil
+			},
+			Clock: envelopeClock(), Key: key, WindowID: "real-envelope-shared-deadline",
+		})
+		if !reflect.DeepEqual(result.Sequence, wantSequence) || result.Evaluation.Verdict != VerdictIndeterminate || result.Evaluation.ExitCode != ExitIndeterminate || result.Evaluation.Claim != "" || result.TeardownStatus != fixture.TeardownRemoved || result.Evidence == nil {
+			t.Fatal("shared deadline did not remain monotonic through finalization and after observation")
+		}
+		if contextMismatch || workloadCalls != 1 || adapterCalls != len(manifest.Surfaces) {
+			t.Fatal("outer deadline was replaced or later adapters ran after cancellation")
+		}
+		for _, surface := range result.Evidence.Surfaces {
+			if surface.AfterStatus != ObservationIncomplete || surface.AfterReason != ReasonWindow || surface.AfterToken != "" {
+				t.Fatal("after observation ignored the expired shared deadline")
+			}
+		}
+		if _, err := os.Lstat(physicalRoot); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("shared deadline skipped marker-owned fixture finalization")
 		}
 	})
 }
@@ -443,7 +549,7 @@ func testRealEnvelopeRejectsSyntheticAdapters(t *testing.T) {
 	tampered := manifest
 	tampered.Surfaces = append([]ProtectedSurface(nil), manifest.Surfaces...)
 	tampered.Surfaces[0].Bounds.MaxFiles--
-	result := RunRealEnvelope(RealEnvelopeOptions{Manifest: tampered, Registry: registry, Adapters: adapters, Workload: func() (string, error) {
+	result := runRealEnvelope(t, RealEnvelopeOptions{Manifest: tampered, Registry: registry, Adapters: adapters, Workload: func(_ context.Context) (string, error) {
 		workloadCalled = true
 		return innerSyntheticSuccess, nil
 	}, Clock: envelopeClock(), Key: bytes.Repeat([]byte{0x74}, 32), WindowID: "real-envelope-stale-manifest"})
@@ -456,7 +562,7 @@ func testRealEnvelopeRejectsSyntheticAdapters(t *testing.T) {
 	adapter.capability = &realAdapterCapability{registry: registry, adapterID: first, implementationDigest: registry.definitions[first].ImplementationDigest}
 	adapters[first] = adapter
 	workloadCalled = false
-	result = RunRealEnvelope(RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: adapters, Workload: func() (string, error) {
+	result = runRealEnvelope(t, RealEnvelopeOptions{Manifest: manifest, Registry: registry, Adapters: adapters, Workload: func(_ context.Context) (string, error) {
 		workloadCalled = true
 		return innerSyntheticSuccess, nil
 	}, Clock: envelopeClock(), Key: bytes.Repeat([]byte{0x75}, 32), WindowID: "real-envelope-synthetic-rejected"})
@@ -476,7 +582,7 @@ func testRealEnvelopeRejectsSyntheticAdapters(t *testing.T) {
 		}
 		adapters[adapterID] = candidate
 	}
-	result = RunRealEnvelope(RealEnvelopeOptions{Manifest: manifest, Registry: tracked, Adapters: adapters, Workload: func() (string, error) {
+	result = runRealEnvelope(t, RealEnvelopeOptions{Manifest: manifest, Registry: tracked, Adapters: adapters, Workload: func(_ context.Context) (string, error) {
 		workloadCalled = true
 		return innerSyntheticSuccess, nil
 	}, Clock: envelopeClock(), Key: bytes.Repeat([]byte{0x76}, 32), WindowID: "real-envelope-proof-missing"})
@@ -553,6 +659,14 @@ func createEnvelopeFixture(t *testing.T, protectedRoot string, keep bool) (*fixt
 		t.Fatal("isolated workload fixture unavailable")
 	}
 	return root, func(duration time.Duration) { now = now.Add(duration) }
+}
+
+func runRealEnvelope(t *testing.T, options RealEnvelopeOptions) RealEnvelope {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	options.Context = ctx
+	return RunRealEnvelope(options)
 }
 
 func envelopeClock() func() time.Time {

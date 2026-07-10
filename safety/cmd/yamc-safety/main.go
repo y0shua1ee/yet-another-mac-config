@@ -186,7 +186,7 @@ func runRealSentinelProofGate(parsed sentinelVerifyFlags, manifest sentinel.Prot
 		writeSafeError(stderr, "REAL_ADAPTER_MANIFEST_REJECTED")
 		return sentinel.ExitHarnessError
 	}
-	registry, err := sentinel.LoadRealAdapterRegistry(data, time.Now())
+	registry, err := sentinel.LoadRealAdapterRegistry(data, time.Now().UTC())
 	if err != nil {
 		writeSafeError(stderr, "REAL_ADAPTER_MANIFEST_REJECTED")
 		return sentinel.ExitHarnessError

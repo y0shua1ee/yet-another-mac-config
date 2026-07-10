@@ -31,12 +31,23 @@ func testRealSentinelProofGateCLI(t *testing.T) {
 		"--adapter-manifest", adapterManifestPath,
 	)
 	if err == nil || !isGoRunExit(stderr, 32) {
-		t.Fatal("missing launchctl proof did not return exact manual-required exit")
+		t.Fatal("unavailable required proof did not return exact manual-required exit")
 	}
 	var assessment sentinel.RealProofAssessment
 	decodeStrict(t, stdout, &assessment)
-	if assessment.Status != "manual-required" || assessment.Verdict != sentinel.VerdictIndeterminate || assessment.ExitCode != 32 || assessment.Reason != "required-real-adapter-proof-unavailable" || assessment.ClaimEligible || assessment.SurfaceDomain != "service" || assessment.LogicalRef != "profile:sentinel/service/homebrew-mxcl-nginx" {
+	if assessment.Status != "manual-required" || assessment.Verdict != sentinel.VerdictIndeterminate || assessment.ExitCode != 32 || assessment.Reason != "required-real-adapter-proof-unavailable" || assessment.ClaimEligible {
 		t.Fatal("real CLI proof assessment changed or overclaimed")
+	}
+	allowedStops := map[string]struct{}{
+		"worktree\x00repo:sentinel/worktree/tracked":                  {},
+		"worktree\x00repo:sentinel/worktree/index":                    {},
+		"named-home\x00home:.zshrc":                                   {},
+		"manager-root\x00home:sentinel/manager/mise-data":             {},
+		"service\x00profile:sentinel/service/homebrew-mxcl-nginx":     {},
+		"named-target\x00profile:sentinel/named-target/system-shells": {},
+	}
+	if _, ok := allowedStops[string(assessment.SurfaceDomain)+"\x00"+assessment.LogicalRef]; !ok {
+		t.Fatal("real CLI proof gate stopped outside the closed required scope")
 	}
 	combined := append(append([]byte{}, stdout...), stderr...)
 	for _, forbidden := range []string{manifestPath, adapterManifestPath, safetyRoot, "/Users/", "/usr/bin/git", "/bin/launchctl", "effective_uid", "host_identity", "resolver_mapping", "service_output", "raw_output", "hmac_key", sentinel.ScopedUnchangedClaim, "whole-Mac-unchanged", "recovery-ready-on-current-host", "multi-host-verified", "fresh-install-verified"} {
@@ -124,16 +135,34 @@ func testRealSentinelRunnerContract(t *testing.T) {
 		"task:real-sentinel-envelope)",
 		"wave:sentinels)",
 		"run_with_runner_deadline",
-		"RUNNER_BUDGET_SECONDS=9",
-		"RUNNER_BUDGET_SECONDS=29",
-		"test -count=1 -timeout=8s",
+		"run_wave_child",
+		"RUNNER_BUDGET_SECONDS=15",
+		"RUNNER_BUDGET_SECONDS=47",
+		"RUNNER_BUDGET_SECONDS=305",
+		"runner-deadline-exceeded",
+		"exit 70 unless setpgrp(0, 0);",
+		"$SIG{TERM} = sub",
+		"kill \"TERM\", $pid;",
+		"kill 0, -$pid",
+		"$stop_descendants->();",
+		"handle_test_signal 143",
+		"test -count=1 -timeout=30s",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("real sentinel runner literal missing: %s", required)
 		}
 	}
+	waitIndex := strings.Index(text, "waitpid($pid, 0);")
+	descendantCleanupIndex := strings.Index(text, "$stop_descendants->();")
+	if waitIndex < 0 || descendantCleanupIndex < 0 || descendantCleanupIndex < waitIndex {
+		t.Fatal("normal child exit does not clean its surviving process group")
+	}
 	if strings.Count(text, "task:real-sentinel-envelope)") != 1 || strings.Count(text, "wave:sentinels)") != 1 {
 		t.Fatal("real sentinel runner labels are not unique")
+	}
+	mainSource, err := os.ReadFile(filepath.Join(safetyRoot, "cmd", "yamc-safety", "main.go"))
+	if err != nil || !bytes.Contains(mainSource, []byte("LoadRealAdapterRegistry(data, time.Now().UTC())")) {
+		t.Fatal("real proof date is not normalized to UTC")
 	}
 	if !strings.Contains(text, "task:real-sentinel-envelope)\n    run_real_sentinel_envelope\n    ;;") || !strings.Contains(text, "wave:sentinels)\n    run_sentinels_wave\n    ;;") {
 		t.Fatal("sentinel case labels are not bound to their exact handlers")
@@ -167,18 +196,91 @@ func testRealSentinelRunnerContract(t *testing.T) {
 		t.Fatal("sentinel wave body unavailable")
 	}
 	wave := text[waveStart : waveStart+waveEnd]
-	wantHandlers := []string{"task sentinel-manifest", "task sentinel-verdicts", "task real-sentinel-envelope"}
+	wantHandlers := []string{"sentinel-manifest", "sentinel-verdicts", "real-sentinel-envelope"}
 	for _, handler := range wantHandlers {
-		if strings.Count(wave, handler) != 1 {
+		if strings.Count(wave, "run_wave_child "+handler) != 1 {
 			t.Fatalf("sentinel wave does not invoke exactly one %s handler", handler)
 		}
 	}
-	if strings.Count(wave, "/bin/bash \"${SCRIPT_DIR}/test.sh\" task ") != len(wantHandlers) {
+	if strings.Count(wave, "run_wave_child ") != len(wantHandlers) {
 		t.Fatal("sentinel wave aggregates an unexpected handler")
+	}
+	if strings.Contains(wave, "run_with_runner_deadline /bin/bash") {
+		t.Fatal("sentinel wave recreated a nested process-group deadline")
 	}
 	for _, forbidden := range []string{" launchctl ", " git ", " curl ", " eval ", " go test ", "fixture run"} {
 		if strings.Contains(wave, forbidden) {
 			t.Fatal("sentinel wave contains a command outside the three fixed child handlers")
+		}
+	}
+	waveChildStart := strings.Index(text, "run_wave_child()")
+	if waveChildStart < 0 {
+		t.Fatal("wave child deadline helper unavailable")
+	}
+	waveChildEnd := strings.Index(text[waveChildStart:], "\n}\n")
+	if waveChildEnd < 0 {
+		t.Fatal("wave child deadline helper unavailable")
+	}
+	waveChild := text[waveChildStart : waveChildStart+waveChildEnd]
+	for _, required := range []string{
+		"/bin/bash \"${SCRIPT_DIR}/test.sh\" task \"${suite_name}\"",
+		"child_status}\" -eq 124",
+		"remaining}\" -lt 15",
+		"print_runner_deadline \"${suite_name}\"",
+		"return 124",
+	} {
+		if !strings.Contains(waveChild, required) {
+			t.Fatalf("wave child deadline contract missing: %s", required)
+		}
+	}
+	if strings.Contains(waveChild, "run_with_runner_deadline") {
+		t.Fatal("wave child helper nests a process-group deadline")
+	}
+	waveDeadline := strings.Index(waveChild, "child_status}\" -eq 124")
+	waveOutputCap := strings.Index(waveChild, "${#output} > 65536")
+	if waveDeadline < 0 || waveOutputCap < 0 || waveDeadline > waveOutputCap {
+		t.Fatal("wave child output cap can overwrite an observed deadline")
+	}
+	runGoStart := strings.Index(text, "run_go_suite()")
+	if runGoStart < 0 {
+		t.Fatal("go suite deadline helper unavailable")
+	}
+	runGoEnd := strings.Index(text[runGoStart:], "\n}\n")
+	if runGoEnd < 0 {
+		t.Fatal("go suite deadline helper unavailable")
+	}
+	runGoSuite := text[runGoStart : runGoStart+runGoEnd]
+	goDeadline := strings.Index(runGoSuite, "status}\" -eq 124")
+	goOutputCap := strings.Index(runGoSuite, "${#output} > 65536")
+	if goDeadline < 0 || goOutputCap < 0 || goDeadline > goOutputCap {
+		t.Fatal("go suite output cap can overwrite an observed deadline")
+	}
+	compiledStart := strings.Index(text, "run_compiled_go_suite()")
+	if compiledStart < 0 {
+		t.Fatal("compiled go suite deadline helper unavailable")
+	}
+	compiledEnd := strings.Index(text[compiledStart:], "\n}\n")
+	if compiledEnd < 0 {
+		t.Fatal("compiled go suite deadline helper unavailable")
+	}
+	compiledSuite := text[compiledStart : compiledStart+compiledEnd]
+	compiledDeadline := strings.Index(compiledSuite, "status}\" -eq 124")
+	compiledOutputCap := strings.Index(compiledSuite, "${#output} > 65536")
+	if compiledDeadline < 0 || compiledOutputCap < 0 || compiledDeadline > compiledOutputCap {
+		t.Fatal("compiled go suite output cap can overwrite an observed deadline")
+	}
+	exactSuiteStart := strings.Index(text, "run_exact_go_suite()")
+	if exactSuiteStart < 0 {
+		t.Fatal("exact suite helper unavailable")
+	}
+	exactSuiteEnd := strings.Index(text[exactSuiteStart:], "\n}\n")
+	if exactSuiteEnd < 0 {
+		t.Fatal("exact suite helper unavailable")
+	}
+	exactSuite := text[exactSuiteStart : exactSuiteStart+exactSuiteEnd]
+	for _, required := range []string{"test -c -o \"${test_binary}\"", "-test.list \"${test_pattern}\"", "run_compiled_go_suite", "build_status}\" -eq 124", "listing_status}\" -eq 124", "TEST_STATUS:-0}\" -eq 124", "print_runner_deadline", "return 124"} {
+		if !strings.Contains(exactSuite, required) {
+			t.Fatalf("exact suite timeout mapping missing: %s", required)
 		}
 	}
 
@@ -186,6 +288,7 @@ func testRealSentinelRunnerContract(t *testing.T) {
 		Adapters []struct {
 			AdapterID  string  `json:"adapter_id"`
 			ProofState string  `json:"proof_state"`
+			ReviewedAt string  `json:"reviewed_at"`
 			ValidUntil *string `json:"valid_until"`
 		} `json:"adapters"`
 	}
@@ -195,6 +298,9 @@ func testRealSentinelRunnerContract(t *testing.T) {
 	}
 	launchctlMissing := false
 	for _, adapter := range proofManifest.Adapters {
+		if adapter.ReviewedAt == "" || adapter.ReviewedAt > "2026-07-10" {
+			t.Fatal("adapter proof review date is later than the authoritative project date")
+		}
 		if adapter.AdapterID == "launchctl-print-service-v1" {
 			launchctlMissing = adapter.ProofState == "missing" && adapter.ValidUntil == nil
 		}

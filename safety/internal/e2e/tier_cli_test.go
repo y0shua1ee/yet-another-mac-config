@@ -199,8 +199,8 @@ func testTierRunnerContract(t *testing.T) {
 		"'./internal/fixture'", "'^TestTierNetworkPolicy$'", "'TestTierNetworkPolicy'",
 		"'./internal/e2e'", "'^TestTierCLI$'", "'TestTierCLI'",
 		"run_tier_network_policy", "run_fixture_policy_wave",
-		`/bin/bash "${SCRIPT_DIR}/test.sh" task fixture-lifecycle`,
-		`/bin/bash "${SCRIPT_DIR}/test.sh" task tier-network-policy`,
+		"run_wave_child fixture-lifecycle",
+		"run_wave_child tier-network-policy",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("runner fixed tier pair or fresh-root aggregation missing: %s", required)
@@ -208,6 +208,14 @@ func testTierRunnerContract(t *testing.T) {
 	}
 	if strings.Count(text, "task:tier-network-policy)") != 1 || strings.Count(text, "wave:fixture-policy)") != 1 {
 		t.Fatal("tier task or fixture policy wave label is not unique")
+	}
+	fixtureWaveStart := strings.Index(text, "run_fixture_policy_wave()")
+	if fixtureWaveStart < 0 {
+		t.Fatal("fixture policy wave unavailable")
+	}
+	fixtureWaveEnd := strings.Index(text[fixtureWaveStart:], "\n}\n")
+	if fixtureWaveEnd < 0 || strings.Contains(text[fixtureWaveStart:fixtureWaveStart+fixtureWaveEnd], "run_with_runner_deadline /bin/bash") {
+		t.Fatal("fixture policy wave recreated a nested process-group deadline")
 	}
 	assertLiteralDispatchLabels(t, text)
 }

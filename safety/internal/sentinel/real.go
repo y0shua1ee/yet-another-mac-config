@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -136,8 +137,8 @@ type realAdapterSpec struct {
 }
 
 const (
-	negativeTestSourceDigest       = "sha256:0aa22efd75337ed91ac8b4f487f1fcfc7994950c7db340db92449f104d99e304"
-	realImplementationSourceDigest = "sha256:592ea1f255c7ca8a9c3a5e6da4664ebeccc9363aada060c05da068a05409e566"
+	negativeTestSourceDigest       = "sha256:9db0aab399a95926db5874d8c6767d6704b125ed9c5125792bc014411afb4997"
+	realImplementationSourceDigest = "sha256:0f33eba9d72f321aa10a11ee02c3bc7040db4951fb3ff31aae447c8178ca7a69"
 )
 
 var gitVersionInvocation = AdapterInvocation{Kind: "executable", Executable: "git", Argv: []string{"--no-lazy-fetch", "--version"}, Environment: []string{"GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C", "LANG=C", "PATH=/usr/bin:/bin"}}
@@ -231,7 +232,7 @@ func LoadRealAdapterRegistry(data []byte, now time.Time) (*RealAdapterRegistry, 
 	if manifest.SchemaVersion != realAdapterSchema || len(manifest.Adapters) != len(realAdapterSpecs) {
 		return nil, errors.New("real adapter manifest rejected")
 	}
-	// reviewed_at/valid_until 是操作者本地日历日期；保留调用方时区，避免 UTC 跨日提前判定为未来或过期。
+	// reviewed_at/valid_until 使用 UTC 日历日期；生产入口先归一化为 UTC，测试只注入明确的 UTC 时刻。
 	registry := &RealAdapterRegistry{definitions: make(map[string]RealAdapterDefinition, len(manifest.Adapters)), usable: make(map[string]bool, len(manifest.Adapters)), capabilities: make(map[string]*realAdapterCapability, len(manifest.Adapters)), now: now}
 	for _, definition := range manifest.Adapters {
 		spec, ok := realAdapterSpecs[definition.AdapterID]
@@ -398,7 +399,8 @@ type RealEnvelopeOptions struct {
 	Registry  *RealAdapterRegistry
 	Adapters  map[string]realAdapter
 	Retention *fixture.Retention
-	Workload  func() (string, error)
+	Context   context.Context
+	Workload  func(context.Context) (string, error)
 	Clock     func() time.Time
 	Key       []byte
 	WindowID  string
@@ -422,14 +424,19 @@ func RunRealEnvelope(options RealEnvelopeOptions) RealEnvelope {
 	if !assessment.ClaimEligible {
 		return RealEnvelope{Status: assessment.Status, Sequence: []string{"proof-gate"}, Evaluation: Evaluation{Verdict: assessment.Verdict, ExitCode: assessment.ExitCode, Reason: assessment.Reason}}
 	}
-	if len(options.Key) < 32 || options.Workload == nil || !publicManifestID.MatchString(options.WindowID) {
+	if len(options.Key) < 32 || options.Context == nil || options.Workload == nil || !publicManifestID.MatchString(options.WindowID) {
 		return harnessEnvelope("real-envelope-input-rejected", []string{"proof-gate"})
 	}
+	if _, ok := options.Context.Deadline(); !ok {
+		return harnessEnvelope("real-envelope-input-rejected", []string{"proof-gate"})
+	}
+	adapters := make(map[string]realAdapter, len(manifest.Surfaces))
 	for _, surface := range manifest.Surfaces {
 		adapter, ok := options.Adapters[surface.AdapterID]
 		if !ok || adapter.id != surface.AdapterID || !options.Registry.authorizes(adapter) || adapter.snapshot == nil {
 			return harnessEnvelope("real-adapter-implementation-rejected", []string{"proof-gate"})
 		}
+		adapters[surface.AdapterID] = adapter
 	}
 	clock := options.Clock
 	if clock == nil {
@@ -437,14 +444,23 @@ func RunRealEnvelope(options RealEnvelopeOptions) RealEnvelope {
 	}
 	sequence := []string{"real-before"}
 	opened := clock().UTC()
-	before := snapshotRealSurfaces(manifest, options.Adapters, options.Key)
+	before := snapshotRealSurfaces(options.Context, manifest, adapters, options.Key)
 	primary := snapshotsVerdict(manifest, before)
 	sequence = append(sequence, "isolated-workload")
-	state, workloadErr := options.Workload()
-	if workloadErr != nil || state != innerSyntheticSuccess {
-		primary = MonotonicCombine(primary, VerdictHarnessError)
+	if options.Context.Err() != nil {
+		primary = MonotonicCombine(primary, VerdictIndeterminate)
+	} else {
+		state, workloadErr := options.Workload(options.Context)
+		if options.Context.Err() != nil {
+			primary = MonotonicCombine(primary, VerdictIndeterminate)
+		} else if workloadErr != nil || state != innerSyntheticSuccess {
+			primary = MonotonicCombine(primary, VerdictHarnessError)
+		}
 	}
 	sequence = append(sequence, "freeze-primary")
+	if options.Context.Err() != nil {
+		primary = MonotonicCombine(primary, VerdictIndeterminate)
+	}
 	teardownStatus := fixture.TeardownFailed
 	if options.Retention == nil {
 		primary = MonotonicCombine(primary, VerdictHarnessError)
@@ -459,7 +475,13 @@ func RunRealEnvelope(options RealEnvelopeOptions) RealEnvelope {
 		}
 	}
 	sequence = append(sequence, "fixture-finalize", "real-after")
-	after := snapshotRealSurfaces(manifest, options.Adapters, options.Key)
+	if options.Context.Err() != nil {
+		primary = MonotonicCombine(primary, VerdictIndeterminate)
+	}
+	after := snapshotRealSurfaces(options.Context, manifest, adapters, options.Key)
+	if options.Context.Err() != nil {
+		primary = MonotonicCombine(primary, VerdictIndeterminate)
+	}
 	closed := clock().UTC()
 	evidence, evidenceErr := BuildEvidence(manifest, before, after, EvidenceOptions{SuiteID: manifest.SuiteID, Tier: "real-sentinel-envelope", WindowID: options.WindowID, OpenedAt: opened, ClosedAt: closed, Provenance: "real"})
 	evaluation := Evaluation{Verdict: VerdictHarnessError, ExitCode: ExitHarnessError, Reason: "real-evidence-build-rejected"}
@@ -518,11 +540,15 @@ func evaluationForVerdict(verdict Verdict, digest string) Evaluation {
 	}
 }
 
-func snapshotRealSurfaces(manifest ProtectedManifest, adapters map[string]realAdapter, key []byte) ProtectedSnapshot {
+func snapshotRealSurfaces(ctx context.Context, manifest ProtectedManifest, adapters map[string]realAdapter, key []byte) ProtectedSnapshot {
 	result := ProtectedSnapshot{ManifestDigest: manifest.Digest, WindowState: "closed", Surfaces: make([]SurfaceSnapshot, 0, len(manifest.Surfaces))}
 	for _, surface := range manifest.Surfaces {
+		if ctx == nil || ctx.Err() != nil {
+			result.Surfaces = append(result.Surfaces, incompleteSurface(surface, ReasonWindow))
+			continue
+		}
 		adapter := adapters[surface.AdapterID]
-		snapshot := adapter.snapshot(context.Background(), surface, nil, key)
+		snapshot := adapter.snapshot(ctx, surface, nil, key)
 		result.Surfaces = append(result.Surfaces, snapshot)
 	}
 	return result
@@ -608,36 +634,64 @@ func newRealResolver(repositoryRoot, homeRoot, managerRoot string) (*realResolve
 }
 
 func defaultRealAdapters(registry *RealAdapterRegistry, resolver *realResolver) map[string]realAdapter {
+	if registry == nil || resolver == nil {
+		return nil
+	}
+	frozenResolver := *resolver
+	resolver = &frozenResolver
+	gitCapability := newGitVersionCapability(resolver.repositoryRoot)
 	return map[string]realAdapter{
 		"git-worktree-readonly-v1": {id: "git-worktree-readonly-v1", capability: registry.capabilities["git-worktree-readonly-v1"], snapshot: func(ctx context.Context, surface ProtectedSurface, _ *realResolver, key []byte) SurfaceSnapshot {
-			return snapshotGitWorktree(ctx, surface, resolver, key)
+			return snapshotGitWorktree(ctx, surface, resolver, key, gitCapability)
 		}},
 		"git-index-readonly-v1": {id: "git-index-readonly-v1", capability: registry.capabilities["git-index-readonly-v1"], snapshot: func(ctx context.Context, surface ProtectedSurface, _ *realResolver, key []byte) SurfaceSnapshot {
-			return snapshotGitIndex(ctx, surface, resolver, key)
+			return snapshotGitIndex(ctx, surface, resolver, key, gitCapability)
 		}},
-		"go-lstat-file-v1": {id: "go-lstat-file-v1", capability: registry.capabilities["go-lstat-file-v1"], snapshot: func(_ context.Context, surface ProtectedSurface, _ *realResolver, key []byte) SurfaceSnapshot {
-			return snapshotExactFile(surface, filepath.Join(resolver.homeRoot, ".zshrc"), resolver.homeRoot, resolver.repositoryRoot, key)
+		"go-lstat-file-v1": {id: "go-lstat-file-v1", capability: registry.capabilities["go-lstat-file-v1"], snapshot: func(ctx context.Context, surface ProtectedSurface, _ *realResolver, key []byte) SurfaceSnapshot {
+			return snapshotExactFileWithContext(ctx, surface, filepath.Join(resolver.homeRoot, ".zshrc"), resolver.homeRoot, resolver.repositoryRoot, key)
 		}},
-		"go-bounded-tree-v1": {id: "go-bounded-tree-v1", capability: registry.capabilities["go-bounded-tree-v1"], snapshot: func(_ context.Context, surface ProtectedSurface, _ *realResolver, key []byte) SurfaceSnapshot {
-			return snapshotExactTree(surface, resolver.managerRoot, resolver.homeRoot, key)
+		"go-bounded-tree-v1": {id: "go-bounded-tree-v1", capability: registry.capabilities["go-bounded-tree-v1"], snapshot: func(ctx context.Context, surface ProtectedSurface, _ *realResolver, key []byte) SurfaceSnapshot {
+			return snapshotExactTreeWithContext(ctx, surface, resolver.managerRoot, resolver.homeRoot, key)
 		}},
 		"launchctl-print-service-v1": {id: "launchctl-print-service-v1", capability: registry.capabilities["launchctl-print-service-v1"], snapshot: func(_ context.Context, surface ProtectedSurface, _ *realResolver, _ []byte) SurfaceSnapshot {
 			return incompleteSurface(surface, ReasonUnreadable)
 		}},
-		"go-system-shells-file-v1": {id: "go-system-shells-file-v1", capability: registry.capabilities["go-system-shells-file-v1"], snapshot: func(_ context.Context, surface ProtectedSurface, _ *realResolver, key []byte) SurfaceSnapshot {
-			return snapshotExactFile(surface, resolver.systemShells, filepath.Dir(resolver.systemShells), "", key)
+		"go-system-shells-file-v1": {id: "go-system-shells-file-v1", capability: registry.capabilities["go-system-shells-file-v1"], snapshot: func(ctx context.Context, surface ProtectedSurface, _ *realResolver, key []byte) SurfaceSnapshot {
+			return snapshotExactFileWithContext(ctx, surface, resolver.systemShells, filepath.Dir(resolver.systemShells), "", key)
 		}},
 	}
 }
 
-func snapshotGitWorktree(ctx context.Context, surface ProtectedSurface, resolver *realResolver, key []byte) SurfaceSnapshot {
-	if resolver == nil || surface.LogicalRef != "repo:sentinel/worktree/tracked" {
+type gitVersionCapability struct {
+	once      sync.Once
+	directory string
+	supported bool
+	probes    int
+}
+
+func newGitVersionCapability(directory string) *gitVersionCapability {
+	return &gitVersionCapability{directory: directory}
+}
+
+func (capability *gitVersionCapability) supports(ctx context.Context) bool {
+	if capability == nil || capability.directory == "" {
+		return false
+	}
+	capability.once.Do(func() {
+		capability.probes++
+		capability.supported = supportedGitVersion(ctx, capability.directory)
+	})
+	return capability.supported
+}
+
+func snapshotGitWorktree(ctx context.Context, surface ProtectedSurface, resolver *realResolver, key []byte, capability *gitVersionCapability) SurfaceSnapshot {
+	if resolver == nil || surface.LogicalRef != "repo:sentinel/worktree/tracked" || capability == nil || capability.directory != resolver.repositoryRoot {
 		return incompleteSurface(surface, ReasonUnreadable)
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(surface.Bounds.Timeout)*time.Millisecond)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
-	if !supportedGitVersion(ctx, resolver.repositoryRoot) {
+	if !capability.supports(ctx) {
 		return incompleteSurface(surface, commandIncompleteReason(ctx))
 	}
 	status, err := runGit(ctx, resolver.repositoryRoot, surface.Bounds, []string{"--no-lazy-fetch", "-c", "core.fsmonitor=false", "status", "--porcelain=v2", "--untracked-files=no", "--ignore-submodules=all"})
@@ -674,14 +728,14 @@ func snapshotGitWorktree(ctx context.Context, surface ProtectedSurface, resolver
 	return completeSurface(surface, key, canonical)
 }
 
-func snapshotGitIndex(ctx context.Context, surface ProtectedSurface, resolver *realResolver, key []byte) SurfaceSnapshot {
-	if resolver == nil || surface.LogicalRef != "repo:sentinel/worktree/index" {
+func snapshotGitIndex(ctx context.Context, surface ProtectedSurface, resolver *realResolver, key []byte, capability *gitVersionCapability) SurfaceSnapshot {
+	if resolver == nil || surface.LogicalRef != "repo:sentinel/worktree/index" || capability == nil || capability.directory != resolver.repositoryRoot {
 		return incompleteSurface(surface, ReasonUnreadable)
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(surface.Bounds.Timeout)*time.Millisecond)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
-	if !supportedGitVersion(ctx, resolver.repositoryRoot) {
+	if !capability.supports(ctx) {
 		return incompleteSurface(surface, commandIncompleteReason(ctx))
 	}
 	output, err := runGit(ctx, resolver.repositoryRoot, surface.Bounds, []string{"--no-lazy-fetch", "ls-files", "-z", "--stage"})
@@ -871,10 +925,25 @@ func fingerprintTrackedPaths(root string, paths []string, bounds SurfaceBounds, 
 }
 
 func snapshotExactFile(surface ProtectedSurface, path, root, allowedSymlinkRoot string, key []byte) SurfaceSnapshot {
-	deadline := time.Now().Add(time.Duration(surface.Bounds.Timeout) * time.Millisecond)
+	return snapshotExactFileWithContext(context.Background(), surface, path, root, allowedSymlinkRoot, key)
+}
+
+func snapshotExactFileWithContext(ctx context.Context, surface ProtectedSurface, path, root, allowedSymlinkRoot string, key []byte) SurfaceSnapshot {
+	if ctx == nil {
+		return incompleteSurface(surface, ReasonWindow)
+	}
+	child, cancel := context.WithTimeout(ctx, time.Duration(surface.Bounds.Timeout)*time.Millisecond)
+	defer cancel()
+	deadline, ok := boundedObservationDeadline(child, surface.Bounds)
+	if !ok {
+		return incompleteSurface(surface, ReasonWindow)
+	}
 	canonical, reason := readExactNamedEntry(path, root, allowedSymlinkRoot, surface.Bounds.MaxBytes, deadline)
 	if reason != "" {
 		return incompleteSurface(surface, reason)
+	}
+	if child.Err() != nil {
+		return incompleteSurface(surface, ReasonWindow)
 	}
 	second, reason := readExactNamedEntry(path, root, allowedSymlinkRoot, surface.Bounds.MaxBytes, deadline)
 	if reason != "" {
@@ -883,14 +952,32 @@ func snapshotExactFile(surface ProtectedSurface, path, root, allowedSymlinkRoot 
 	if !bytes.Equal(canonical, second) {
 		return incompleteSurface(surface, ReasonRace)
 	}
+	if child.Err() != nil {
+		return incompleteSurface(surface, ReasonWindow)
+	}
 	return completeSurface(surface, key, canonical)
 }
 
 func snapshotExactTree(surface ProtectedSurface, path, root string, key []byte) SurfaceSnapshot {
-	deadline := time.Now().Add(time.Duration(surface.Bounds.Timeout) * time.Millisecond)
+	return snapshotExactTreeWithContext(context.Background(), surface, path, root, key)
+}
+
+func snapshotExactTreeWithContext(ctx context.Context, surface ProtectedSurface, path, root string, key []byte) SurfaceSnapshot {
+	if ctx == nil {
+		return incompleteSurface(surface, ReasonWindow)
+	}
+	child, cancel := context.WithTimeout(ctx, time.Duration(surface.Bounds.Timeout)*time.Millisecond)
+	defer cancel()
+	deadline, ok := boundedObservationDeadline(child, surface.Bounds)
+	if !ok {
+		return incompleteSurface(surface, ReasonWindow)
+	}
 	canonical, reason := fingerprintExactTree(surface, path, root, deadline)
 	if reason != "" {
 		return incompleteSurface(surface, reason)
+	}
+	if child.Err() != nil {
+		return incompleteSurface(surface, ReasonWindow)
 	}
 	second, reason := fingerprintExactTree(surface, path, root, deadline)
 	if reason != "" {
@@ -899,7 +986,24 @@ func snapshotExactTree(surface ProtectedSurface, path, root string, key []byte) 
 	if !bytes.Equal(canonical, second) {
 		return incompleteSurface(surface, ReasonRace)
 	}
+	if child.Err() != nil {
+		return incompleteSurface(surface, ReasonWindow)
+	}
 	return completeSurface(surface, key, canonical)
+}
+
+func boundedObservationDeadline(ctx context.Context, bounds SurfaceBounds) (time.Time, bool) {
+	if ctx == nil || ctx.Err() != nil || bounds.Timeout < 1 {
+		return time.Time{}, false
+	}
+	deadline := time.Now().Add(time.Duration(bounds.Timeout) * time.Millisecond)
+	if outer, ok := ctx.Deadline(); ok && outer.Before(deadline) {
+		deadline = outer
+	}
+	if !time.Now().Before(deadline) {
+		return time.Time{}, false
+	}
+	return deadline, true
 }
 
 func fingerprintExactTree(surface ProtectedSurface, path, root string, deadline time.Time) ([]byte, IncompleteReason) {

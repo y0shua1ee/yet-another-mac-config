@@ -523,10 +523,27 @@ func assertLineageRunnerContract(t *testing.T) {
 		t.Fatalf("runner unavailable")
 	}
 	text := string(data)
-	for _, literal := range []string{"task:artifact-lineage", "'./internal/e2e'", "'^TestArtifactLineage$'", "wave:artifact-contracts", "task artifact-kinds", "task artifact-lineage"} {
+	for _, literal := range []string{"task:artifact-lineage", "'./internal/e2e'", "'^TestArtifactLineage$'", "wave:artifact-contracts"} {
 		if !strings.Contains(text, literal) {
 			t.Fatalf("lineage runner route is incomplete")
 		}
+	}
+	waveStart := strings.Index(text, "run_artifact_contracts_wave()")
+	if waveStart < 0 {
+		t.Fatal("artifact wave handler is unavailable")
+	}
+	waveEnd := strings.Index(text[waveStart:], "\n}\n")
+	if waveEnd < 0 {
+		t.Fatal("artifact wave handler is unavailable")
+	}
+	wave := text[waveStart : waveStart+waveEnd]
+	for _, child := range []string{"run_wave_child artifact-kinds", "run_wave_child artifact-lineage"} {
+		if strings.Count(wave, child) != 1 {
+			t.Fatal("artifact wave does not invoke its exact fixed child")
+		}
+	}
+	if strings.Contains(wave, "run_with_runner_deadline /bin/bash") {
+		t.Fatal("artifact wave recreated a nested process-group deadline")
 	}
 }
 
