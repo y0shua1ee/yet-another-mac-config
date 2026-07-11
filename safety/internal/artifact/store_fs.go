@@ -14,6 +14,17 @@ import (
 
 var errStoreFileCollision = errors.New("store file collision")
 
+// storeFilesystemTestHook 只为同包的受控竞态测试提供确定性调度点。
+// production 默认值恒为 nil，调用方不能通过公开 API 或环境变量设置它。
+var storeFilesystemTestHook func(point string, directory *storeDirectory, name string) error
+
+func runStoreFilesystemTestHook(point string, directory *storeDirectory, name string) error {
+	if storeFilesystemTestHook == nil {
+		return nil
+	}
+	return storeFilesystemTestHook(point, directory, name)
+}
+
 type storeDirectory struct {
 	path     string
 	root     *os.Root
@@ -310,6 +321,9 @@ func (store *Store) publishStoreFile(directory *storeDirectory, name string, dat
 			_ = syncStoreDirectory(directory)
 		}
 	}()
+	if err := runStoreFilesystemTestHook("publish-after-link", directory, name); err != nil {
+		return false, err
+	}
 	if err := syncStoreDirectory(directory); err != nil {
 		return false, err
 	}
@@ -337,6 +351,9 @@ func (store *Store) removeStoreFile(directory *storeDirectory, name string) erro
 	info, err := directory.root.Lstat(name)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("store file rejected")
+	}
+	if err := runStoreFilesystemTestHook("delete-before-remove", directory, name); err != nil {
+		return err
 	}
 	if err := directory.root.Remove(name); err != nil {
 		return err

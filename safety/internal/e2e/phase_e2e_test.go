@@ -339,6 +339,7 @@ func testPhaseRunnerContract(t *testing.T) {
 		"runner_test_block setup",
 		"runner_test_block docs",
 		"runner_test_block child",
+		"runner_test_block nested-body",
 		"testdata/runner/block-helper.sh",
 		"remaining}\" -lt 47",
 		"remaining}\" -lt 15",
@@ -350,6 +351,9 @@ func testPhaseRunnerContract(t *testing.T) {
 	}
 	if strings.Contains(text, "YAMC_RUNNER_WATCHDOG_") || strings.Count(text, ": __YAMC_RUNNER_BODY__") != 2 {
 		t.Fatal("public runner still exposes a caller-selectable watchdog bypass")
+	}
+	if strings.Contains(text, `/bin/bash "${SCRIPT_DIR}/test.sh" task`) || strings.Contains(text, `/bin/bash "${SCRIPT_DIR}/test.sh" wave`) {
+		t.Fatal("wave or phase recursively invokes the public watchdog entry")
 	}
 	if strings.Count(text, "task:phase-e2e)") != 1 || strings.Count(text, "phase:phase)") != 1 {
 		t.Fatal("phase runner labels are not unique literals")
@@ -396,6 +400,7 @@ func testRunnerEntryDeadlines(t *testing.T) {
 		{name: "setup", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup"},
 		{name: "docs", arguments: []string{"task", "docs-and-phase-gate"}, blockPoint: "docs"},
 		{name: "child dispatch", arguments: []string{"wave", "artifact-contracts"}, blockPoint: "child"},
+		{name: "nested body", arguments: []string{"wave", "artifact-contracts"}, blockPoint: "nested-body"},
 		{name: "forged ambient guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "forged"},
 		{name: "stale ambient guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "stale"},
 		{name: "self-consistent inherited guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "self-consistent"},

@@ -39,6 +39,16 @@ type trackedInput struct {
 	data []byte
 }
 
+// trackedInputTestHook 只用于同包测试在 path check 与实际读取之间安排替换。
+// production 默认值恒为 nil，公开 workflow 不能选择或注入该 seam。
+var trackedInputTestHook func(point, relative string)
+
+func runTrackedInputTestHook(point, relative string) {
+	if trackedInputTestHook != nil {
+		trackedInputTestHook(point, relative)
+	}
+}
+
 type gitProofOperation uint8
 
 const (
@@ -439,6 +449,7 @@ func validateTrackedInput(path string, repository *trackedRepository) (trackedIn
 		return rejected()
 	}
 	relative = filepath.ToSlash(relative)
+	runTrackedInputTestHook("after-path-check", relative)
 	data, worktreeMode, err := readBoundedNoSymlinkWithMode(resolved)
 	if err != nil || len(data) > trackedInputMaxBytes {
 		return rejected()

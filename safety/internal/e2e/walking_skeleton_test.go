@@ -511,6 +511,15 @@ func assertTrackedInputRoutes(t *testing.T, safetyRoot string) {
 		t.Fatal("tracked blueprint restore unavailable")
 	}
 
+	// Git 只使用 owner execute bit；group/other execute 不能把 100644 提升为 100755。
+	if err := os.Chmod(blueprintPath, 0o655); err != nil {
+		t.Fatal("non-owner executable bits fixture unavailable")
+	}
+	assertTrackedInputAccepted(t, repositoryRoot, blueprintPath, surfacesPath)
+	if err := os.Chmod(blueprintPath, 0o600); err != nil {
+		t.Fatal("non-owner executable bits restore unavailable")
+	}
+
 	if err := os.WriteFile(blueprintPath, mutated, 0o600); err != nil {
 		t.Fatal("index substitution fixture unavailable")
 	}
@@ -543,12 +552,30 @@ func assertTrackedInputRoutes(t *testing.T, safetyRoot string) {
 		t.Fatal("non-executable worktree mode drift fixture unavailable")
 	}
 	assertTrackedInputRejected(t, repositoryRoot, blueprintPath, surfacesPath, "tracked input rejected")
+	if err := os.Chmod(blueprintPath, 0o655); err != nil {
+		t.Fatal("owner-execute removal fixture unavailable")
+	}
+	assertTrackedInputRejected(t, repositoryRoot, blueprintPath, surfacesPath, "tracked input rejected")
 
 	nonWorktreeRoot := filepath.Join(t.TempDir(), "non-worktree")
 	nonWorktreeBlueprint := copyTrackedFixture(t, safetyRoot, nonWorktreeRoot, blueprintRelative)
 	nonWorktreeSurfaces := copyTrackedFixture(t, safetyRoot, nonWorktreeRoot, surfacesRelative)
 	copyTrackedFixture(t, safetyRoot, nonWorktreeRoot, rawRelative)
 	assertTrackedInputRejected(t, nonWorktreeRoot, nonWorktreeBlueprint, nonWorktreeSurfaces, "repository root rejected")
+}
+
+func assertTrackedInputAccepted(t *testing.T, repositoryRoot, blueprintPath, surfacesPath string) {
+	t.Helper()
+	externalRoot := t.TempDir()
+	fixtureRoot := filepath.Join(externalRoot, "fixture")
+	summary, err := workflow.RunSynthetic(workflow.Options{
+		BlueprintPath: blueprintPath, SurfacesPath: surfacesPath,
+		FixtureRoot: fixtureRoot, StoreRoot: filepath.Join(fixtureRoot, "artifact-store"),
+		RepositoryRoot: repositoryRoot, Mode: "synthetic",
+	})
+	if err != nil || summary.State != wantSuccessState {
+		t.Fatal("Git-compatible non-owner executable bits were rejected")
+	}
 }
 
 func assertTrackedInputRejected(t *testing.T, repositoryRoot, blueprintPath, surfacesPath, want string) {
