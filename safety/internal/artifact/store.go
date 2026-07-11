@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,10 +45,13 @@ type persistedTransition struct {
 }
 
 type Store struct {
-	root            string
-	now             func() time.Time
-	objects         map[string]storedMetadata
-	planTransitions map[string]planTransition
+	root                string
+	rootIdentity        os.FileInfo
+	objectDirectory     *storeDirectory
+	transitionDirectory *storeDirectory
+	now                 func() time.Time
+	objects             map[string]storedMetadata
+	planTransitions     map[string]planTransition
 }
 
 func NewStore(root, repositoryRoot string) (*Store, error) {
@@ -64,13 +66,21 @@ func NewStoreWithClock(root, repositoryRoot string, clock func() time.Time) (*St
 	if clock == nil {
 		return nil, contractError(CodeStoreUnavailable, "/clock")
 	}
+	rootIdentity, objectDirectory, transitionDirectory, err := initializeStoreFilesystem(validated)
+	if err != nil {
+		return nil, contractError(CodeStoreUnavailable, "/store")
+	}
 	store := &Store{
-		root:            validated,
-		now:             clock,
-		objects:         make(map[string]storedMetadata),
-		planTransitions: make(map[string]planTransition),
+		root:                validated,
+		rootIdentity:        rootIdentity,
+		objectDirectory:     objectDirectory,
+		transitionDirectory: transitionDirectory,
+		now:                 clock,
+		objects:             make(map[string]storedMetadata),
+		planTransitions:     make(map[string]planTransition),
 	}
 	if err := store.rebuildMetadata(); err != nil {
+		store.closeStoreFilesystem()
 		return nil, err
 	}
 	return store, nil
@@ -142,13 +152,7 @@ func (store *Store) write(canonical []byte) (digest string, created bool, result
 	if err := store.validateStoredReferences(envelope); err != nil {
 		return "", false, err
 	}
-	digestName := strings.TrimPrefix(envelope.ContentDigest, "sha256:")
-	objectDirectory := filepath.Join(store.root, "sha256")
-	if err := os.MkdirAll(objectDirectory, 0o700); err != nil {
-		return "", false, contractError(CodeStoreUnavailable, "/store")
-	}
-	objectPath := filepath.Join(objectDirectory, digestName)
-	if existing, err := readBoundedFile(objectPath); err == nil {
+	if existing, err := store.readObjectFile(envelope.ContentDigest); err == nil {
 		if !bytes.Equal(existing, canonical) {
 			return "", false, contractError(CodeStoreCollision, "/content_digest")
 		}
@@ -162,39 +166,16 @@ func (store *Store) write(canonical []byte) (digest string, created bool, result
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", false, contractError(CodeStoreUnavailable, "/store")
 	}
-
-	temporary, err := os.CreateTemp(objectDirectory, ".pending-")
+	created, err = store.publishObjectFile(envelope.ContentDigest, canonical)
 	if err != nil {
-		return "", false, contractError(CodeStoreUnavailable, "/store")
-	}
-	temporaryPath := temporary.Name()
-	defer func() {
-		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
-	}()
-	if err := temporary.Chmod(0o600); err != nil {
-		return "", false, contractError(CodeStoreUnavailable, "/store")
-	}
-	if _, err := io.Copy(temporary, bytes.NewReader(canonical)); err != nil {
-		return "", false, contractError(CodeStoreUnavailable, "/store")
-	}
-	if err := temporary.Sync(); err != nil {
-		return "", false, contractError(CodeStoreUnavailable, "/store")
-	}
-	if err := temporary.Close(); err != nil {
-		return "", false, contractError(CodeStoreUnavailable, "/store")
-	}
-	if err := os.Link(temporaryPath, objectPath); err != nil {
-		if existing, readErr := readBoundedFile(objectPath); readErr == nil && bytes.Equal(existing, canonical) {
-			store.recordMetadata(envelope)
-			success = true
-			return envelope.ContentDigest, false, nil
+		if errors.Is(err, errStoreFileCollision) {
+			return "", false, contractError(CodeStoreCollision, "/content_digest")
 		}
-		return "", false, contractError(CodeStoreCollision, "/content_digest")
+		return "", false, contractError(CodeStoreUnavailable, "/store")
 	}
 	store.recordMetadata(envelope)
 	success = true
-	return envelope.ContentDigest, true, nil
+	return envelope.ContentDigest, created, nil
 }
 
 type graphWrite struct {
@@ -226,11 +207,11 @@ func (store *Store) WriteGraph(mode LineageMode, graph LineageGraph) (map[string
 		return nil, err
 	}
 	metadataBefore := cloneMetadata(store.objects)
-	createdPaths := make([]string, 0, len(ordered))
+	createdDigests := make([]string, 0, len(ordered))
 	rollback := func() {
 		store.objects = metadataBefore
-		for _, path := range createdPaths {
-			_ = os.Remove(path)
+		for _, digest := range createdDigests {
+			store.removeCreatedObjectFile(digest)
 		}
 	}
 	result := make(map[string]string, len(ordered))
@@ -241,7 +222,7 @@ func (store *Store) WriteGraph(mode LineageMode, graph LineageGraph) (map[string
 			return nil, err
 		}
 		if created {
-			createdPaths = append(createdPaths, store.objectPath(digest))
+			createdDigests = append(createdDigests, digest)
 		}
 		result[item.label] = digest
 	}
@@ -260,7 +241,7 @@ func (store *Store) preflightGraph(ordered []graphWrite) error {
 		if envelope.Kind == GeneratedPlan && envelope.Lifecycle.TerminalState != TerminalNonterminal {
 			return contractError(CodePlanTransition, "/lifecycle/terminal_state")
 		}
-		existing, readErr := readBoundedFile(store.objectPath(envelope.ContentDigest))
+		existing, readErr := store.readObjectFile(envelope.ContentDigest)
 		if readErr == nil {
 			if !bytes.Equal(existing, item.canonical) {
 				return contractError(CodeStoreCollision, "/content_digest")
@@ -327,11 +308,11 @@ func (store *Store) Delete(digest string) (resultErr error) {
 	default:
 		return contractError(CodeStoreDeleteDenied, "/kind")
 	}
-	if err := os.Remove(store.objectPath(digest)); err != nil {
+	if err := store.removeObjectFile(digest); err != nil {
 		return contractError(CodeStoreUnavailable, "/store")
 	}
 	if envelope.Kind == GeneratedPlan {
-		_ = os.Remove(store.transitionPath(digest))
+		_ = store.removeTransitionFile(digest)
 	}
 	delete(store.objects, digest)
 	delete(store.planTransitions, digest)
@@ -558,7 +539,7 @@ func (store *Store) loadExact(digest string, enforceExpiry bool) ([]byte, Envelo
 	if !IsDigest(digest) {
 		return nil, Envelope{}, contractError(CodeStoreKeyMismatch, "/content_digest")
 	}
-	canonical, err := readBoundedFile(store.objectPath(digest))
+	canonical, err := store.readObjectFile(digest)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, Envelope{}, contractError(CodeStoreNotFound, "/content_digest")
 	}
@@ -677,29 +658,17 @@ func (store *Store) validateSnapshotClock(envelope Envelope) error {
 	return nil
 }
 
-func (store *Store) objectPath(digest string) string {
-	return filepath.Join(store.root, "sha256", strings.TrimPrefix(digest, "sha256:"))
-}
-
-func (store *Store) transitionPath(planDigest string) string {
-	return filepath.Join(store.root, "transitions", strings.TrimPrefix(planDigest, "sha256:")+".json")
-}
-
 func (store *Store) rebuildMetadata() error {
-	objectDirectory := filepath.Join(store.root, "sha256")
-	entries, err := os.ReadDir(objectDirectory)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
+	entries, err := store.objectDirectoryEntries()
 	if err != nil {
 		return contractError(CodeStoreUnavailable, "/store")
 	}
 	for _, entry := range entries {
 		digest := "sha256:" + entry.Name()
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !IsDigest(digest) {
+		if !IsDigest(digest) {
 			return contractError(CodeStoreKeyMismatch, "/content_digest")
 		}
-		canonical, readErr := readBoundedFile(filepath.Join(objectDirectory, entry.Name()))
+		canonical, readErr := store.readObjectFile(digest)
 		if readErr != nil {
 			return contractError(CodeStoreUnavailable, "/store")
 		}
@@ -718,17 +687,27 @@ func (store *Store) rebuildMetadata() error {
 		}
 		store.recordMetadata(envelope)
 	}
-	for digest, metadata := range store.objects {
-		if metadata.envelope.Kind != GeneratedPlan {
-			continue
+	transitionEntries, err := store.transitionDirectoryEntries()
+	if err != nil {
+		return contractError(CodeStoreUnavailable, "/transition")
+	}
+	for _, entry := range transitionEntries {
+		if !strings.HasSuffix(entry.Name(), ".json") {
+			return contractError(CodePlanTransition, "/transition")
+		}
+		digest := "sha256:" + strings.TrimSuffix(entry.Name(), ".json")
+		metadata, known := store.objects[digest]
+		if !IsDigest(digest) || !known || metadata.envelope.Kind != GeneratedPlan {
+			return contractError(CodePlanTransition, "/transition")
 		}
 		transition, exists, transitionErr := store.readTransition(digest)
-		if transitionErr != nil {
-			return transitionErr
+		if transitionErr != nil || !exists {
+			if transitionErr != nil {
+				return transitionErr
+			}
+			return contractError(CodePlanTransition, "/transition")
 		}
-		if exists {
-			store.planTransitions[digest] = transition
-		}
+		store.planTransitions[digest] = transition
 	}
 	for digest, metadata := range store.objects {
 		if metadata.envelope.Kind == GeneratedPlan && store.planState(digest, metadata.envelope) != TerminalNonterminal {
@@ -758,44 +737,14 @@ func (store *Store) writeTransition(planDigest string, transition planTransition
 	}); rejection != nil {
 		return rejection
 	}
-	directory := filepath.Dir(store.transitionPath(planDigest))
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return contractError(CodeStoreUnavailable, "/transition")
-	}
-	temporary, err := os.CreateTemp(directory, ".pending-")
-	if err != nil {
-		return contractError(CodeStoreUnavailable, "/transition")
-	}
-	temporaryPath := temporary.Name()
-	defer func() {
-		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
-	}()
-	if err := temporary.Chmod(0o600); err != nil {
-		return contractError(CodeStoreUnavailable, "/transition")
-	}
-	if _, err := temporary.Write(canonical); err != nil {
-		return contractError(CodeStoreUnavailable, "/transition")
-	}
-	if err := temporary.Sync(); err != nil {
-		return contractError(CodeStoreUnavailable, "/transition")
-	}
-	if err := temporary.Close(); err != nil {
-		return contractError(CodeStoreUnavailable, "/transition")
-	}
-	path := store.transitionPath(planDigest)
-	if err := os.Link(temporaryPath, path); err != nil {
-		existing, readErr := readBoundedFile(path)
-		if readErr == nil && bytes.Equal(existing, canonical) {
-			return nil
-		}
+	if _, err := store.publishTransitionFile(planDigest, canonical); err != nil {
 		return contractError(CodePlanTransition, "/transition")
 	}
 	return nil
 }
 
 func (store *Store) readTransition(planDigest string) (planTransition, bool, error) {
-	canonical, err := readBoundedFile(store.transitionPath(planDigest))
+	canonical, err := store.readTransitionFile(planDigest)
 	if errors.Is(err, os.ErrNotExist) {
 		return planTransition{}, false, nil
 	}
@@ -830,22 +779,6 @@ func (store *Store) readTransition(planDigest string) (planTransition, bool, err
 		return planTransition{}, false, contractError(CodePlanTransition, "/transition")
 	}
 	return transition, true, nil
-}
-
-func readBoundedFile(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	var buffer bytes.Buffer
-	if _, err := io.CopyN(&buffer, file, maxStoredArtifactBytes+1); err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
-	}
-	if buffer.Len() > maxStoredArtifactBytes {
-		return nil, errors.New("artifact too large")
-	}
-	return buffer.Bytes(), nil
 }
 
 func cloneMetadata(source map[string]storedMetadata) map[string]storedMetadata {

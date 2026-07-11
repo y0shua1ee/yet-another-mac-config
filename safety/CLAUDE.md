@@ -30,6 +30,8 @@
 
 外部 artifact store 必须用 store 自己的时钟约束 24 小时 snapshot；只允许明确的 2 分钟正向 clock skew，并在 write、reopen、read、delete 全部 fail closed。测试必须注入时钟，不能依赖固定日期或通过未来 `created_at` 延长生命周期。
 
+外部 store 的 `sha256` 与 `transitions` 必须是 exact root 的 direct-child directories，并在 store lifetime 内绑定初始 inode identity。所有 object/transition 操作必须使用 rooted directory handles，在前后重新验证 named root/child identity 与 containment；禁止 path API 跟随目录替换。文件只能通过 no-follow、nonblocking、regular-file、bounded `limit+1` 与 named/opened identity recheck 读取；symlink、FIFO、device、socket、oversize 或 race 必须有界失败且零 root 外写入。
+
 ## 测试契约
 
 修改前后只通过下面的固定入口验证：

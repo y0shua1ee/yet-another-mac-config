@@ -510,6 +510,10 @@ func runStore(arguments []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	mode := artifact.LineageMode(parsed.mode)
+	if err := artifact.ValidateLineage(mode, graph); err != nil {
+		writeRejected(stderr, err, "ARTIFACT_STORE_REJECTED")
+		return 2
+	}
 	store, err := artifact.NewStore(parsed.storeRoot, parsed.repositoryRoot)
 	if err != nil {
 		writeSafeError(stderr, "STORE_ROOT_REJECTED")

@@ -51,6 +51,8 @@
 
 外部 store 以自己的可信时钟校验 snapshot 生命周期：`created_at` 最多只允许比 store 时钟快 2 分钟，`expires_at` 也不得超过 store 当前时间加 24 小时与同一 2 分钟偏差。该检查同时覆盖 write、reopen、read 与 delete，调用方不能用未来时间延长 retention。
 
+store 初始化会原子创建或验证 exact `sha256` 与 `transitions` direct-child directories，记录 root/child inode identity，并让所有 list/read/create/link/remove 都通过保持打开的 rooted directory handles 执行。每次操作前后都会重新验证 named root、child identity 与 resolved containment；目录 symlink 或替换会 fail closed。artifact 与 transition 只接受 no-follow、nonblocking 打开的 regular file，读取前后核对 named/opened identity、mode、size 与 mtime，并使用 `limit+1` 上限；symlink、FIFO、device、socket、oversize 或 race 都不会被读取、跟随或写出到所选 store root 之外。
+
 apply 路径因此是六种 kind、七个 instance：`desired -> observed-before -> plan -> receipt -> observed-fresh -> evidence -> report`。更精确地说，plan 绑定 desired、before observation 与 expected postconditions；receipt 绑定 plan；fresh observation 绑定 receipt；evidence 绑定 plan、receipt、desired、fresh observation、expected postconditions 以及 sentinel before/after；report 绑定 evidence。read-only 与 apply evidence 的 compact fresh descriptor 都必须把 scope 和 state 绑定到 exact observed artifact 中真实存在的 facts，不能只依赖合法的 logical-ref 语法。所有边使用 canonical content digest 反向验证，evidence/receipt/report 的上游会被递归 pin。Phase 1 没有破坏性 prune；snapshot 到期也不授权删除任意现有用户状态。
 
 持久化前只接受六个 logical-ref namespace，物理路径永远不进入持久化或公共输出：

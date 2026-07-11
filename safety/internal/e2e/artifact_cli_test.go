@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -79,7 +80,9 @@ func assertReadOnlyFreshStateBinding(t *testing.T, readOnly graphBundle) {
 	if _, _, err := runCLI(safetyRoot, storeCLIArguments(artifact.LineageReadOnly, cliStoreRoot, repositoryRoot, invalidFiles)...); err == nil {
 		t.Fatal("CLI store accepted read-only evidence whose state was absent from the exact observation")
 	}
-	assertNoStoreObjects(t, cliStoreRoot)
+	if _, err := os.Lstat(cliStoreRoot); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("CLI created a store before rejecting invalid read-only lineage")
+	}
 }
 
 func assertFutureSnapshotClockBoundary(t *testing.T) {
@@ -186,6 +189,7 @@ func assertLineageCases(t *testing.T, apply, readOnly graphBundle) {
 func assertStoreLifecycle(t *testing.T, apply graphBundle) {
 	t.Helper()
 	_, repositoryRoot := projectRoots(t)
+	assertStoreChildContainment(t, apply, repositoryRoot)
 	now := apply.createdAt
 	clock := func() time.Time { return now }
 	storeRoot := filepath.Join(t.TempDir(), "store")
@@ -298,6 +302,120 @@ func assertStoreLifecycle(t *testing.T, apply graphBundle) {
 	assertLateGraphCollisionIsAtomic(t, apply, repositoryRoot)
 	assertStoreTamperAndCollision(t, apply, repositoryRoot)
 	assertWrongPolicyWrites(t, apply, repositoryRoot)
+}
+
+func assertStoreChildContainment(t *testing.T, apply graphBundle, repositoryRoot string) {
+	t.Helper()
+	objectEscape := t.TempDir()
+	objectSymlinkRoot := filepath.Join(t.TempDir(), "object-symlink-store")
+	if err := os.Mkdir(objectSymlinkRoot, 0o700); err != nil || os.Symlink(objectEscape, filepath.Join(objectSymlinkRoot, "sha256")) != nil {
+		t.Fatal("object directory symlink fixture unavailable")
+	}
+	if _, err := artifact.NewStoreWithClock(objectSymlinkRoot, repositoryRoot, func() time.Time { return apply.createdAt }); err == nil {
+		t.Fatal("store accepted a pre-existing sha256 directory symlink")
+	}
+	assertDirectoryEmpty(t, objectEscape, "rejected object directory symlink changed its target")
+
+	transitionEscape := t.TempDir()
+	transitionSymlinkRoot := filepath.Join(t.TempDir(), "transition-symlink-store")
+	if err := os.Mkdir(transitionSymlinkRoot, 0o700); err != nil || os.Mkdir(filepath.Join(transitionSymlinkRoot, "sha256"), 0o700) != nil || os.Symlink(transitionEscape, filepath.Join(transitionSymlinkRoot, "transitions")) != nil {
+		t.Fatal("transition directory symlink fixture unavailable")
+	}
+	if _, err := artifact.NewStoreWithClock(transitionSymlinkRoot, repositoryRoot, func() time.Time { return apply.createdAt }); err == nil {
+		t.Fatal("store accepted a pre-existing transitions directory symlink")
+	}
+	assertDirectoryEmpty(t, transitionEscape, "rejected transition directory symlink changed its target")
+
+	replacementEscape := t.TempDir()
+	replacementRoot := filepath.Join(t.TempDir(), "replacement-store")
+	if err := os.Mkdir(replacementRoot, 0o700); err != nil || os.Mkdir(filepath.Join(replacementRoot, "sha256"), 0o700) != nil || os.Mkdir(filepath.Join(replacementRoot, "transitions"), 0o700) != nil {
+		t.Fatal("store directory replacement fixture unavailable")
+	}
+	store, err := artifact.NewStoreWithClock(replacementRoot, repositoryRoot, func() time.Time { return apply.createdAt })
+	if err != nil {
+		t.Fatal("store directory replacement setup failed")
+	}
+	originalObjects := filepath.Join(replacementRoot, "sha256-original")
+	if err := os.Rename(filepath.Join(replacementRoot, "sha256"), originalObjects); err != nil || os.Symlink(replacementEscape, filepath.Join(replacementRoot, "sha256")) != nil {
+		t.Fatal("store directory replacement unavailable")
+	}
+	if _, err := store.Write(apply.canonical[artifact.DesiredState]); err == nil {
+		t.Fatal("store followed a replaced sha256 directory")
+	}
+	assertDirectoryEmpty(t, replacementEscape, "replaced object directory escaped the selected store root")
+	assertDirectoryEmpty(t, originalObjects, "rejected object directory replacement left an artifact")
+
+	objectSymlinkTarget := filepath.Join(t.TempDir(), "object-target")
+	if err := os.WriteFile(objectSymlinkTarget, apply.canonical[artifact.DesiredState], 0o600); err != nil {
+		t.Fatal("object symlink target fixture unavailable")
+	}
+	objectFileRoot := filepath.Join(t.TempDir(), "object-file-symlink-store")
+	if err := os.Mkdir(objectFileRoot, 0o700); err != nil || os.Mkdir(filepath.Join(objectFileRoot, "sha256"), 0o700) != nil || os.Mkdir(filepath.Join(objectFileRoot, "transitions"), 0o700) != nil || os.Symlink(objectSymlinkTarget, objectPath(objectFileRoot, apply.envelopes[artifact.DesiredState].ContentDigest)) != nil {
+		t.Fatal("object file symlink fixture unavailable")
+	}
+	if _, err := artifact.NewStoreWithClock(objectFileRoot, repositoryRoot, func() time.Time { return apply.createdAt }); err == nil {
+		t.Fatal("store accepted a symlinked digest object")
+	}
+
+	objectFIFORoot := filepath.Join(t.TempDir(), "object-fifo-store")
+	if err := os.Mkdir(objectFIFORoot, 0o700); err != nil || os.Mkdir(filepath.Join(objectFIFORoot, "sha256"), 0o700) != nil || os.Mkdir(filepath.Join(objectFIFORoot, "transitions"), 0o700) != nil || syscall.Mkfifo(objectPath(objectFIFORoot, apply.envelopes[artifact.DesiredState].ContentDigest), 0o600) != nil {
+		t.Fatal("object FIFO fixture unavailable")
+	}
+	started := time.Now()
+	if _, err := artifact.NewStoreWithClock(objectFIFORoot, repositoryRoot, func() time.Time { return apply.createdAt }); err == nil {
+		t.Fatal("store accepted a FIFO digest object")
+	}
+	if time.Since(started) > 750*time.Millisecond {
+		t.Fatal("FIFO digest object escaped the bounded nonblocking read contract")
+	}
+
+	transitionReplacementEscape := t.TempDir()
+	transitionReplacementRoot := filepath.Join(t.TempDir(), "transition-replacement-store")
+	transitionStore, err := artifact.NewStoreWithClock(transitionReplacementRoot, repositoryRoot, func() time.Time { return apply.createdAt })
+	if err != nil {
+		t.Fatal("transition directory replacement setup failed")
+	}
+	if _, err := transitionStore.WriteGraph(artifact.LineageApply, apply.graph); err != nil {
+		t.Fatal("transition directory replacement graph setup failed")
+	}
+	originalTransitions := filepath.Join(transitionReplacementRoot, "transitions-original")
+	if err := os.Rename(filepath.Join(transitionReplacementRoot, "transitions"), originalTransitions); err != nil || os.Symlink(transitionReplacementEscape, filepath.Join(transitionReplacementRoot, "transitions")) != nil {
+		t.Fatal("transition directory replacement unavailable")
+	}
+	if err := transitionStore.TransitionPlan(apply.envelopes[artifact.GeneratedPlan].ContentDigest, artifact.TerminalApplied, apply.envelopes[artifact.AppliedReceipt].ContentDigest); err == nil {
+		t.Fatal("store followed a replaced transitions directory")
+	}
+	assertDirectoryEmpty(t, transitionReplacementEscape, "replaced transitions directory escaped the selected store root")
+	assertDirectoryEmpty(t, originalTransitions, "rejected transitions directory replacement left a record")
+
+	transitionFIFORoot := filepath.Join(t.TempDir(), "transition-fifo-store")
+	transitionFIFOStore, err := artifact.NewStoreWithClock(transitionFIFORoot, repositoryRoot, func() time.Time { return apply.createdAt })
+	if err != nil {
+		t.Fatal("transition FIFO store setup failed")
+	}
+	if _, err := transitionFIFOStore.WriteGraph(artifact.LineageApply, apply.graph); err != nil {
+		t.Fatal("transition FIFO graph setup failed")
+	}
+	planDigest := apply.envelopes[artifact.GeneratedPlan].ContentDigest
+	transitionPath := filepath.Join(transitionFIFORoot, "transitions", strings.TrimPrefix(planDigest, "sha256:")+".json")
+	if err := syscall.Mkfifo(transitionPath, 0o600); err != nil {
+		t.Fatal("transition FIFO fixture unavailable")
+	}
+	started = time.Now()
+	if _, err := artifact.NewStoreWithClock(transitionFIFORoot, repositoryRoot, func() time.Time { return apply.createdAt }); err == nil {
+		t.Fatal("store accepted a FIFO transition record")
+	}
+	if time.Since(started) > 750*time.Millisecond {
+		t.Fatal("FIFO transition record escaped the bounded nonblocking read contract")
+	}
+}
+
+func assertDirectoryEmpty(t *testing.T, root, message string) {
+	t.Helper()
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 0 {
+		t.Fatal(message)
+	}
 }
 
 func assertExpiredAndReleasedPins(t *testing.T, apply graphBundle, repositoryRoot string) {

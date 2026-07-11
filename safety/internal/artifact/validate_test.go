@@ -359,7 +359,14 @@ func assertStoreEmpty(t *testing.T, root string) {
 	if err != nil {
 		t.Fatalf("invalid-store inspection failed")
 	}
-	if len(entries) != 0 {
+	if len(entries) != 2 {
 		t.Fatalf("invalid artifact persisted store state")
+	}
+	for _, name := range []string{"sha256", "transitions"} {
+		info, statErr := os.Lstat(filepath.Join(root, name))
+		children, readErr := os.ReadDir(filepath.Join(root, name))
+		if statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || readErr != nil || len(children) != 0 {
+			t.Fatalf("invalid artifact persisted store content")
+		}
 	}
 }
