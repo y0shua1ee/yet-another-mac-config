@@ -1,5 +1,6 @@
 ---
 created: 2026-07-10T10:10:49.439Z
+completed: 2026-07-11
 title: Clarify Determinate Nix and Home Manager authority
 area: planning
 files:
@@ -9,6 +10,7 @@ files:
   - flake.nix:1
   - nix/darwin/default.nix:1
   - nix/home/default.nix:1
+
 ---
 
 ## Problem

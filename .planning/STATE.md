@@ -2,9 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-last_updated: "2026-07-10T21:40:49.435Z"
-last_activity: 2026-07-10
+status: planning
+stopped_at: Phase 01 verified; Phase 2 ready to plan
+last_updated: "2026-07-11T03:17:16.937Z"
+last_activity: 2026-07-11
 progress:
   total_phases: 13
   completed_phases: 1
@@ -17,17 +18,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-10)
+See: .planning/PROJECT.md (updated 2026-07-11)
 
 **Core value:** 在不泄露私密信息、也不破坏任何已有可用环境的前提下，让受支持的 Mac 能从本仓库恢复到可验证、尽可能一致的开发与软件配置状态。
-**Current focus:** Phase 01 — safety-privacy-and-state-foundation
+**Current focus:** Phase 2 — read-only-ownership-inspector
 
 ## Current Position
 
-Phase: 01 (safety-privacy-and-state-foundation) — EXECUTING
-Plan: 7 of 7
-Status: Phase complete — ready for verification
-Last activity: 2026-07-10
+Phase: 2 (read-only-ownership-inspector) — READY TO PLAN
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-11 — Phase 1 verified; Phase 2 ready to plan
 
 Progress: [██████████] 100%
 
@@ -35,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 0
+- Total plans completed: 7
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -43,7 +44,7 @@ Progress: [██████████] 100%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01 | 7 | - | - |
 
 **Recent Trend:**
 
@@ -71,7 +72,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 01]: Keep synthetic CLI routing closed and deny-by-default; only synthetic-sentinel-passed can be rendered on this path. — Synthetic evidence must never emit a real-surface, whole-Mac, current-host, multi-host, or fresh-install claim.
 - [Phase 01]: Supersede the Plan 01 embedded fresh-record compromise: keep six closed kinds but store seven apply-path instances, with fresh observation as a second full observed-state envelope. — A compact evidence descriptor cannot replace a separately validated and pinned post-receipt observation.
 - [Phase 01]: Persist plan transitions and rebuild the validated digest-reference graph when Store reopens. — Terminal state, snapshot expiry, and transitive pins must survive process boundaries without trusting run IDs, mtimes, filenames, or latest aliases.
-- [Phase 01]: Preflight the complete graph before immutable writes and roll back only objects created by a failed graph write. — Invalid or colliding late nodes must not leave a partially persisted graph.
+- [Phase 01]: Preflight the complete graph before immutable writes, then use a fresh capability-owned single-writer append-only store; existing stores reopen read-only and failures never roll back or delete entries by name. — This prevents namespace races from deleting replacement data while preserving complete content-addressed objects.
+- [Phase 01]: Freeze one HEAD and bounded full stage-0 index view for each workflow, then read tracked inputs through a retained root and component-by-component no-follow handles. — All consumed bytes and executable modes come from one exact repository view without intermediate-symlink escape.
+- [Phase 01]: Run each public test invocation under one supervisor and one process group with monotonic 15/47/305-second nested deadlines. — Task, wave, and phase timeouts remain layered without recursive public runners, caller-selectable bypasses, or orphan descendants.
 - [Phase 01]: Keep privacy independent of artifact internals and gate already schema-validated canonical candidates immediately before writes and renders. — This avoids an artifact/privacy import cycle while preserving the single pre-output gate.
 - [Phase 01]: Keep sentinel surface domains separate from the six persistent logical namespaces; physical resolver roots remain process-local. — This preserves D-08 and prevents stable machine identity or physical paths from entering public artifacts.
 - [Phase 01]: Materialize the current synthetic executable inside fixture:path/bin and pass the tracked raw sample only through fixed in-memory child environment data. — This provides a real os/exec boundary without a shell, arbitrary argv, inherited environment, or raw temp file.
@@ -106,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-07-10T21:40:49.430Z
-Stopped at: Completed 01-07-PLAN.md
+Last session: 2026-07-11T03:17:16.937Z
+Stopped at: Phase 01 verified; Phase 2 ready to plan
 Resume file: None

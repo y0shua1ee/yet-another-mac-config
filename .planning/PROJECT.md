@@ -23,6 +23,9 @@
 - ✓ 仓库已管理终端、编辑器、窗口管理、文件管理、tmux、媒体工具和 macOS 自动化等应用原生配置，部分依赖已有 lockfile、固定 revision 或 vendored provenance — existing
 - ✓ 已有 Nix evaluation/build、部分应用原生 validator、人工 post-check、隐私 diff review 与 Gitleaks 配置等验证基础 — existing
 - ✓ 配置变更已有文档同步、隐私审查、原子英文提交和禁止自动 push 的维护纪律 — existing
+- ✓ Phase 1 已交付六类强类型恢复 artifact、digest lineage、结构化隐私门和 append-only capability-owned store；错误类型、伪装 artifact、秘密/机器身份和越界引用会在输出或持久化前被拒绝 — Phase 1
+- ✓ Phase 1 已交付默认离线、fresh-root、独立 HOME/XDG/manager/cache 的统一测试入口，并以单 supervisor 的 15/47/305 秒分层 deadline、无网络/安装/cleanup 路由和 marker-owned teardown 保护当前唯一工作 Mac — Phase 1
+- ✓ Phase 1 已交付 proof-gated sentinel envelope 与严格声明上限；隔离 proof-valid doubles 可验证 exact covered run，而缺少受跟踪 service proof 的 current-host 路径会在任何 adapter/workload 前返回 `manual-required` / `32` / `indeterminate` / zero-call — Phase 1
 
 ### Active
 
@@ -66,7 +69,7 @@
 - Node/npm 与 Go 已由 mise 提供全局 fallback。uv、rustup、direnv 等管理入口已经存在，但 Python、Rust、Deno/Bun、JVM 和 Node 包管理器等尚无完整、统一且可检查的项目治理契约。
 - Home Manager 主 Shell 和备用 Shell 当前并不完全等价；备用路径没有同等的 mise 激活行为。部分现有工具或 hook 还依赖机器相关路径，需要在多机恢复中消除或显式处理。
 - `setup_mac.sh` 目前没有完整 dry-run、机器可读 plan、非交互 profile 或可恢复状态。其 tracked-only discovery 依赖 Git、有效 worktree 和非空的 tracked config 查询；条件不满足时的物理目录 fallback 可能枚举 ignored/untracked 本地状态。
-- 当前没有仓库级测试 runner、统一验证命令、CI gate 或隔离 fixture 体系；验证主要分散在 Nix 和各应用的维护文档中。
+- Phase 1 已建立仓库级 safety runner、强类型 artifact/privacy contract、隔离 fixture 和 sentinel gate；它目前只证明离线 synthetic / proof-double 边界，真实 current-host adapter 仍需逐项受跟踪的官方语义与隔离负路径证明。
 - 现有文档还保留少量语言栈迁移期描述，与当前 Node/Go/mise 终态存在漂移；后续实现应以受跟踪配置、当前项目规划和实际只读检查为准。
 - 旧的 Hermes NVM-to-mise 文件只作为历史执行证据，不再是当前计划或下一步指令；本项目的 `.planning` 文档与受跟踪配置是后续规划事实源。
 - 当前没有干净 Mac 可用于测试。首轮顺序是先完成项目工具链统一治理，再完成恢复就绪基线；未来有条件时再使用 macOS VM 或第二台实体 Mac 验证真正的全新恢复。
@@ -102,8 +105,11 @@
 | 1Password CLI 延后为可选 provider | 首版不增加额外账号、登录或工具依赖 | — Pending |
 | 按生态渐进迁移并保留回滚 | 降低对现有项目和全局环境的中断风险 | — Pending |
 | 恢复范围覆盖全部公开且适合声明的机器配置 | 目标是可工作的工作站状态，而不只是语言运行时 | — Pending |
-| 测试可以补充，但不得修改或破坏真实环境 | 当前只有一台工作 Mac，环境安全高于测试自动化程度 | — Pending |
+| 测试可以补充，但不得修改或破坏真实环境 | 当前只有一台工作 Mac，环境安全高于测试自动化程度 | ✓ Phase 1 safety runner validated |
 | 无干净环境证据前只标记“恢复就绪” | 避免把当前 Mac 的本机演练误称为全新安装验证 | — Pending |
+| Phase 1 artifact store 只授予 fresh marker-owned single-writer capability，existing store 只读且内容 append-only | macOS/Go 无法用 pathname pre/post check 证明同 UID rename 竞态下的安全删除；不按名 rollback/delete 才能避免误删 replacement | ✓ Phase 1 |
+| Phase 1 的最高正向声明仅为 exact run 的 `covered-surfaces-unchanged-for-run` | synthetic pass、当前主机单点证据或缺失 proof 都不能推导 whole-Mac、recovery-ready、多机或 fresh-install 结论 | ✓ Phase 1 |
+| 每次 public safety test invocation 使用一个 supervisor/PGID 和 15/47/305 秒 monotonic deadline stack | 保留 task/wave/phase 分层硬上限，同时避免 recursive runner、caller bypass 与 orphan descendants | ✓ Phase 1 |
 
 ## Evolution
 
@@ -123,4 +129,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-10 after initialization*
+*Last updated: 2026-07-11 after Phase 1 verification*
