@@ -438,150 +438,154 @@ func testRunnerEntryDeadlines(t *testing.T) {
 		{name: "self-consistent inherited guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "self-consistent"},
 	}
 
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			markerRoot, err := os.MkdirTemp("/tmp", "yamc-runner-contract.")
-			if err != nil {
-				t.Fatal("runner deadline marker root unavailable")
-			}
-			t.Cleanup(func() { _ = os.RemoveAll(markerRoot) })
-			markerPath := filepath.Join(markerRoot, "helper.pid")
-			bodyMarkerPath := filepath.Join(markerRoot, "body.pid")
+	t.Run("isolated deadline cases", func(t *testing.T) {
+		for _, testCase := range cases {
+			testCase := testCase
+			t.Run(testCase.name, func(t *testing.T) {
+				t.Parallel()
+				markerRoot, err := os.MkdirTemp("/tmp", "yamc-runner-contract.")
+				if err != nil {
+					t.Fatal("runner deadline marker root unavailable")
+				}
+				t.Cleanup(func() { _ = os.RemoveAll(markerRoot) })
+				markerPath := filepath.Join(markerRoot, "helper.pid")
+				bodyMarkerPath := filepath.Join(markerRoot, "body.pid")
 
-			command := exec.Command("/bin/bash", append([]string{runnerPath}, testCase.arguments...)...)
-			budgetMS := testCase.budgetMS
-			if budgetMS == 0 {
-				budgetMS = 500
-			}
-			command.Env = runnerDeadlineEnvironment(testCase.blockPoint, markerPath, budgetMS, testCase.taskBudget, testCase.waveBudget)
-			var guardRead *os.File
-			switch testCase.guardMode {
-			case "forged":
-				command.Env = append(command.Env, "YAMC_RUNNER_WATCHDOG_PID="+strconv.Itoa(os.Getpid()))
-			case "stale":
-				command.Env = append(command.Env,
-					"YAMC_RUNNER_WATCHDOG_PID=1",
-					"YAMC_RUNNER_WATCHDOG_FD=9",
-					"YAMC_RUNNER_WATCHDOG_NONCE="+strings.Repeat("a", 64),
-				)
-			case "self-consistent":
-				var guardWrite *os.File
-				var pipeErr error
-				guardRead, guardWrite, pipeErr = os.Pipe()
-				if pipeErr != nil {
-					t.Fatal("runner inherited guard pipe unavailable")
+				command := exec.Command("/bin/bash", append([]string{runnerPath}, testCase.arguments...)...)
+				budgetMS := testCase.budgetMS
+				if budgetMS == 0 {
+					budgetMS = 500
 				}
-				nonce := strings.Repeat("b", 64)
-				_, pipeErr = guardWrite.WriteString(nonce + "\n")
-				closeErr := guardWrite.Close()
-				if pipeErr != nil || closeErr != nil {
-					_ = guardRead.Close()
-					t.Fatal("runner inherited guard pipe setup failed")
+				command.Env = runnerDeadlineEnvironment(testCase.blockPoint, markerPath, budgetMS, testCase.taskBudget, testCase.waveBudget)
+				var guardRead *os.File
+				switch testCase.guardMode {
+				case "forged":
+					command.Env = append(command.Env, "YAMC_RUNNER_WATCHDOG_PID="+strconv.Itoa(os.Getpid()))
+				case "stale":
+					command.Env = append(command.Env,
+						"YAMC_RUNNER_WATCHDOG_PID=1",
+						"YAMC_RUNNER_WATCHDOG_FD=9",
+						"YAMC_RUNNER_WATCHDOG_NONCE="+strings.Repeat("a", 64),
+					)
+				case "self-consistent":
+					var guardWrite *os.File
+					var pipeErr error
+					guardRead, guardWrite, pipeErr = os.Pipe()
+					if pipeErr != nil {
+						t.Fatal("runner inherited guard pipe unavailable")
+					}
+					nonce := strings.Repeat("b", 64)
+					_, pipeErr = guardWrite.WriteString(nonce + "\n")
+					closeErr := guardWrite.Close()
+					if pipeErr != nil || closeErr != nil {
+						_ = guardRead.Close()
+						t.Fatal("runner inherited guard pipe setup failed")
+					}
+					command.ExtraFiles = []*os.File{guardRead}
+					command.Env = append(command.Env,
+						"YAMC_RUNNER_WATCHDOG_PID="+strconv.Itoa(os.Getpid()),
+						"YAMC_RUNNER_WATCHDOG_FD=3",
+						"YAMC_RUNNER_WATCHDOG_NONCE="+nonce,
+					)
+					command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 				}
-				command.ExtraFiles = []*os.File{guardRead}
-				command.Env = append(command.Env,
-					"YAMC_RUNNER_WATCHDOG_PID="+strconv.Itoa(os.Getpid()),
-					"YAMC_RUNNER_WATCHDOG_FD=3",
-					"YAMC_RUNNER_WATCHDOG_NONCE="+nonce,
-				)
-				command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-			}
-			var combined bytes.Buffer
-			command.Stdout = &combined
-			command.Stderr = &combined
-			started := time.Now()
-			if err := command.Start(); err != nil {
+				var combined bytes.Buffer
+				command.Stdout = &combined
+				command.Stderr = &combined
+				started := time.Now()
+				if err := command.Start(); err != nil {
+					if guardRead != nil {
+						_ = guardRead.Close()
+					}
+					t.Fatal("runner deadline process did not start")
+				}
 				if guardRead != nil {
 					_ = guardRead.Close()
 				}
-				t.Fatal("runner deadline process did not start")
-			}
-			if guardRead != nil {
-				_ = guardRead.Close()
-			}
-			waitResult := make(chan error, 1)
-			go func() { waitResult <- command.Wait() }()
+				waitResult := make(chan error, 1)
+				go func() { waitResult <- command.Wait() }()
 
-			bodyPID, bodySeen := waitForRunnerPID(bodyMarkerPath, 650*time.Millisecond)
-			helperPID, helperSeen := waitForRunnerPID(markerPath, 650*time.Millisecond)
-			sameProcessGroup := true
-			bodyGroup := 0
-			helperGroup := 0
-			if bodySeen && helperSeen {
-				var bodyGroupErr error
-				var helperGroupErr error
-				bodyGroup, bodyGroupErr = syscall.Getpgid(bodyPID)
-				helperGroup, helperGroupErr = syscall.Getpgid(helperPID)
-				if bodyGroupErr != nil || helperGroupErr != nil || bodyGroup <= 1 || bodyGroup != helperGroup {
-					sameProcessGroup = false
+				bodyPID, bodySeen := waitForRunnerPID(bodyMarkerPath, 650*time.Millisecond)
+				helperPID, helperSeen := waitForRunnerPID(markerPath, 650*time.Millisecond)
+				sameProcessGroup := true
+				bodyGroup := 0
+				helperGroup := 0
+				if bodySeen && helperSeen {
+					var bodyGroupErr error
+					var helperGroupErr error
+					bodyGroup, bodyGroupErr = syscall.Getpgid(bodyPID)
+					helperGroup, helperGroupErr = syscall.Getpgid(helperPID)
+					if bodyGroupErr != nil || helperGroupErr != nil || bodyGroup <= 1 || bodyGroup != helperGroup {
+						sameProcessGroup = false
+					}
 				}
-			}
-			remaining := 3*time.Second - time.Since(started)
-			if remaining < 50*time.Millisecond {
-				remaining = 50 * time.Millisecond
-			}
-			var runErr error
-			harnessExpired := false
-			select {
-			case runErr = <-waitResult:
-			case <-time.After(remaining):
-				harnessExpired = true
-				_ = command.Process.Signal(syscall.SIGTERM)
+				remaining := 3*time.Second - time.Since(started)
+				if remaining < 50*time.Millisecond {
+					remaining = 50 * time.Millisecond
+				}
+				var runErr error
+				harnessExpired := false
 				select {
 				case runErr = <-waitResult:
-				case <-time.After(2 * time.Second):
-					if bodySeen {
-						if processGroup, groupErr := syscall.Getpgid(bodyPID); groupErr == nil && processGroup > 1 {
-							_ = syscall.Kill(-processGroup, syscall.SIGKILL)
+				case <-time.After(remaining):
+					harnessExpired = true
+					_ = command.Process.Signal(syscall.SIGTERM)
+					select {
+					case runErr = <-waitResult:
+					case <-time.After(2 * time.Second):
+						if bodySeen {
+							if processGroup, groupErr := syscall.Getpgid(bodyPID); groupErr == nil && processGroup > 1 {
+								_ = syscall.Kill(-processGroup, syscall.SIGKILL)
+							}
 						}
+						_ = command.Process.Kill()
+						runErr = <-waitResult
 					}
-					_ = command.Process.Kill()
-					runErr = <-waitResult
 				}
-			}
-			elapsed := time.Since(started)
-			if !helperSeen {
-				t.Fatalf("fixed blocking helper did not publish its PID before the deadline: output=%q", combined.String())
-			}
-			if !bodySeen || bodyPID == helperPID {
-				t.Fatalf("fixed embedded body did not publish a distinct PID before the deadline: output=%q", combined.String())
-			}
-			var exitErr *exec.ExitError
-			if !errors.As(runErr, &exitErr) || exitErr.ExitCode() != 124 {
-				t.Fatalf("runner deadline exit changed: err=%v output=%q", runErr, combined.String())
-			}
-			maxElapsed := testCase.maxElapsed
-			if maxElapsed == 0 {
-				maxElapsed = 3 * time.Second
-			}
-			if elapsed > maxElapsed {
-				t.Fatalf("runner deadline exceeded wall bound: %s", elapsed)
-			}
-			if testCase.minElapsed > 0 && elapsed < testCase.minElapsed {
-				t.Fatalf("runner deadline fired before its requested nested window: %s", elapsed)
-			}
-			if strings.TrimSpace(combined.String()) != `{"status":"harness-error","reason":"runner-deadline-exceeded"}` {
-				t.Fatalf("runner deadline envelope is not unique: %q", combined.String())
-			}
-			waitForProcessExit(t, helperPID, time.Second)
-			waitForProcessExit(t, bodyPID, time.Second)
-			waitForProcessExit(t, command.Process.Pid, time.Second)
-			if _, err := os.Lstat(markerPath); !errors.Is(err, os.ErrNotExist) {
-				t.Fatal("blocked helper marker remained after watchdog cleanup")
-			}
-			if _, err := os.Lstat(bodyMarkerPath); !errors.Is(err, os.ErrNotExist) {
-				t.Fatal("blocked embedded-body marker remained after watchdog cleanup")
-			}
-			if afterRoots := safetyTempRoots(t); !reflect.DeepEqual(afterRoots, baselineRoots) {
-				t.Fatalf("watchdog left a marker-owned runner root: before=%v after=%v", baselineRoots, afterRoots)
-			}
-			if !sameProcessGroup {
-				t.Fatalf("embedded body and helper escaped the single runner PGID: body=%d helper=%d", bodyGroup, helperGroup)
-			}
-			if harnessExpired {
-				t.Fatal("nested deadline did not terminate before the safety harness timeout")
-			}
-		})
+				elapsed := time.Since(started)
+				if !helperSeen {
+					t.Fatalf("fixed blocking helper did not publish its PID before the deadline: output=%q", combined.String())
+				}
+				if !bodySeen || bodyPID == helperPID {
+					t.Fatalf("fixed embedded body did not publish a distinct PID before the deadline: output=%q", combined.String())
+				}
+				var exitErr *exec.ExitError
+				if !errors.As(runErr, &exitErr) || exitErr.ExitCode() != 124 {
+					t.Fatalf("runner deadline exit changed: err=%v output=%q", runErr, combined.String())
+				}
+				maxElapsed := testCase.maxElapsed
+				if maxElapsed == 0 {
+					maxElapsed = 3 * time.Second
+				}
+				if elapsed > maxElapsed {
+					t.Fatalf("runner deadline exceeded wall bound: %s", elapsed)
+				}
+				if testCase.minElapsed > 0 && elapsed < testCase.minElapsed {
+					t.Fatalf("runner deadline fired before its requested nested window: %s", elapsed)
+				}
+				if strings.TrimSpace(combined.String()) != `{"status":"harness-error","reason":"runner-deadline-exceeded"}` {
+					t.Fatalf("runner deadline envelope is not unique: %q", combined.String())
+				}
+				waitForProcessExit(t, helperPID, time.Second)
+				waitForProcessExit(t, bodyPID, time.Second)
+				waitForProcessExit(t, command.Process.Pid, time.Second)
+				if _, err := os.Lstat(markerPath); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("blocked helper marker remained after watchdog cleanup")
+				}
+				if _, err := os.Lstat(bodyMarkerPath); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("blocked embedded-body marker remained after watchdog cleanup")
+				}
+				if !sameProcessGroup {
+					t.Fatalf("embedded body and helper escaped the single runner PGID: body=%d helper=%d", bodyGroup, helperGroup)
+				}
+				if harnessExpired {
+					t.Fatal("nested deadline did not terminate before the safety harness timeout")
+				}
+			})
+		}
+	})
+	if afterRoots := safetyTempRoots(t); !reflect.DeepEqual(afterRoots, baselineRoots) {
+		t.Fatalf("watchdogs left marker-owned runner roots: before=%v after=%v", baselineRoots, afterRoots)
 	}
 }
 
