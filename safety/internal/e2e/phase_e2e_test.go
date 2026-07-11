@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -331,11 +330,21 @@ func testPhaseRunnerContract(t *testing.T) {
 		"RUNNER_BUDGET_SECONDS=15",
 		"RUNNER_BUDGET_SECONDS=47",
 		"RUNNER_BUDGET_SECONDS=305",
+		"runner_task_budget_ms=15000",
+		"runner_wave_budget_ms=47000",
 		": __YAMC_RUNNER_BODY__",
 		`exec "/bin/bash", "-c", $body`,
 		"length($body) > 262144",
 		"/usr/bin/env -i",
 		"YAMC_RUNNER_TEST_BUDGET_MS",
+		"YAMC_RUNNER_TEST_TASK_BUDGET_MS",
+		"YAMC_RUNNER_TEST_WAVE_BUDGET_MS",
+		"socketpair(my $control_parent, my $control_child",
+		"clock_gettime(CLOCK_MONOTONIC)",
+		"runner_deadline_begin task",
+		"runner_deadline_begin wave",
+		"runner_deadline_end task",
+		"runner_deadline_end wave",
 		"runner_test_block setup",
 		"runner_test_block docs",
 		"runner_test_block child",
@@ -356,6 +365,17 @@ func testPhaseRunnerContract(t *testing.T) {
 	}
 	if strings.Contains(text, `/bin/bash "${SCRIPT_DIR}/test.sh" task`) || strings.Contains(text, `/bin/bash "${SCRIPT_DIR}/test.sh" wave`) {
 		t.Fatal("wave or phase recursively invokes the public watchdog entry")
+	}
+	if strings.Count(text, "socketpair(my $control_parent, my $control_child") != 1 || strings.Contains(text, "YAMC_RUNNER_DEADLINE_FD=") || strings.Contains(text, "YAMC_RUNNER_DEADLINE_TOKEN=") {
+		t.Fatal("nested deadline control is not one private supervisor capability")
+	}
+	for _, ceiling := range []string{
+		"YAMC_RUNNER_TEST_TASK_BUDGET_MS <= runner_task_budget_ms",
+		"YAMC_RUNNER_TEST_WAVE_BUDGET_MS <= runner_wave_budget_ms",
+	} {
+		if !strings.Contains(text, ceiling) {
+			t.Fatalf("test-only deadline override can exceed its production ceiling: %s", ceiling)
+		}
 	}
 	if strings.Count(text, "setpgrp(0, 0)") != 1 || strings.Contains(text, "setsid") {
 		t.Fatal("runner descendants can establish an additional process group or session")
@@ -402,11 +422,17 @@ func testRunnerEntryDeadlines(t *testing.T) {
 		blockPoint string
 		guardMode  string
 		budgetMS   int
+		taskBudget int
+		waveBudget int
+		minElapsed time.Duration
+		maxElapsed time.Duration
 	}{
 		{name: "setup", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup"},
 		{name: "docs", arguments: []string{"task", "docs-and-phase-gate"}, blockPoint: "docs"},
-		{name: "child dispatch", arguments: []string{"wave", "artifact-contracts"}, blockPoint: "child"},
-		{name: "nested body", arguments: []string{"wave", "artifact-contracts"}, blockPoint: "nested-body", budgetMS: 800},
+		{name: "child dispatch", arguments: []string{"wave", "artifact-contracts"}, blockPoint: "child", budgetMS: 800, taskBudget: 500},
+		{name: "nested task ceiling", arguments: []string{"wave", "artifact-contracts"}, blockPoint: "nested-body", budgetMS: 20000, taskBudget: 800, minElapsed: 500 * time.Millisecond, maxElapsed: 2 * time.Second},
+		{name: "phase wave ceiling", arguments: []string{"phase"}, blockPoint: "nested-wave-body", budgetMS: 5000, waveBudget: 500, minElapsed: 300 * time.Millisecond, maxElapsed: 1500 * time.Millisecond},
+		{name: "phase task ceiling", arguments: []string{"phase"}, blockPoint: "nested-body", budgetMS: 5000, waveBudget: 2000, taskBudget: 500, minElapsed: 300 * time.Millisecond, maxElapsed: 1500 * time.Millisecond},
 		{name: "forged ambient guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "forged"},
 		{name: "stale ambient guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "stale"},
 		{name: "self-consistent inherited guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "self-consistent"},
@@ -422,14 +448,12 @@ func testRunnerEntryDeadlines(t *testing.T) {
 			markerPath := filepath.Join(markerRoot, "helper.pid")
 			bodyMarkerPath := filepath.Join(markerRoot, "body.pid")
 
-			commandContext, cancelCommand := context.WithTimeout(context.Background(), 2500*time.Millisecond)
-			defer cancelCommand()
-			command := exec.CommandContext(commandContext, "/bin/bash", append([]string{runnerPath}, testCase.arguments...)...)
+			command := exec.Command("/bin/bash", append([]string{runnerPath}, testCase.arguments...)...)
 			budgetMS := testCase.budgetMS
 			if budgetMS == 0 {
 				budgetMS = 500
 			}
-			command.Env = runnerDeadlineEnvironment(testCase.blockPoint, markerPath, budgetMS)
+			command.Env = runnerDeadlineEnvironment(testCase.blockPoint, markerPath, budgetMS, testCase.taskBudget, testCase.waveBudget)
 			var guardRead *os.File
 			switch testCase.guardMode {
 			case "forged":
@@ -475,12 +499,45 @@ func testRunnerEntryDeadlines(t *testing.T) {
 			if guardRead != nil {
 				_ = guardRead.Close()
 			}
+			waitResult := make(chan error, 1)
+			go func() { waitResult <- command.Wait() }()
 
 			bodyPID, bodySeen := waitForRunnerPID(bodyMarkerPath, 650*time.Millisecond)
 			helperPID, helperSeen := waitForRunnerPID(markerPath, 650*time.Millisecond)
-			runErr := command.Wait()
-			if testCase.guardMode == "self-consistent" && command.Process != nil && commandContext.Err() != nil {
-				_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+			sameProcessGroup := true
+			bodyGroup := 0
+			helperGroup := 0
+			if bodySeen && helperSeen {
+				var bodyGroupErr error
+				var helperGroupErr error
+				bodyGroup, bodyGroupErr = syscall.Getpgid(bodyPID)
+				helperGroup, helperGroupErr = syscall.Getpgid(helperPID)
+				if bodyGroupErr != nil || helperGroupErr != nil || bodyGroup <= 1 || bodyGroup != helperGroup {
+					sameProcessGroup = false
+				}
+			}
+			remaining := 3*time.Second - time.Since(started)
+			if remaining < 50*time.Millisecond {
+				remaining = 50 * time.Millisecond
+			}
+			var runErr error
+			harnessExpired := false
+			select {
+			case runErr = <-waitResult:
+			case <-time.After(remaining):
+				harnessExpired = true
+				_ = command.Process.Signal(syscall.SIGTERM)
+				select {
+				case runErr = <-waitResult:
+				case <-time.After(2 * time.Second):
+					if bodySeen {
+						if processGroup, groupErr := syscall.Getpgid(bodyPID); groupErr == nil && processGroup > 1 {
+							_ = syscall.Kill(-processGroup, syscall.SIGKILL)
+						}
+					}
+					_ = command.Process.Kill()
+					runErr = <-waitResult
+				}
 			}
 			elapsed := time.Since(started)
 			if !helperSeen {
@@ -493,14 +550,22 @@ func testRunnerEntryDeadlines(t *testing.T) {
 			if !errors.As(runErr, &exitErr) || exitErr.ExitCode() != 124 {
 				t.Fatalf("runner deadline exit changed: err=%v output=%q", runErr, combined.String())
 			}
-			if elapsed > 3*time.Second {
+			maxElapsed := testCase.maxElapsed
+			if maxElapsed == 0 {
+				maxElapsed = 3 * time.Second
+			}
+			if elapsed > maxElapsed {
 				t.Fatalf("runner deadline exceeded wall bound: %s", elapsed)
+			}
+			if testCase.minElapsed > 0 && elapsed < testCase.minElapsed {
+				t.Fatalf("runner deadline fired before its requested nested window: %s", elapsed)
 			}
 			if strings.TrimSpace(combined.String()) != `{"status":"harness-error","reason":"runner-deadline-exceeded"}` {
 				t.Fatalf("runner deadline envelope is not unique: %q", combined.String())
 			}
 			waitForProcessExit(t, helperPID, time.Second)
 			waitForProcessExit(t, bodyPID, time.Second)
+			waitForProcessExit(t, command.Process.Pid, time.Second)
 			if _, err := os.Lstat(markerPath); !errors.Is(err, os.ErrNotExist) {
 				t.Fatal("blocked helper marker remained after watchdog cleanup")
 			}
@@ -510,15 +575,23 @@ func testRunnerEntryDeadlines(t *testing.T) {
 			if afterRoots := safetyTempRoots(t); !reflect.DeepEqual(afterRoots, baselineRoots) {
 				t.Fatalf("watchdog left a marker-owned runner root: before=%v after=%v", baselineRoots, afterRoots)
 			}
+			if !sameProcessGroup {
+				t.Fatalf("embedded body and helper escaped the single runner PGID: body=%d helper=%d", bodyGroup, helperGroup)
+			}
+			if harnessExpired {
+				t.Fatal("nested deadline did not terminate before the safety harness timeout")
+			}
 		})
 	}
 }
 
-func runnerDeadlineEnvironment(blockPoint, markerPath string, budgetMS int) []string {
-	environment := make([]string, 0, len(os.Environ())+4)
+func runnerDeadlineEnvironment(blockPoint, markerPath string, budgetMS, taskBudgetMS, waveBudgetMS int) []string {
+	environment := make([]string, 0, len(os.Environ())+6)
 	for _, entry := range os.Environ() {
 		if strings.HasPrefix(entry, "YAMC_RUNNER_TEST_MODE=") ||
 			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_BUDGET_MS=") ||
+			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_TASK_BUDGET_MS=") ||
+			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_WAVE_BUDGET_MS=") ||
 			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_BLOCK=") ||
 			strings.HasPrefix(entry, "YAMC_RUNNER_TEST_MARKER=") ||
 			strings.HasPrefix(entry, "YAMC_RUNNER_WATCHDOG_PID=") ||
@@ -528,12 +601,19 @@ func runnerDeadlineEnvironment(blockPoint, markerPath string, budgetMS int) []st
 		}
 		environment = append(environment, entry)
 	}
-	return append(environment,
+	environment = append(environment,
 		"YAMC_RUNNER_TEST_MODE=1",
 		"YAMC_RUNNER_TEST_BUDGET_MS="+strconv.Itoa(budgetMS),
 		"YAMC_RUNNER_TEST_BLOCK="+blockPoint,
 		"YAMC_RUNNER_TEST_MARKER="+markerPath,
 	)
+	if taskBudgetMS > 0 {
+		environment = append(environment, "YAMC_RUNNER_TEST_TASK_BUDGET_MS="+strconv.Itoa(taskBudgetMS))
+	}
+	if waveBudgetMS > 0 {
+		environment = append(environment, "YAMC_RUNNER_TEST_WAVE_BUDGET_MS="+strconv.Itoa(waveBudgetMS))
+	}
+	return environment
 }
 
 func waitForRunnerPID(markerPath string, timeout time.Duration) (int, bool) {

@@ -4,6 +4,8 @@ set -euo pipefail
 # 每个 runner 在解析参数、定位仓库或创建临时根之前先进入唯一 watchdog。
 # 测试预算只允许在固定测试模式下缩短，不能扩大生产预算。
 runner_watchdog_budget_ms=15000
+runner_task_budget_ms=15000
+runner_wave_budget_ms=47000
 case "${1:-}" in
   wave)
     runner_watchdog_budget_ms=47000
@@ -16,34 +18,68 @@ if [[ "${YAMC_RUNNER_TEST_MODE:-}" == '1' && "${YAMC_RUNNER_TEST_BUDGET_MS:-}" =
    (( YAMC_RUNNER_TEST_BUDGET_MS >= 500 && YAMC_RUNNER_TEST_BUDGET_MS <= runner_watchdog_budget_ms )); then
   runner_watchdog_budget_ms="${YAMC_RUNNER_TEST_BUDGET_MS}"
 fi
+if [[ "${YAMC_RUNNER_TEST_MODE:-}" == '1' && "${YAMC_RUNNER_TEST_TASK_BUDGET_MS:-}" =~ ^[1-9][0-9]{2,4}$ ]] && \
+   (( YAMC_RUNNER_TEST_TASK_BUDGET_MS >= 500 && YAMC_RUNNER_TEST_TASK_BUDGET_MS <= runner_task_budget_ms )); then
+  runner_task_budget_ms="${YAMC_RUNNER_TEST_TASK_BUDGET_MS}"
+fi
+if [[ "${YAMC_RUNNER_TEST_MODE:-}" == '1' && "${YAMC_RUNNER_TEST_WAVE_BUDGET_MS:-}" =~ ^[1-9][0-9]{2,4}$ ]] && \
+   (( YAMC_RUNNER_TEST_WAVE_BUDGET_MS >= 500 && YAMC_RUNNER_TEST_WAVE_BUDGET_MS <= runner_wave_budget_ms )); then
+  runner_wave_budget_ms="${YAMC_RUNNER_TEST_WAVE_BUDGET_MS}"
+fi
 
 readonly runner_caller_path="${PATH:-/usr/bin:/bin}"
 readonly runner_test_mode="${YAMC_RUNNER_TEST_MODE:-}"
 readonly runner_test_block_point="${YAMC_RUNNER_TEST_BLOCK:-}"
 readonly runner_test_marker="${YAMC_RUNNER_TEST_MARKER:-}"
 
-# public script 不再接受任何 caller-provided re-exec guard；每次调用都无条件建立 watchdog。
-# watchdog 从同一文件读取固定 embedded body，调用者无法通过环境、PID 或继承 FD 选择跳过。
+# public script 不接受任何 caller-provided re-exec guard；每次调用都无条件建立唯一 supervisor。
+# supervisor 通过 fork 前创建的匿名 socket 管理固定 nested deadline，public argv/env 无法伪造或延长。
 exec /usr/bin/env -i \
   'PATH=/usr/bin:/bin' \
   'HOME=/var/empty' \
   'LC_ALL=C' \
   'LANG=C' \
-  /usr/bin/perl -MPOSIX=':sys_wait_h' -MTime::HiRes='alarm,sleep,time' -e '
+  /usr/bin/perl -MPOSIX=':sys_wait_h' -MTime::HiRes='clock_gettime,CLOCK_MONOTONIC,sleep' -MIO::Select -MSocket='AF_UNIX,SOCK_STREAM,PF_UNSPEC' -MFcntl='F_SETFD' -MErrno='EINTR' -e '
     use strict;
     use warnings;
     my $budget_ms = shift @ARGV;
+    my $task_budget_ms = shift @ARGV;
+    my $wave_budget_ms = shift @ARGV;
     my $script = shift @ARGV;
     my $caller_path = shift @ARGV;
     my $test_mode = shift @ARGV;
     my $test_block = shift @ARGV;
     my $test_marker = shift @ARGV;
-    my $grace = $budget_ms <= 2000 ? 0.20 : 0.50;
-    my $deadline = time() + ($budget_ms / 1000.0);
+    exit 70 unless $budget_ms =~ /^[1-9][0-9]{2,5}$/ && $budget_ms >= 500 && $budget_ms <= 305000;
+    exit 70 unless $task_budget_ms =~ /^[1-9][0-9]{2,4}$/ && $task_budget_ms >= 500 && $task_budget_ms <= 15000;
+    exit 70 unless $wave_budget_ms =~ /^[1-9][0-9]{2,4}$/ && $wave_budget_ms >= 500 && $wave_budget_ms <= 47000;
+    my $grace_for = sub { return $_[0] <= 2000 ? 0.20 : 0.50; };
+    my $now = sub { return clock_gettime(CLOCK_MONOTONIC); };
+    my $public_deadline = $now->() + ($budget_ms / 1000.0);
+    socketpair(my $control_parent, my $control_child, AF_UNIX, SOCK_STREAM, PF_UNSPEC) or exit 70;
+    open my $random, "<:raw", "/dev/urandom" or exit 70;
+    my $random_bytes = "";
+    while (length($random_bytes) < 32) {
+      my $count = sysread($random, my $chunk, 32 - length($random_bytes));
+      exit 70 unless defined $count && $count > 0;
+      $random_bytes .= $chunk;
+    }
+    close $random;
+    my $control_token = unpack("H*", $random_bytes);
+    $random_bytes = "\0" x length($random_bytes);
     my $pid = fork();
     exit 70 unless defined $pid;
     if ($pid == 0) {
+      close $control_parent;
       exit 70 unless setpgrp(0, 0);
+      my $control_fd = fileno($control_child);
+      exit 70 unless defined $control_fd;
+      if ($control_fd != 9) {
+        exit 70 unless POSIX::dup2($control_fd, 9) == 9;
+        close $control_child;
+      }
+      open my $control_keep, ">&=9" or exit 70;
+      exit 70 unless defined fcntl($control_keep, F_SETFD, 0);
       open my $source, "<:raw", $script or exit 70;
       my $body = "";
       my $found = 0;
@@ -68,54 +104,160 @@ exec /usr/bin/env -i \
         $ENV{YAMC_RUNNER_TEST_BLOCK} = $test_block;
         $ENV{YAMC_RUNNER_TEST_MARKER} = $test_marker;
       }
-      exec "/bin/bash", "-c", $body, $script, @ARGV;
+      exec "/bin/bash", "-c", $body, $script, $control_token, @ARGV;
       exit 127;
     }
+    close $control_child;
+    $SIG{PIPE} = "IGNORE";
     my $timed_out = 0;
     my $signal_exit = 0;
+    my $protocol_error = 0;
     my $stopping = 0;
+    my $active_grace = $grace_for->($budget_ms);
     my $stop_group = sub {
       return if $stopping;
       $stopping = 1;
       kill "TERM", -$pid;
       kill "TERM", $pid;
-      sleep $grace;
+      sleep $active_grace;
       kill "KILL", -$pid;
       kill "KILL", $pid;
     };
     my $stop_descendants = sub {
       return unless kill 0, -$pid;
       kill "TERM", -$pid;
-      sleep $grace;
+      sleep $active_grace;
       kill "KILL", -$pid if kill 0, -$pid;
     };
-    $SIG{ALRM} = sub { $timed_out = 1; $stop_group->(); };
-    $SIG{HUP} = sub { $signal_exit = 129; $stop_group->(); };
-    $SIG{INT} = sub { $signal_exit = 130; $stop_group->(); };
-    $SIG{TERM} = sub { $signal_exit = 143; $stop_group->(); };
-    my $alarm_after = $deadline - time() - $grace;
-    $alarm_after = 0.05 if $alarm_after < 0.05;
-    alarm $alarm_after;
+    $SIG{HUP} = sub { $signal_exit = 129; };
+    $SIG{INT} = sub { $signal_exit = 130; };
+    $SIG{TERM} = sub { $signal_exit = 143; };
+    my @deadline_stack = ({ kind => "public", id => "0", deadline => $public_deadline, budget_ms => $budget_ms });
+    my $selector = IO::Select->new($control_parent);
+    my $control_buffer = "";
+    my $send_ack = sub {
+      my ($message) = @_;
+      my $offset = 0;
+      while ($offset < length($message)) {
+        my $written = syswrite($control_parent, $message, length($message) - $offset, $offset);
+        return 0 unless defined $written && $written > 0;
+        $offset += $written;
+      }
+      return 1;
+    };
+    my $process_control_line = sub {
+      my ($line) = @_;
+      return 0 if length($line) > 192 || $line =~ /[^A-Za-z0-9 :-]/;
+      my @parts = split / /, $line;
+      return 0 unless @parts == 4;
+      my ($action, $token, $kind, $id) = @parts;
+      return 0 unless $token eq $control_token && ($kind eq "task" || $kind eq "wave") && $id =~ /^[1-9][0-9]{0,8}$/;
+      if ($action eq "BEGIN") {
+        my $scope_budget_ms = $kind eq "task" ? $task_budget_ms : $wave_budget_ms;
+        my $scope_deadline = $now->() + ($scope_budget_ms / 1000.0);
+        if ($scope_deadline > $deadline_stack[-1]{deadline}) {
+          $timed_out = 1;
+          return 1;
+        }
+        push @deadline_stack, { kind => $kind, id => $id, deadline => $scope_deadline, budget_ms => $scope_budget_ms };
+        $active_grace = $grace_for->($scope_budget_ms);
+        return $send_ack->("ACK $control_token BEGIN $kind $id\n");
+      }
+      if ($action eq "END") {
+        return 0 unless @deadline_stack > 1;
+        my $active = $deadline_stack[-1];
+        return 0 unless $active->{kind} eq $kind && $active->{id} eq $id;
+        if ($now->() >= $active->{deadline} - $grace_for->($active->{budget_ms})) {
+          $timed_out = 1;
+          return 1;
+        }
+        pop @deadline_stack;
+        $active_grace = $grace_for->($deadline_stack[-1]{budget_ms});
+        return $send_ack->("ACK $control_token END $kind $id\n");
+      }
+      return 0;
+    };
     my $status = 0;
     while (1) {
-      my $waited = waitpid($pid, 0);
-      if ($waited == $pid) {
+      if ($protocol_error) {
+        $stop_group->();
+        waitpid($pid, 0);
         $status = $?;
         last;
       }
-      last if $waited == -1;
+      if ($signal_exit) {
+        $stop_group->();
+        waitpid($pid, 0);
+        $status = $?;
+        last;
+      }
+      my $active = $deadline_stack[-1];
+      my $fire_at = $active->{deadline} - $grace_for->($active->{budget_ms});
+      if ($now->() >= $fire_at) {
+        $timed_out = 1;
+        $stop_group->();
+        waitpid($pid, 0);
+        $status = $?;
+        last;
+      }
+      my $waited = waitpid($pid, WNOHANG);
+      if ($waited == $pid) {
+        $status = $?;
+        $protocol_error = 1 unless @deadline_stack == 1 && length($control_buffer) == 0;
+        last;
+      }
+      if ($waited == -1) {
+        $protocol_error = 1;
+        last;
+      }
+      my $wait_for = $fire_at - $now->();
+      $wait_for = 0.10 if $wait_for > 0.10;
+      $wait_for = 0 if $wait_for < 0;
+      my @ready = $selector->can_read($wait_for);
+      next unless @ready;
+      my $read = sysread($control_parent, my $chunk, 4096);
+      if (!defined $read) {
+        next if $! == EINTR;
+        $protocol_error = 1;
+        last;
+      }
+      if ($read == 0) {
+        $selector->remove($control_parent);
+        $protocol_error = 1 if @deadline_stack > 1 || length($control_buffer) > 0;
+        next;
+      }
+      $control_buffer .= $chunk;
+      if (length($control_buffer) > 4096) {
+        $protocol_error = 1;
+        last;
+      }
+      while ($control_buffer =~ s/\A([^\n]*)\n//) {
+        unless ($process_control_line->($1)) {
+          $protocol_error = 1 unless $timed_out;
+          last;
+        }
+      }
+      if ($timed_out || $protocol_error) {
+        $stop_group->();
+        waitpid($pid, 0);
+        $status = $?;
+        last;
+      }
     }
     $stop_descendants->();
-    alarm 0;
     if ($timed_out) {
       print STDERR qq({"status":"harness-error","reason":"runner-deadline-exceeded"}\n);
       exit 124;
     }
     exit $signal_exit if $signal_exit;
+    if ($protocol_error) {
+      print STDERR qq({"status":"harness-error","reason":"runner-deadline-protocol-error"}\n);
+      exit 70;
+    }
     exit WEXITSTATUS($status) if WIFEXITED($status);
     exit 128 + WTERMSIG($status) if WIFSIGNALED($status);
     exit 70;
-  ' "${runner_watchdog_budget_ms}" "${BASH_SOURCE[0]}" "${runner_caller_path}" "${runner_test_mode}" "${runner_test_block_point}" "${runner_test_marker}" "$@"
+  ' "${runner_watchdog_budget_ms}" "${runner_task_budget_ms}" "${runner_wave_budget_ms}" "${BASH_SOURCE[0]}" "${runner_caller_path}" "${runner_test_mode}" "${runner_test_block_point}" "${runner_test_marker}" "$@"
 
 : __YAMC_RUNNER_BODY__
 set -euo pipefail
@@ -123,6 +265,44 @@ set -euo pipefail
 # 此入口只运行固定的离线 Go 测试，不接受任意命令或隐式更高权限模式。
 readonly SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
 readonly SAFETY_ROOT="$(CDPATH='' cd -- "${SCRIPT_DIR}/.." && pwd -P)"
+if [[ $# -lt 1 || ! "${1}" =~ ^[0-9a-f]{64}$ ]]; then
+  exit 70
+fi
+readonly RUNNER_DEADLINE_TOKEN="$1"
+shift
+RUNNER_DEADLINE_SEQUENCE=0
+RUNNER_DEADLINE_LAST_ID=''
+
+runner_deadline_exchange() {
+  local action="$1"
+  local kind="$2"
+  local deadline_id="$3"
+  local response=''
+
+  case "${action}:${kind}" in
+    BEGIN:task|BEGIN:wave|END:task|END:wave)
+      ;;
+    *)
+      return 70
+      ;;
+  esac
+  printf '%s %s %s %s\n' "${action}" "${RUNNER_DEADLINE_TOKEN}" "${kind}" "${deadline_id}" >&9 || return 70
+  IFS= read -r response <&9 || return 70
+  [[ "${response}" == "ACK ${RUNNER_DEADLINE_TOKEN} ${action} ${kind} ${deadline_id}" ]] || return 70
+}
+
+runner_deadline_begin() {
+  local kind="$1"
+  RUNNER_DEADLINE_SEQUENCE=$((RUNNER_DEADLINE_SEQUENCE + 1))
+  RUNNER_DEADLINE_LAST_ID="${RUNNER_DEADLINE_SEQUENCE}"
+  runner_deadline_exchange BEGIN "${kind}" "${RUNNER_DEADLINE_LAST_ID}"
+}
+
+runner_deadline_end() {
+  local kind="$1"
+  local deadline_id="$2"
+  runner_deadline_exchange END "${kind}" "${deadline_id}"
+}
 
 usage() {
   printf '%s\n' 'usage: ./safety/scripts/test.sh task <suite> | wave <suite> | phase' >&2
@@ -278,7 +458,7 @@ runner_test_block() {
     printf '%s\n' '{"status":"harness-error","reason":"runner-test-marker-invalid"}' >&2
     return 70
   fi
-  { /bin/bash "${SAFETY_ROOT}/testdata/runner/block-helper.sh" "${marker_path}"; } >/dev/null 2>&1 || block_status=$?
+  { /bin/bash "${SAFETY_ROOT}/testdata/runner/block-helper.sh" "${marker_path}" 9>&-; } >/dev/null 2>&1 || block_status=$?
   cleanup_runner_test_body_marker
   return "${block_status}"
 }
@@ -370,6 +550,7 @@ initialize_test_context
 
 run_wave_child() {
   local suite_name="$1"
+  local deadline_id=''
   local output=''
   local child_status=0
   local elapsed=$((SECONDS - RUNNER_STARTED_SECONDS))
@@ -380,8 +561,11 @@ run_wave_child() {
     return 124
   fi
 
-  # 子 task 在同一 supervisor/PGID 中运行固定 embedded body，同时拥有独立临时根与 cache。
+  # 唯一 supervisor 先确认 15 秒私有 deadline，再启动同 PGID 内的 fresh task body。
+  runner_deadline_begin task || return 70
+  deadline_id="${RUNNER_DEADLINE_LAST_ID}"
   output="$(run_embedded_task_body "${suite_name}" 2>&1)" || child_status=$?
+  runner_deadline_end task "${deadline_id}" || return 70
   # 任何已观察到的 deadline 都必须先原样传播，不能被输出上限改写成其他状态。
   if [[ "${child_status}" -eq 124 ]]; then
     if [[ "${output}" != "${RUNNER_DEADLINE_ENVELOPE}" ]]; then
@@ -594,6 +778,12 @@ run_artifact_contracts_wave() {
   run_wave_child artifact-kinds
   run_wave_child artifact-lineage
   printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"artifact-contracts"}'
+}
+
+run_skeleton_wave() {
+  # 单 task wave 也必须经过同一 15 秒子 deadline，不能直接绕过聚合器。
+  run_wave_child walking-skeleton
+  printf '%s\n' '{"status":"synthetic-sentinel-passed","suite":"walking-skeleton"}'
 }
 
 run_privacy_boundary() {
@@ -998,6 +1188,7 @@ run_phase_integration_wave() {
 run_phase_wave_child() {
   local suite_name="$1"
   local expected_suite="${suite_name}"
+  local deadline_id=''
   local output=''
   local child_status=0
   local elapsed=$((SECONDS - RUNNER_STARTED_SECONDS))
@@ -1012,8 +1203,11 @@ run_phase_wave_child() {
     return 124
   fi
 
-  # 组件 wave 由同一受监控 embedded body 内部分发，不再递归 public watchdog。
+  # phase 与组件 wave 共享唯一 supervisor/PGID，但 supervisor 会先压入 47 秒 hard ceiling。
+  runner_deadline_begin wave || return 70
+  deadline_id="${RUNNER_DEADLINE_LAST_ID}"
   output="$(run_embedded_wave_body "${suite_name}" 2>&1)" || child_status=$?
+  runner_deadline_end wave "${deadline_id}" || return 70
   if [[ "${child_status}" -eq 124 ]]; then
     if [[ "${output}" != "${RUNNER_DEADLINE_ENVELOPE}" ]]; then
       printf '%s\n' '{"status":"harness-error","reason":"phase-child-deadline-invalid"}' >&2
@@ -1044,6 +1238,7 @@ run_phase_wave_child() {
 
 run_phase_task_child() {
   local suite_name="$1"
+  local deadline_id=''
   local output=''
   local child_status=0
   local elapsed=$((SECONDS - RUNNER_STARTED_SECONDS))
@@ -1054,8 +1249,11 @@ run_phase_task_child() {
     return 124
   fi
 
-  # 最终 task 使用同一固定内部分发，不产生第二个 watchdog 或 process group。
+  # 最终 task 由同一 supervisor 压入 15 秒 deadline，不产生第二个 watchdog 或 process group。
+  runner_deadline_begin task || return 70
+  deadline_id="${RUNNER_DEADLINE_LAST_ID}"
   output="$(run_embedded_task_body "${suite_name}" 2>&1)" || child_status=$?
+  runner_deadline_end task "${deadline_id}" || return 70
   if [[ "${child_status}" -eq 124 ]]; then
     if [[ "${output}" != "${RUNNER_DEADLINE_ENVELOPE}" ]]; then
       printf '%s\n' '{"status":"harness-error","reason":"phase-child-deadline-invalid"}' >&2
@@ -1088,6 +1286,7 @@ run_embedded_task_body() (
   local suite_name="${1:-}"
 
   # 这是只能由已闭合聚合器调用的固定内部 task body；public argv/env 没有 internal mode。
+  exec 9>&-
   initialize_test_context
   runner_test_block child
   runner_test_block nested-body
@@ -1147,10 +1346,10 @@ run_embedded_wave_body() (
   # 内部 wave body 与最外 body 共享唯一 PGID；它只创建 fresh context，不建立新 supervisor。
   initialize_test_context
   runner_test_block child
-  runner_test_block nested-body
+  runner_test_block nested-wave-body
   case "${suite_name}" in
     skeleton)
-      run_green_walking_skeleton
+      run_skeleton_wave
       ;;
     artifact-contracts)
       run_artifact_contracts_wave
@@ -1237,7 +1436,7 @@ case "${SCOPE}:${SUITE}" in
     run_docs_and_phase_gate
     ;;
   wave:skeleton)
-    run_green_walking_skeleton
+    run_skeleton_wave
     ;;
   wave:artifact-contracts)
     run_artifact_contracts_wave
