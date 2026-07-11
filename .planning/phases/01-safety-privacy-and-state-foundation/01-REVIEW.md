@@ -1,6 +1,6 @@
 ---
 phase: 01-safety-privacy-and-state-foundation
-reviewed: 2026-07-10T22:51:18Z
+reviewed: 2026-07-11T00:01:26Z
 depth: standard
 files_reviewed: 58
 files_reviewed_list:
@@ -63,114 +63,134 @@ files_reviewed_list:
   - safety/testdata/runner/block-helper.sh
   - README.md
 findings:
-  critical: 3
-  warning: 4
+  critical: 1
+  warning: 3
   info: 0
-  total: 7
+  total: 4
 status: issues_found
 ---
 
-# Phase 01: Code Re-Review Report
+# Phase 01: Code Re-Review Report (Iteration 3)
 
-**Reviewed:** 2026-07-10T22:51:18Z
+**Reviewed:** 2026-07-11T00:01:26Z
 **Depth:** standard
 **Files Reviewed:** 58
 **Status:** issues_found
 
 ## Review Scope
 
-本次从修复后的当前源码重新审查，不采信 `01-REVIEW-FIX.md` 的结论。范围是在原 56 个文件基础上加入 `safety/testdata/runner/block-helper.sh` 与根 `README.md`，共 58 个文件；frontmatter 保存了完整清单。审查覆盖 artifact/canonical lineage/store、privacy/capture、fixture/retention/network、synthetic 与 real sentinel、one-shot claim/report binding、control plane、CLI、runner、manifests/testdata 和两层文档。
+本轮从 iteration-2 修复后的当前源码重新审查，不以 `01-REVIEW-FIX.md` 的结论替代代码验证。范围仍是 frontmatter 中列出的 58 个 Phase 01 文件，覆盖 artifact schema/canonicalization/lineage/store、privacy/capture、fixture/retention/network、synthetic 与 real sentinel、one-shot claim/report binding、control plane、CLI、runner、manifests/testdata 和两层文档。
 
-没有读取或修改 `.config/alma/`，没有执行 real snapshot、`launchctl`、真实 HOME/manager/service adapter、网络、Nix、Homebrew、mise、uv、rustup 或 activation。current-host 因 service proof 缺失而 `manual-required` / zero-call 是已知安全边界，不作为问题。
+没有读取或修改 `.config/alma/`，没有执行 real snapshot、`launchctl`、真实 HOME/manager/service adapter、网络、Nix、Homebrew、mise、uv、rustup、安装或 activation。所有动态复现仅写入仓库外 fresh temporary roots，并在结束时删除。current-host 因 tracked `launchctl` isolated-negative proof 缺失而在任何 adapter/workload 前返回 `manual-required` / `32` / `indeterminate` / zero-call，是已知安全边界，不作为 finding。
 
 ## Verification
 
-仅使用仓库支持的 offline safety 入口；长命令保留同一执行会话并轮询到真实退出码：
+最终串行验证结果：
 
 ```text
 /bin/bash -n safety/scripts/test.sh
+  -> exit 0
+
+gofmt -d <all safety/*.go>
+  -> no diff
+
+isolated offline go vet ./...
+  -> exit 0
+
+./safety/scripts/test.sh wave skeleton
+./safety/scripts/test.sh wave artifact-contracts
+./safety/scripts/test.sh wave privacy
+./safety/scripts/test.sh wave fixture-policy
+./safety/scripts/test.sh wave sentinels
+./safety/scripts/test.sh wave controlplane
+./safety/scripts/test.sh task phase-e2e
+  -> all exit 0 with synthetic-sentinel-passed
+
 ./safety/scripts/test.sh phase
   -> exit 0; {"status":"synthetic-sentinel-passed","suite":"phase"}
+
 ./safety/scripts/test.sh task docs-and-phase-gate
   -> exit 0; {"status":"synthetic-sentinel-passed","suite":"docs-and-phase-gate"}
+
+gitleaks detect --no-git --source safety --redact
+  -> no leaks found
+
+git diff --check -- safety README.md .planning/phases/01-safety-privacy-and-state-foundation/01-REVIEW.md
+  -> exit 0 after report rewrite
 ```
 
-GREEN 证明现有 positive/negative suite 通过，但没有覆盖以下可复现路径。
+第一次完整 phase 在与审查复现并行时到达 runner deadline 并按契约返回唯一 envelope + `124`；随后六个 wave、`phase-e2e` 和完整 phase 均在无并发审查负载的串行运行中通过，因此不把第一次资源竞争视为产品 finding。GREEN 证明现有 suite 通过，但 suite 没有覆盖以下四条可复现或可直接构造的路径。
+
+## Narrative Findings (AI reviewer)
+
+iteration-2 的七项修复均已在代码层重新验证：公开 legacy fixture root 已移除，identity/command-result contract 已收紧，manager-tree 内部 symlink escape 已拒绝，marker 使用 temp+fsync+no-replace hard-link 原子发布，real sentinel key 已内部生成并清零，tracked input 已绑定 frozen HEAD/index/blob，runner 也加入 PID/FD/nonce 握手。
+
+仍有一个阻塞安全边界：artifact store 只 canonicalize 顶层 root，没有把 `sha256`/`transitions` 子目录纳入同一 no-symlink/regular-file identity contract。隔离复现证明预置 `sha256` symlink 能把七个 immutable objects 写到选定 store root 外。其余三个 warning 分别是 watchdog 握手仍可由 direct caller 自洽伪造、Git proof 没有比较当前 worktree executable bit，以及 read-only evidence 的 compact state 未证明存在于其 exact observed object 中。
 
 ## Critical Issues
 
-### CR-01: 公开的 legacy `fixture run` 可把已有任意仓库外目录当成 fixture 并覆盖内容
+### CR-01: pre-existing store child symlink 可把 immutable artifacts 写到所选 external root 外
 
-**Files:** `safety/cmd/yamc-safety/main.go:557-583`, `safety/internal/workflow/synthetic.go:169-213`, `safety/internal/workflow/synthetic.go:347-376`, `safety/internal/sentinel/synthetic.go:77-89`, `safety/internal/privacy/capture.go:105-151`
+**Files:** `safety/internal/artifact/store.go:59-76`, `safety/internal/artifact/store.go:145-195`, `safety/internal/artifact/store.go:688-720`, `safety/internal/artifact/store.go:744-799`, `safety/internal/artifact/store.go:835-848`
 
-**Issue:** CLI 仍公开接受 `--fixture-root` + `--store-root` 的 legacy 组合。该分支只调用 `artifact.ValidateExternalRoot`，后者只证明路径不在 repository 内；它不要求 root 不存在、为空、由本次创建、带 ownership marker，也不拒绝真实 HOME、manager root 或其他已有仓库外目录。随后 `RunSynthetic` 对该 root 执行 `MkdirAll`，`PrepareSynthetic` 用 `os.WriteFile` 写入/覆盖 `protected/...`，`MaterializeFixtureAdapter` 再写入 `path/bin/...`。因此一个已存在的任意目录（包括真实 HOME）满足 parser 和 preflight，可能在“测试”开始前被写入；该路径也不使用 `fixture.Retention`，所以没有 marker-owned teardown。
+**Issue:** `NewStoreWithClock` 只通过 `ValidateExternalRoot` canonicalize 顶层 root，然后 `rebuildMetadata` 直接 `os.ReadDir(root/sha256)`。它没有对 `root/sha256` 或 `root/transitions` 做 `Lstat`、no-symlink、same-directory identity 或 resolved containment 验证。后续 `write` / `writeTransition` 的 `MkdirAll`、`CreateTemp` 和 `Link` 都会跟随预先存在的 directory symlink。
 
-这与 README 中“所有生成状态写入仓库外的新建临时根”以及 SAFE-04/SAFE-05 的不破坏现有环境边界直接冲突。现有测试总是传入 `t.TempDir()` 下尚不存在的 child，因此没有覆盖 existing-root 情况。
+在仓库外隔离复现中，创建一个空 store root，并令 `store/sha256 -> escape-target`；`NewStore` 接受该 root，随后公开 CLI `store --mode apply` 成功返回，并把完整 graph 的七个 immutable objects 写入 `escape-target`，即选定 store root 之外。复现只使用 fresh temporary repositories/fixtures，结束后全部删除。
 
-**Fix:** 删除公开 legacy 入口，或把它限制为不可从 CLI 触达的测试 helper。所有 CLI fixture run 都应只接受 external base，由 `fixture.Create` 原子创建 fresh direct child、写 marker、建立隔离路径并在冻结 verdict 后 finalize。若确需显式 root，必须用原子 `mkdir` 要求目标不存在，并把 exact root 纳入同一 ownership/rollback/retention 状态机；同时拒绝与 HOME、repository、protected roots、store 及彼此的重叠。加入 existing non-empty root、HOME-shaped root、fixture/store overlap 和 preexisting witness 负例，断言零写入。
+同一边界还存在 unbounded special-file read：`rebuildMetadata` 只拒绝 directory、symlink 和非法 digest name；一个以合法 digest 命名的 FIFO 会进入 `readBoundedFile`，而该 helper 直接 `os.Open`，可在有 writer 前无限阻塞。`loadExact` / transition read 也复用这个 reader。因此当前实现既没有兑现 exact external-root containment，也没有兑现 bounded artifact read。
 
-### CR-02: 原 CR-02 仍未关闭；所谓 public-ID/default contract 仍接受中性身份、未知秘密与未注册字段
+**Impact:** 调用者只需选择一个已有或被替换过子目录的 external store，就可能在“content-addressed store”写入阶段修改 root 外的任意可写目录；恶意/损坏 store 还可以让 standalone CLI 无期限挂起。这违反 D-02、SAFE-04/05、Plan 01-01 的 outside-root-write blocking condition，以及文档对 immutable external local state 的边界说明。
 
-**Files:** `safety/internal/artifact/envelope.go:182-221`, `safety/internal/privacy/gate.go:422-474`, `safety/internal/privacy/gate.go:474-603`, `safety/internal/privacy/gate.go:618-645`, `safety/internal/privacy/gate_test.go:267-329`, `safety/testdata/canaries/cases.json:67-105`, `safety/README.md:65-77`, `safety/CLAUDE.md:53-55`
-
-**Issue:** 修复把部分字段接到 validator，但信任仍是基于词法 denylist。`IsPublicID` / `isSafePublicID` 只拒绝已知 marker/prefix；`synthetic-run-alice`、`alice`、无已知前缀的 opaque credential 或稳定主机标识都能作为 `run_id` / `suite_id` 通过。更广泛地，`validateStringField` 的 `default` 分支会接受任意**未注册字段名**中的 public-ID-shaped 字符串，而 `scanValue` 对 number/bool/null 不做字段分类，因此类似 `display_name: "alice"` 或未注册的 numeric identity 也能通过 `privacy.Gate` 和 renderer。Artifact producer 又接受 caller-supplied run metadata，未把这些 ID 绑定到可信生成器或固定 registry。
-
-新增 canary 仍只使用包含 `secret`、`username`、`provider`、`token` 等提示词的值，恰好命中 denylist；它没有测试中性真实身份、无已知前缀的 credential、稳定机器 ID，也没有证明未知 field name fail closed。文档“未注册自由字符串默认拒绝、不能伪装真实身份”的陈述与实现相反。
-
-**Fix:** command-result 必须按具体输出类型使用 closed schema/field registry，不得存在接受任意 key 的 default public-ID 分支；未知字段和值类型一律拒绝。Artifact 的 run/suite/operation ID 应由可信 builder 生成或从固定 public registry 选择，不能仅凭可打印字符就认定为公开。为每一个允许的 string/number/bool 字段建立 positive contract，并加入不含敏感关键词的 identity、opaque credential、stable machine ID、unknown key 和 numeric UID canary；验证 construction、renderer、CLI 与 `Store.Write` 均在输出/落盘前失败且不反射值。
-
-### CR-03: real manager-tree adapter 接受内部 symlink escape，外部目标变化可获得相同的 complete token
-
-**Files:** `safety/internal/sentinel/real.go:1027-1121`, `safety/internal/sentinel/real.go:1181-1235`, `safety/internal/sentinel/real_test.go:163-228`, `safety/internal/sentinel/verdict.go:248-285`
-
-**Issue:** `fingerprintExactTree` 遇到树内 symlink 时调用 `readExactSymlink`，但该函数只对 symlink 自身做 rooted `Lstat`/`Readlink` 和 identity recheck；它从不解析 target 并确认 target 位于 manager root。canonical fact 只包含 link target 的 digest，不包含外部 target 内容。因此在 `managerRoot/current -> /outside/state` 这种树内 escape 上，before/after 都会得到 `ObservationComplete`；只修改 `/outside/state` 内容而保持 link 字符串不变，opaque token 不变。所有 required surface 都如此 complete/equal 时，`Evaluate` 可以返回 passed，`RunRealEnvelope` 可以消费 one-shot capability 并产生 scoped claim。
-
-现有负例只检查“整个 tree root 是 escaping symlink”，并没有创建“tree 内部 symlink 指向 root 外”的情况；相对的 synthetic tree 实现会把 symlink escape 标为 incomplete。Plan 01-05 的 T-04 和验收文字也明确要求 symlink escape → indeterminate。
-
-**Fix:** tree adapter 对每个 symlink 解析绝对 target；任何 target 不在 exact manager root 时立即返回 `ReasonSymlinkEscape`，不要生成 token。若未来确需允许外部 target，必须像 named-file adapter 一样使用 manifest-bound allowed root 并同时 fingerprint target content。加入内部 relative escape、absolute escape、symlink-chain escape，以及“外部 target 内容在 window 中变化”的负例，断言始终 incomplete/无 token/无 claim。
+**Fix:** 在打开 store 时验证或原子创建 exact `sha256` 和 `transitions` directories，拒绝 symlink、FIFO/device/socket/non-directory，记录 directory identity，并在每次 read/write/link 前后重新验证 identity 与 resolved containment。优先用 directory-relative no-follow operations；若保持 path API，至少要 `Lstat` + no-follow open + `Fstat`/`SameFile` + before/after directory identity，并拒绝任何不确定性。`readBoundedFile` 应只接受 regular file，以 nonblocking/no-follow 方式打开，做 size precheck、`limit+1` read 和 named/opened identity recheck。加入预置 `sha256` symlink、`transitions` symlink、digest-object symlink/FIFO、child replacement/race 负例，断言零 root 外写入、bounded non-zero 返回和无残留。
 
 ## Warnings
 
-### WR-01: 原 WR-01 只修复了无 marker/完整 marker；partial marker 写失败仍会遗留 fresh child
+### WR-01: direct caller 可构造完整 PID/FD/nonce 握手并绕过 public runner watchdog
 
-**Files:** `safety/internal/fixture/root.go:145-199`, `safety/internal/fixture/root.go:273-325`, `safety/internal/fixture/fixture_test.go:27-78`
+**Files:** `safety/scripts/test.sh:20-34`, `safety/scripts/test.sh:34-113`, `safety/internal/e2e/phase_e2e_test.go:382-451`, `safety/README.md:27`
 
-**Issue:** deferred rollback 已建立，但 `rollbackFreshFixture` 在 `readMarker` 失败且 marker path 仍存在时拒绝删除。默认 `writeMarker` 先 `O_EXCL` 创建文件，再 write/close；磁盘满、部分写或 close failure 可返回错误并留下不完整 marker。defer 随后把这种 fresh、same-inode、same-UID direct child 判为“marker rejected”，最终返回 `fixture initialization rollback failed`，目录仍在。测试中的 marker-write failure hook 在写任何 byte 前直接返回，没有模拟 partial marker，因此原 finding 的“半写 marker”分支仍未关闭。
+**Issue:** 新握手比单一 ambient PID 更强，但所有认证材料仍由 direct parent 完全控制：脚本接受 `YAMC_RUNNER_WATCHDOG_PID == PPID`、任意继承 FD，以及该 FD 第一行等于 caller-provided 64-hex nonce。调用方可以自己建立 pipe、写入选择的 nonce、清除 read FD 的 `CLOEXEC`，fork/exec runner 并填写自己的 parent PID；脚本会把该组合判定为 authenticated，完全跳过 lines 34-109 的 watchdog。
 
-**Fix:** rollback capability 应在 `Mkdir` 后立即绑定 fresh directory inode/UID/nonce，并区分“本次 writer 创建的 marker path”与外部替换。对本次创建且 directory identity 未变化的 partial marker，应安全删除 exact child；或先把 marker 写入同目录临时文件、fsync/close 后以 no-replace 原子发布，失败时 root 仍保持 unmarked rollback 状态。加入 hook 写入截断 JSON 后返回错误的负例，并验证只删除本次 child、保留 sibling/base。
+隔离复现向固定 setup block helper 传入 500ms 测试预算。伪造 direct parent/FD/nonce 后，helper 已发布 marker，runner 在 1.5 秒后仍存活；外层审查 harness 随即终止独立 process group 并清理 temporary marker。现有 `forged` case 只设置正确 PID，`stale` case 只设置不一致的 PID/FD/nonce，均未覆盖自洽的 inherited pipe。
 
-### WR-02: caller 可伪造 `YAMC_RUNNER_WATCHDOG_PID` 直接绕过 15/47/305 秒入口 watchdog
+**Impact:** 文档承诺的 15/47/305 秒 public-entry hard ceiling 可由 ambient caller 绕过；阻塞 setup/build/test 或 child dispatch 可无限存活。它不会直接授予 live mutation 权限，但会破坏 Phase 01 的 bounded-resource 与 no-orphan 保证。
 
-**Files:** `safety/scripts/test.sh:4-83`, `safety/internal/e2e/phase_e2e_test.go:381-458`
+**Fix:** public entry 不应存在由 caller-controlled environment/FD 关闭 watchdog 的路径。最直接方案是每次 public invocation 都安装 watchdog，并把 wave/phase 的内部调度改为同一受监控进程内的固定 dispatcher；或者把内部 body 移到独立 helper，由不可从 public argv/env 选择的 wrapper 生命周期控制。无论结构如何，加入“self-consistent direct parent + live inherited pipe + matching nonce”负例，要求仍以唯一 deadline envelope + `124` 结束，并证明 helper、process group 与 marker-owned root 全部消失。
 
-**Issue:** 是否安装 watchdog 只取决于 ambient `YAMC_RUNNER_WATCHDOG_PID == PPID`。顶层调用者可以在环境中把该值设为自己的 PID；脚本便直接跳到 body，所有 setup/docs/build/test/child-dispatch 都失去 hard deadline。测试还会主动删除此变量再启动，因此没有覆盖伪造或 stale inherited guard。这个变量本来只用于 parent watchdog 与其 direct child 的内部握手，但当前没有不可伪造 token/FD 或其他 parent proof。
+### WR-02: tracked-input proof 接受 chmod-only worktree mode drift
 
-**Fix:** 不信任 caller-provided ambient guard。用 watchdog 创建并传递的 private inherited FD 加随机 nonce、或只在 watchdog fork 后 exec 一个不公开的 internal mode 并校验 parent/session identity；外部同名环境变量必须被忽略/覆盖。增加 forged guard canary，确保 setup/docs/child block 仍以唯一 envelope + 124 结束且无 orphan/root。
+**Files:** `safety/internal/workflow/synthetic.go:425-470`, `safety/internal/workflow/synthetic.go:590-592`, `safety/internal/workflow/synthetic.go:1015-1031`, `safety/README.md:7`
 
-### WR-03: real sentinel 的“per-run key”仍由 caller 提供，freshness 与清零都没有被实现保证
+**Issue:** `validateTrackedInput` 已正确证明 index entry 与 frozen HEAD tree 的 mode/blob 相等，并证明 `cat-file` blob bytes 等于本次 worktree bytes；但它从未把当前 worktree file mode 映射为 Git `100644`/`100755` 再与 index/tree mode 比较。`readBoundedNoSymlink` 只证明 read 前后 mode 没变化，不证明它等于 tracked mode。
 
-**Files:** `safety/internal/sentinel/real.go:397-448`, `safety/internal/sentinel/real.go:478-532`, `safety/internal/sentinel/real.go:1321-1326`, `safety/internal/sentinel/real_test.go:270-340`, `safety/README.md:103-110`
+隔离复现从当前 commit 建立 local clone，把 tracked blueprint 从 `100644` 改为 `100755` 而不改 bytes；Git 明确报告 mode drift，但 `fixture run` 仍返回 `synthetic-sentinel-passed`。这与 README 的“index mode/blob 与 frozen HEAD tree 完全一致，实际消费 worktree bytes 也受同一 proof 约束”陈述不完全一致。
 
-**Issue:** `RunRealEnvelope` 只检查 `len(options.Key) >= 32`，随后 before/after 复用 caller slice；函数既不生成 fresh key，也不在返回前清零。调用方可跨 run 重用同一 key，使相同 surface 的 HMAC token 在多个 claimed report 中稳定，从而违反文档的 per-run privacy boundary。测试固定使用重复 byte key，只证明单次比较，不证明跨 run freshness 或销毁。
+**Impact:** 当前 Phase 01 输入均为 JSON，因此 executable bit 不会改变 parser 语义；但 source-of-truth proof 仍接受一种 Git 可观察的 worktree substitution，也缺少修复报告所声称的 content-and-mode 完整性。
 
-**Fix:** production envelope 内部生成 key，并只向 snapshot stage 暂时传递；defer 清零所有内部副本。测试通过注入受限 RNG/secret factory 获得确定性，而不是暴露 caller-owned key。加入连续两次相同 surface 的 token 必须不同、before/after 同 run 必须可比，以及失败/claim-consumer rejection 后 key buffer 已清零的测试。
+**Fix:** 让 bounded reader 返回经过 before/after identity 验证的 file mode；按 Git 规则将任何 executable bit 映射为 `100755`，否则为 `100644`，并要求它等于 index/tree mode。加入 `100644 -> 100755` 与反向 drift 负例，断言在 fixture/store 创建前 fail closed，同时保留 bytes-only、staged/index 和 symlink 负例。
 
-### WR-04: `validateTrackedInput` 只验证“位于仓库内”，没有证明输入被 Git 跟踪
+### WR-03: read-only lineage 接受 observed facts 中不存在的 `FreshObserved.State`
 
-**Files:** `safety/internal/workflow/synthetic.go:347-395`, `safety/internal/e2e/walking_skeleton_test.go:50-99`, `safety/internal/e2e/phase_e2e_test.go:107-200`
+**Files:** `safety/internal/artifact/lineage.go:159-189`, `safety/internal/artifact/kinds.go:276-288`, `safety/internal/e2e/artifact_cli_test.go:638-660`
 
-**Issue:** preflight 和 phase report 都依赖名为 `validateTrackedInput` 的 helper，但它仅做 `EvalSymlinks`、regular-file 与 repository containment；任何 ignored/untracked file 也会被接受为 blueprint/surface input。Phase report 的 suite/expected path虽固定，`fixture run` 的 blueprint/surfaces 是 caller path。这样 synthetic desired state 可以来自未进入 Git source-of-truth 的本机文件，且与 CR-02 组合时可能把本机身份伪装成 public ID 后持久化。现有测试只确认文件在 repo 中，不查询 tracked identity，也没有 untracked/ignored negative。
+**Issue:** apply lineage 在验证 compact `FreshObserved` descriptor 时调用 `observedContainsState`，要求 descriptor state 真正存在于 exact fresh observed artifact 的 facts。read-only 分支只比较 observed digest、content digest、scope 和空 receipt；任意合法 logical ref 都可作为 `FreshObserved.State`，即使 exact observed artifact 完全没有该 state。kind validation 只检查词法 `validLogicalRef`，无法补上语义绑定。
 
-**Fix:** 使用不触发网络或 hooks 的 exact Git plumbing/预计算 tracked manifest，把 allowed logical repo inputs绑定到 tracked blob/digest；Git 不可用、不是 worktree、查询失败、文件未跟踪或 tracked set 为空时 fail closed。至少在 Phase 1 可直接限制为固定 tracked blueprint/surface 路径及 checked-in digest。加入 repo 内 untracked、ignored、symlinked-untracked 和 index/worktree substitution 负例。
+因此一个 read-only evidence/report bundle 可以在 digest、scope、provenance 和 report edges 全部有效时，持久化一个与其 exact observation 相矛盾的 state descriptor。现有 valid read-only fixture 使用匹配 state，但没有只替换 descriptor state 的 negative case。
+
+**Impact:** 不会创建 applied receipt，也不能绕过 real-sentinel one-shot claim capability；但会削弱 read-only verification evidence 的诚实性，并使 apply/read-only 对同一 descriptor 的语义不一致。
+
+**Fix:** 在 `validateReadOnlyEdges` 的 freshness predicate 中加入 `observedContainsState(observedPayload, evidencePayload.FreshObserved.State)`，与 apply path 保持一致。加入 absent-state、wrong-state-with-valid-logical-ref 和 correct-state 控制用例，并通过 `ValidateLineage`、`Store.WriteGraph` 与 CLI `store --mode read-only` 三层验证失败发生在首笔写入前。
 
 ## Revalidated Fixes and Known Boundaries
 
-- 原 CR-01 的 standalone report overclaim 已关闭：`BuildPhaseReport` 只输出 `synthetic-report-claim-ineligible`；checked-in expectation 不含 verdict/claim/token；`ConsumeClaim` 只在 process-local real binding 有效时消费一次，序列化 evidence 不能重建 capability。
-- 原 WR-02 的 regular-file bounded reader 已采用 size precheck、`remaining+1` streaming、deadline 与 before/after identity recheck；超大和增长负例存在。
-- 原 WR-03 的 snapshot lifetime 已在 write/reopen/read/delete 绑定 store clock 与两分钟正向 skew。
-- 原 WR-04 的 runner 已把 watchdog 放到 setup 前，并有 setup/docs/pre-child 的 exit 124/no-helper/no-temp-root 行为测试；WR-02 是该修复中新发现的 ambient guard bypass，而不是否定已覆盖的正常路径。
-- tracked service proof 缺失时，current-host CLI 仍返回 `manual-required` / `32` / `indeterminate`，并在 adapter/workload 前 zero-call；这保持为安全边界，不是 finding。
-- full offline phase 与 docs gate 均通过，但不会自动消除上述未覆盖路径。
+- iteration-2 CR-01 已关闭：公开 `fixture run` 只接受 external base，physical child/store path 不再作为 CLI 参数；fresh child、atomic marker、rollback/finalize 均绑定 direct-child inode/UID/nonce。
+- iteration-2 CR-02 已关闭到当前 production surfaces：trusted run ID、fixed suite/operation registry、closed command-result field/type registry，以及 neutral identity/opaque/unknown-field canaries 均在 construction/render/store/CLI 前拒绝。
+- iteration-2 CR-03 已关闭：manager-tree 会解析每个内部 symlink 的最终 target；relative、absolute 和 chained escape 都是 incomplete/no token/no claim。
+- iteration-2 WR-01 已关闭：marker 使用同目录 temp + sync/close + no-replace hard-link 发布；partial marker rollback 只删除本次 fresh direct child，并保留 base/sibling。
+- iteration-2 WR-03 已关闭：production real sentinel key 在 proof gate 之后内部生成，失败/成功路径 defer clear；caller 不再提供可复用 key。
+- iteration-2 WR-04 的 blob/content 部分已关闭：Git plumbing 固定 `/usr/bin/git`，冻结 HEAD，要求 unique stage-0 index/tree object 一致，并将实际 bounded bytes 与 HEAD blob 比较；WR-02 仅指出遗漏的 current worktree mode 比较。
+- tracked service proof 缺失时，current-host 路径仍在任何 adapter/workload 调用前返回 `manual-required` / `32` / `indeterminate` / zero-call；这是安全保守状态，不是失败实现或 finding。
+- full offline phase、所有 component waves、phase-e2e、docs gate、Go formatting/vet 与 secret scan 均通过；这些 GREEN 结果不会自动消除上述未覆盖路径。
 
 ---
 
