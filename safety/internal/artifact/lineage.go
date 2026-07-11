@@ -180,7 +180,7 @@ func validateReadOnlyEdges(nodes lineageNodes, expectedDigest string) error {
 	if evidencePayload.PlanDigest != "" || evidencePayload.ReceiptDigest != "" || evidencePayload.DesiredDigest != nodes.desired.ContentDigest || evidencePayload.ExpectedPostconditionsDigest != expectedDigest {
 		return contractError(CodeLineageDigestMismatch, "/evidence/payload")
 	}
-	if evidencePayload.FreshObservedDigest != nodes.observed.ContentDigest || evidencePayload.FreshObserved.ContentDigest != nodes.observed.ContentDigest || evidencePayload.FreshObserved.SourceReceiptDigest != "" || evidencePayload.FreshObserved.Scope != observedPayload.Scope {
+	if evidencePayload.FreshObservedDigest != nodes.observed.ContentDigest || evidencePayload.FreshObserved.ContentDigest != nodes.observed.ContentDigest || evidencePayload.FreshObserved.SourceReceiptDigest != "" || evidencePayload.FreshObserved.Scope != observedPayload.Scope || !observedContainsState(observedPayload, evidencePayload.FreshObserved.State) {
 		return contractError(CodeLineageFreshness, "/evidence/payload/fresh_observed_digest")
 	}
 	if !exactDigests(nodes.evidence.Provenance.InputDigests, nodes.desired.ContentDigest, nodes.observed.ContentDigest, expectedDigest) {

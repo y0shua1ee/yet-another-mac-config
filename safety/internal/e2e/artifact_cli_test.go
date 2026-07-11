@@ -39,10 +39,47 @@ func TestArtifactLineage(t *testing.T) {
 	apply := buildApplyBundle(t, "synthetic-run-apply", []string{"fixture.operation.first"}, []string{"fixture.operation.first"})
 	readOnly := buildReadOnlyBundle(t, "synthetic-run-read-only")
 	assertLineageCases(t, apply, readOnly)
+	assertReadOnlyFreshStateBinding(t, readOnly)
 	assertStoreLifecycle(t, apply)
 	assertFutureSnapshotClockBoundary(t)
 	assertArtifactCLI(t, apply, readOnly)
 	assertLineageRunnerContract(t)
+}
+
+func assertReadOnlyFreshStateBinding(t *testing.T, readOnly graphBundle) {
+	t.Helper()
+	correct := rebuildReadOnlyEvidenceState(t, readOnly, "fixture:state/fresh")
+	if err := artifact.ValidateLineage(artifact.LineageReadOnly, correct.graph); err != nil {
+		t.Fatal("read-only evidence rejected an exact observed fact state")
+	}
+
+	absent := rebuildReadOnlyEvidenceState(t, readOnly, "fixture:state/absent")
+	if err := artifact.ValidateLineage(artifact.LineageReadOnly, absent.graph); err == nil {
+		t.Fatal("read-only lineage accepted a descriptor state absent from the exact observation")
+	}
+	wrong := rebuildReadOnlyEvidenceState(t, readOnly, "fixture:state/wrong")
+	if err := artifact.ValidateLineage(artifact.LineageReadOnly, wrong.graph); err == nil {
+		t.Fatal("read-only lineage accepted a different valid logical state")
+	}
+
+	safetyRoot, repositoryRoot := projectRoots(t)
+	storeRoot := filepath.Join(t.TempDir(), "read-only-state-store")
+	store, err := artifact.NewStoreWithClock(storeRoot, repositoryRoot, func() time.Time { return readOnly.createdAt })
+	if err != nil {
+		t.Fatal("read-only state store setup failed")
+	}
+	if _, err := store.WriteGraph(artifact.LineageReadOnly, absent.graph); err == nil {
+		t.Fatal("store accepted read-only evidence whose state was absent from the exact observation")
+	}
+	assertNoStoreObjects(t, storeRoot)
+
+	fixtureRoot := t.TempDir()
+	invalidFiles := writeBundleFiles(t, filepath.Join(fixtureRoot, "read-only-state"), absent)
+	cliStoreRoot := filepath.Join(fixtureRoot, "read-only-state-cli-store")
+	if _, _, err := runCLI(safetyRoot, storeCLIArguments(artifact.LineageReadOnly, cliStoreRoot, repositoryRoot, invalidFiles)...); err == nil {
+		t.Fatal("CLI store accepted read-only evidence whose state was absent from the exact observation")
+	}
+	assertNoStoreObjects(t, cliStoreRoot)
 }
 
 func assertFutureSnapshotClockBoundary(t *testing.T) {
@@ -657,6 +694,48 @@ func buildReadOnlyBundle(t *testing.T, runID string) graphBundle {
 	bundle.add(artifact.VerificationEvidence, evidenceCanonical, evidence)
 	bundle.add(artifact.ReadinessReport, reportCanonical, report)
 	bundle.graph = artifact.LineageGraph{Desired: desiredCanonical, Observed: observedCanonical, Evidence: evidenceCanonical, Report: reportCanonical, ExpectedPostconditionsDigest: expectedDigest}
+	return bundle
+}
+
+func rebuildReadOnlyEvidenceState(t *testing.T, source graphBundle, state string) graphBundle {
+	t.Helper()
+	bundle := source
+	bundle.canonical = make(map[artifact.Kind][]byte, len(source.canonical))
+	bundle.envelopes = make(map[artifact.Kind]artifact.Envelope, len(source.envelopes))
+	for kind, canonical := range source.canonical {
+		bundle.canonical[kind] = bytes.Clone(canonical)
+		bundle.envelopes[kind] = source.envelopes[kind]
+	}
+	desired := source.envelopes[artifact.DesiredState]
+	observed := source.envelopes[artifact.ObservedState]
+	var original artifact.VerificationEvidencePayload
+	if err := json.Unmarshal(source.envelopes[artifact.VerificationEvidence].Payload, &original); err != nil {
+		t.Fatal("read-only evidence state setup failed")
+	}
+	payload := original
+	payload.FreshObserved.State = state
+	evidenceCanonical, evidence := makeArtifact(
+		t,
+		artifact.VerificationEvidence,
+		source.envelopes[artifact.VerificationEvidence].Run,
+		[]string{desired.ContentDigest, observed.ContentDigest, original.ExpectedPostconditionsDigest},
+		payload,
+		source.createdAt,
+	)
+	reportCanonical, report := makeArtifact(
+		t,
+		artifact.ReadinessReport,
+		source.envelopes[artifact.ReadinessReport].Run,
+		[]string{evidence.ContentDigest},
+		artifact.ReadinessReportPayload{EvidenceDigest: evidence.ContentDigest, State: "synthetic-sentinel-passed"},
+		source.createdAt,
+	)
+	bundle.canonical[artifact.VerificationEvidence] = evidenceCanonical
+	bundle.canonical[artifact.ReadinessReport] = reportCanonical
+	bundle.envelopes[artifact.VerificationEvidence] = evidence
+	bundle.envelopes[artifact.ReadinessReport] = report
+	bundle.graph.Evidence = evidenceCanonical
+	bundle.graph.Report = reportCanonical
 	return bundle
 }
 

@@ -61,6 +61,7 @@ task、wave、phase 的 hard deadline 分别是 15、47、305 秒；完整公式
 - `RunRealEnvelope` 必须在内部为每个 run 生成 fresh 32-byte key，同 run before/after 只临时共享该 key，所有返回路径都清零 buffer；公共 options 禁止接受 caller key。确定性测试只能使用 package-private secret factory，并必须证明跨 run token 不同以及 workload/entropy/claim-consumer 失败后 key 已清零。
 - `synthetic-sentinel-passed` 只是内层 fixture 结果；standalone/replay report 必须是 `synthetic-report-claim-ineligible`，checked-in expectation 不得保存 passed、claim 或 surface token。唯一允许的 scoped claim 是 `covered-surfaces-unchanged-for-run`，且必须在同一次 `RunRealEnvelope` 中以 one-shot process capability 从 actual Evidence + Evaluation + `RequestClaim` 生成，并绑定 evidence/suite/manifest/window/surface evidence；正向路径只用 proof-valid isolated private doubles。禁止整机、当前 host readiness、多机或 fresh-install claim。
 - `extra` 与 `unmanaged-present` 仅 report-only；`operations` 保持为空，不得生成 apply/cleanup authority。
+- read-only 与 apply lineage 都必须证明 `FreshObserved.Scope` 和 `FreshObserved.State` 实际存在于 exact observed artifact 的 typed facts；合法 logical ref、digest 或 scope 一致本身不能替代这项语义绑定。
 
 ## 文档与提交检查表
 
