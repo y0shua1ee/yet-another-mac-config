@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"example.invalid/yamc/safety/internal/artifact"
 	"example.invalid/yamc/safety/internal/contract"
@@ -31,7 +32,17 @@ const (
 )
 
 type trackedRepository struct {
-	root string
+	root          string
+	rootHandle    *os.Root
+	rootIdentity  os.FileInfo
+	headCommit    string
+	indexSnapshot []byte
+	indexEntries  map[string]gitIndexEntry
+}
+
+type gitIndexEntry struct {
+	mode   string
+	object string
 }
 
 type trackedInput struct {
@@ -53,7 +64,7 @@ type gitProofOperation uint8
 
 const (
 	gitProofTopLevel gitProofOperation = iota + 1
-	gitProofIndexEntry
+	gitProofIndexSnapshot
 	gitProofHeadCommit
 	gitProofTreeEntry
 	gitProofBlob
@@ -377,6 +388,7 @@ func preflight(options Options) (string, trackedInput, trackedInput, trackedInpu
 	if err != nil {
 		return "", empty, empty, empty, "", "", errors.New("repository root rejected")
 	}
+	defer repository.close()
 	blueprintInput, err := validateTrackedInput(options.BlueprintPath, repository)
 	if err != nil {
 		return "", empty, empty, empty, "", "", err
@@ -397,6 +409,9 @@ func preflight(options Options) (string, trackedInput, trackedInput, trackedInpu
 	if err != nil {
 		return "", empty, empty, empty, "", "", err
 	}
+	if err := repository.verifyFrozenView(); err != nil {
+		return "", empty, empty, empty, "", "", errors.New("tracked repository changed")
+	}
 	return repository.root, blueprintInput, surfacesInput, rawSampleInput, fixtureRoot, storeRoot, nil
 }
 
@@ -416,7 +431,25 @@ func openTrackedRepository(root string) (*trackedRepository, error) {
 	if err != nil || !gitInfo.Mode().IsRegular() || gitInfo.Mode().Perm()&0o111 == 0 {
 		return nil, errors.New("tracked repository rejected")
 	}
-	repository := &trackedRepository{root: resolved}
+	rootIdentity, err := os.Lstat(resolved)
+	if err != nil || !rootIdentity.IsDir() || rootIdentity.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("tracked repository rejected")
+	}
+	rootHandle, err := os.OpenRoot(resolved)
+	if err != nil {
+		return nil, errors.New("tracked repository rejected")
+	}
+	failed := true
+	defer func() {
+		if failed {
+			_ = rootHandle.Close()
+		}
+	}()
+	openedRoot, err := rootHandle.Stat(".")
+	if err != nil || !os.SameFile(rootIdentity, openedRoot) {
+		return nil, errors.New("tracked repository rejected")
+	}
+	repository := &trackedRepository{root: resolved, rootHandle: rootHandle, rootIdentity: rootIdentity}
 	topLevel, err := repository.gitOutput(gitProofTopLevel, "", "")
 	if err != nil || bytes.Count(topLevel, []byte{'\n'}) > 1 {
 		return nil, errors.New("tracked repository rejected")
@@ -430,7 +463,51 @@ func openTrackedRepository(root string) (*trackedRepository, error) {
 	if err != nil || filepath.Clean(gitRoot) != repository.root {
 		return nil, errors.New("tracked repository rejected")
 	}
+	headOutput, err := repository.gitOutput(gitProofHeadCommit, "", "")
+	if err != nil {
+		return nil, errors.New("tracked repository rejected")
+	}
+	repository.headCommit = strings.TrimSpace(string(headOutput))
+	if !validGitObjectID(repository.headCommit) {
+		return nil, errors.New("tracked repository rejected")
+	}
+	indexOutput, err := repository.gitOutput(gitProofIndexSnapshot, "", "")
+	if err != nil {
+		return nil, errors.New("tracked repository rejected")
+	}
+	repository.indexEntries, err = parseGitIndexSnapshot(indexOutput)
+	if err != nil {
+		return nil, errors.New("tracked repository rejected")
+	}
+	repository.indexSnapshot = append([]byte(nil), indexOutput...)
+	failed = false
 	return repository, nil
+}
+
+func (repository *trackedRepository) close() {
+	if repository != nil && repository.rootHandle != nil {
+		_ = repository.rootHandle.Close()
+	}
+}
+
+func (repository *trackedRepository) verifyFrozenView() error {
+	if repository == nil || repository.rootHandle == nil || !validGitObjectID(repository.headCommit) {
+		return errors.New("tracked repository rejected")
+	}
+	rootNamed, err := os.Lstat(repository.root)
+	rootOpened, openedErr := repository.rootHandle.Stat(".")
+	if err != nil || openedErr != nil || !rootNamed.IsDir() || rootNamed.Mode()&os.ModeSymlink != 0 || !os.SameFile(repository.rootIdentity, rootNamed) || !os.SameFile(repository.rootIdentity, rootOpened) {
+		return errors.New("tracked repository replaced")
+	}
+	headOutput, err := repository.gitOutput(gitProofHeadCommit, "", "")
+	if err != nil || strings.TrimSpace(string(headOutput)) != repository.headCommit {
+		return errors.New("tracked repository changed")
+	}
+	indexOutput, err := repository.gitOutput(gitProofIndexSnapshot, "", "")
+	if err != nil || !bytes.Equal(indexOutput, repository.indexSnapshot) {
+		return errors.New("tracked repository changed")
+	}
+	return nil
 }
 
 func validateTrackedInput(path string, repository *trackedRepository) (trackedInput, error) {
@@ -440,46 +517,33 @@ func validateTrackedInput(path string, repository *trackedRepository) (trackedIn
 	if repository == nil || path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsAny(path, "\x00\r\n\t") {
 		return rejected()
 	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil || resolved != path {
-		return rejected()
-	}
-	relative, err := filepath.Rel(repository.root, resolved)
+	relative, err := filepath.Rel(repository.root, path)
 	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || strings.Contains(relative, "\\") {
 		return rejected()
 	}
 	relative = filepath.ToSlash(relative)
-	runTrackedInputTestHook("after-path-check", relative)
-	data, worktreeMode, err := readBoundedNoSymlinkWithMode(resolved)
+	data, worktreeMode, err := readTrackedWorktreeFile(repository, relative)
 	if err != nil || len(data) > trackedInputMaxBytes {
 		return rejected()
 	}
 
-	indexOutput, err := repository.gitOutput(gitProofIndexEntry, relative, "")
-	if err != nil {
+	index, ok := repository.indexEntries[relative]
+	if !ok {
 		return rejected()
 	}
-	indexMode, indexObject, err := parseGitIndexEntry(indexOutput, relative)
-	if err != nil {
-		return rejected()
-	}
-	headObject, err := repository.gitOutput(gitProofHeadCommit, "", "")
-	if err != nil || !validGitObjectID(strings.TrimSpace(string(headObject))) {
-		return rejected()
-	}
-	treeOutput, err := repository.gitOutput(gitProofTreeEntry, relative, strings.TrimSpace(string(headObject)))
+	treeOutput, err := repository.gitOutput(gitProofTreeEntry, relative, repository.headCommit)
 	if err != nil {
 		return rejected()
 	}
 	treeMode, treeObject, err := parseGitTreeEntry(treeOutput, relative)
-	if err != nil || treeMode != indexMode || treeObject != indexObject || worktreeMode != indexMode {
+	if err != nil || treeMode != index.mode || treeObject != index.object || worktreeMode != index.mode {
 		return rejected()
 	}
 	blob, err := repository.gitOutput(gitProofBlob, "", treeObject)
 	if err != nil || !bytes.Equal(blob, data) {
 		return rejected()
 	}
-	return trackedInput{path: resolved, data: data}, nil
+	return trackedInput{path: filepath.Join(repository.root, filepath.FromSlash(relative)), data: data}, nil
 }
 
 func (repository *trackedRepository) gitOutput(operation gitProofOperation, relative, object string) ([]byte, error) {
@@ -494,11 +558,11 @@ func (repository *trackedRepository) gitOutput(operation gitProofOperation, rela
 			return nil, errors.New("tracked repository rejected")
 		}
 		arguments, limit = []string{"rev-parse", "--show-toplevel"}, 4096
-	case gitProofIndexEntry:
-		if relative == "" || object != "" {
+	case gitProofIndexSnapshot:
+		if relative != "" || object != "" {
 			return nil, errors.New("tracked repository rejected")
 		}
-		arguments, limit = []string{"ls-files", "-z", "--stage", "--error-unmatch", "--", relative}, 8192
+		arguments, limit = []string{"ls-files", "-z", "--stage"}, gitProofOutputMax
 	case gitProofHeadCommit:
 		if relative != "" || object != "" {
 			return nil, errors.New("tracked repository rejected")
@@ -567,20 +631,34 @@ func (repository *trackedRepository) gitOutput(operation gitProofOperation, rela
 	return output, nil
 }
 
-func parseGitIndexEntry(data []byte, relative string) (string, string, error) {
-	if bytes.Count(data, []byte{0}) != 1 || len(data) < 2 || data[len(data)-1] != 0 {
-		return "", "", errors.New("tracked input rejected")
+func parseGitIndexSnapshot(data []byte) (map[string]gitIndexEntry, error) {
+	if len(data) == 0 || data[len(data)-1] != 0 {
+		return nil, errors.New("tracked index rejected")
 	}
-	entry := data[:len(data)-1]
-	tab := bytes.IndexByte(entry, '\t')
-	if tab < 0 || string(entry[tab+1:]) != relative {
-		return "", "", errors.New("tracked input rejected")
+	entries := make(map[string]gitIndexEntry)
+	for _, raw := range bytes.Split(data[:len(data)-1], []byte{0}) {
+		if len(raw) == 0 {
+			return nil, errors.New("tracked index rejected")
+		}
+		tab := bytes.IndexByte(raw, '\t')
+		if tab < 0 || !utf8.Valid(raw[tab+1:]) {
+			return nil, errors.New("tracked index rejected")
+		}
+		fields := strings.Fields(string(raw[:tab]))
+		relative := string(raw[tab+1:])
+		if len(fields) != 3 || !validGitIndexMode(fields[0]) || !validGitObjectID(fields[1]) || fields[2] != "0" || relative == "" || relative == "." || strings.HasPrefix(relative, "/") || strings.Contains(relative, "\\") || strings.Contains(relative, "\x00") {
+			return nil, errors.New("tracked index rejected")
+		}
+		clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relative)))
+		if clean != relative || clean == ".." || strings.HasPrefix(clean, "../") {
+			return nil, errors.New("tracked index rejected")
+		}
+		if _, duplicate := entries[relative]; duplicate {
+			return nil, errors.New("tracked index rejected")
+		}
+		entries[relative] = gitIndexEntry{mode: fields[0], object: fields[1]}
 	}
-	fields := strings.Fields(string(entry[:tab]))
-	if len(fields) != 3 || !validGitFileMode(fields[0]) || !validGitObjectID(fields[1]) || fields[2] != "0" {
-		return "", "", errors.New("tracked input rejected")
-	}
-	return fields[0], fields[1], nil
+	return entries, nil
 }
 
 func parseGitTreeEntry(data []byte, relative string) (string, string, error) {
@@ -601,6 +679,10 @@ func parseGitTreeEntry(data []byte, relative string) (string, string, error) {
 
 func validGitFileMode(value string) bool {
 	return value == "100644" || value == "100755"
+}
+
+func validGitIndexMode(value string) bool {
+	return validGitFileMode(value) || value == "120000" || value == "160000"
 }
 
 func validGitObjectID(value string) bool {
@@ -692,6 +774,7 @@ func BuildPhaseReport(options PhaseReportOptions) (PhaseReport, error) {
 	if err != nil {
 		return PhaseReport{}, errors.New("phase repository rejected")
 	}
+	defer repository.close()
 	repositoryRoot := repository.root
 	suiteInput, err := validateTrackedInput(options.SuitePath, repository)
 	if err != nil || filepath.ToSlash(mustRelative(repositoryRoot, suiteInput.path)) != "safety/manifests/offline-suite.v1.json" {
@@ -733,6 +816,9 @@ func BuildPhaseReport(options PhaseReportOptions) (PhaseReport, error) {
 	}
 	if err := validateSyntheticManifestDigest(repository, summary.ManifestDigest); err != nil {
 		return PhaseReport{}, err
+	}
+	if err := repository.verifyFrozenView(); err != nil {
+		return PhaseReport{}, errors.New("phase repository changed")
 	}
 	if err := validatePhasePolicies(expected.PolicyStatuses); err != nil {
 		return PhaseReport{}, err
@@ -1030,6 +1116,105 @@ func decodeClosedPhase(data []byte, target any) error {
 	return nil
 }
 
+type trackedDirectoryBinding struct {
+	parent   *os.Root
+	child    *os.Root
+	name     string
+	identity os.FileInfo
+}
+
+func readTrackedWorktreeFile(repository *trackedRepository, relative string) ([]byte, string, error) {
+	rejected := func() ([]byte, string, error) {
+		return nil, "", errors.New("phase input rejected")
+	}
+	if repository == nil || repository.rootHandle == nil || relative == "" || relative == "." || strings.HasPrefix(relative, "/") || strings.Contains(relative, "\\") || strings.ContainsAny(relative, "\x00\r\n\t") {
+		return rejected()
+	}
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relative)))
+	if clean != relative || clean == ".." || strings.HasPrefix(clean, "../") {
+		return rejected()
+	}
+	parts := strings.Split(relative, "/")
+	if len(parts) == 0 {
+		return rejected()
+	}
+	runTrackedInputTestHook("after-path-check", relative)
+	current := repository.rootHandle
+	bindings := make([]trackedDirectoryBinding, 0, len(parts)-1)
+	defer func() {
+		for index := len(bindings) - 1; index >= 0; index-- {
+			_ = bindings[index].child.Close()
+		}
+	}()
+	for _, component := range parts[:len(parts)-1] {
+		if component == "" || component == "." || component == ".." {
+			return rejected()
+		}
+		before, err := current.Lstat(component)
+		if err != nil || !before.IsDir() || before.Mode()&os.ModeSymlink != 0 {
+			return rejected()
+		}
+		runTrackedInputTestHook("after-component-lstat", relative)
+		child, err := current.OpenRoot(component)
+		if err != nil {
+			return rejected()
+		}
+		opened, openErr := child.Stat(".")
+		namedAgain, nameErr := current.Lstat(component)
+		if openErr != nil || nameErr != nil || !opened.IsDir() || !namedAgain.IsDir() || namedAgain.Mode()&os.ModeSymlink != 0 || !os.SameFile(before, opened) || !os.SameFile(before, namedAgain) {
+			_ = child.Close()
+			return rejected()
+		}
+		bindings = append(bindings, trackedDirectoryBinding{parent: current, child: child, name: component, identity: before})
+		current = child
+	}
+	name := parts[len(parts)-1]
+	if name == "" || name == "." || name == ".." {
+		return rejected()
+	}
+	before, err := current.Lstat(name)
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Size() < 0 || before.Size() > trackedInputMaxBytes {
+		return rejected()
+	}
+	runTrackedInputTestHook("after-file-lstat", relative)
+	file, err := current.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return rejected()
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	namedAgain, nameErr := current.Lstat(name)
+	if err != nil || nameErr != nil || !opened.Mode().IsRegular() || !namedAgain.Mode().IsRegular() || namedAgain.Mode()&os.ModeSymlink != 0 || !os.SameFile(before, opened) || !os.SameFile(before, namedAgain) {
+		return rejected()
+	}
+	data, err := io.ReadAll(io.LimitReader(file, trackedInputMaxBytes+1))
+	if err != nil || len(data) > trackedInputMaxBytes {
+		return rejected()
+	}
+	openedAfter, openedErr := file.Stat()
+	after, afterErr := current.Lstat(name)
+	if openedErr != nil || afterErr != nil || !openedAfter.Mode().IsRegular() || !after.Mode().IsRegular() || after.Mode()&os.ModeSymlink != 0 || !os.SameFile(before, openedAfter) || !os.SameFile(before, after) || before.Size() != openedAfter.Size() || before.Size() != after.Size() || before.Mode() != openedAfter.Mode() || before.Mode() != after.Mode() || !before.ModTime().Equal(openedAfter.ModTime()) || !before.ModTime().Equal(after.ModTime()) {
+		return rejected()
+	}
+	for _, binding := range bindings {
+		named, nameErr := binding.parent.Lstat(binding.name)
+		openedDirectory, openErr := binding.child.Stat(".")
+		if nameErr != nil || openErr != nil || !named.IsDir() || named.Mode()&os.ModeSymlink != 0 || !openedDirectory.IsDir() || !os.SameFile(binding.identity, named) || !os.SameFile(binding.identity, openedDirectory) {
+			return rejected()
+		}
+	}
+	rootNamed, rootErr := os.Lstat(repository.root)
+	rootOpened, rootOpenErr := repository.rootHandle.Stat(".")
+	if rootErr != nil || rootOpenErr != nil || !rootNamed.IsDir() || rootNamed.Mode()&os.ModeSymlink != 0 || !os.SameFile(repository.rootIdentity, rootNamed) || !os.SameFile(repository.rootIdentity, rootOpened) {
+		return rejected()
+	}
+	mode := "100644"
+	if before.Mode().Perm()&0o100 != 0 {
+		mode = "100755"
+	}
+	return data, mode, nil
+}
+
 func readBoundedNoSymlink(path string) ([]byte, error) {
 	data, _, err := readBoundedNoSymlinkWithMode(path)
 	return data, err
@@ -1062,7 +1247,7 @@ func readBoundedNoSymlinkWithMode(path string) ([]byte, string, error) {
 		return nil, "", errors.New("phase input rejected")
 	}
 	mode := "100644"
-	if before.Mode().Perm()&0o111 != 0 {
+	if before.Mode().Perm()&0o100 != 0 {
 		mode = "100755"
 	}
 	return data, mode, nil

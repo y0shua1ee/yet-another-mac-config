@@ -5,12 +5,31 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestTrackedRepositorySnapshot(t *testing.T) {
 	t.Run("one frozen head and index", testFrozenRepositoryView)
 	t.Run("intermediate symlink swap", testIntermediateSymlinkSwap)
+	t.Run("intermediate chained symlink", testIntermediateChainedSymlink)
+	t.Run("intermediate directory replacement", testIntermediateDirectoryReplacement)
+	t.Run("final file replacement", testFinalFileReplacement)
+	t.Run("final fifo replacement", testFinalFIFOReplacement)
+}
+
+func testIntermediateChainedSymlink(t *testing.T) {
+	root, repository := trackedSwapFixture(t)
+	if err := os.Rename(filepath.Join(root, "nested"), filepath.Join(root, "nested-owned")); err != nil {
+		t.Fatal("chained symlink directory move failed")
+	}
+	if err := os.Symlink("nested-owned", filepath.Join(root, "nested-link")); err != nil || os.Symlink("nested-link", filepath.Join(root, "nested")) != nil {
+		t.Fatal("chained symlink fixture unavailable")
+	}
+	if _, err := validateTrackedInput(filepath.Join(root, "nested", "input.txt"), repository); err == nil {
+		t.Fatal("tracked reader followed an intermediate symlink chain")
+	}
 }
 
 func testFrozenRepositoryView(t *testing.T) {
@@ -28,6 +47,7 @@ func testFrozenRepositoryView(t *testing.T) {
 	if err != nil {
 		t.Fatal("tracked repository snapshot unavailable")
 	}
+	defer repository.close()
 	if _, err := validateTrackedInput(filepath.Join(root, "a.txt"), repository); err != nil {
 		t.Fatal("initial frozen input rejected")
 	}
@@ -47,9 +67,10 @@ func testIntermediateSymlinkSwap(t *testing.T) {
 	if err != nil {
 		t.Fatal("tracked repository reader unavailable")
 	}
+	defer repository.close()
 	called := false
 	trackedInputTestHook = func(point, relative string) {
-		if called || point != "after-path-check" || relative != "nested/input.txt" {
+		if called || point != "after-component-lstat" || relative != "nested/input.txt" {
 			return
 		}
 		called = true
@@ -68,6 +89,77 @@ func testIntermediateSymlinkSwap(t *testing.T) {
 	if err == nil || bytes.Equal(input.data, []byte("same-bytes\n")) {
 		t.Fatal("tracked reader consumed byte-identical data through an intermediate symlink")
 	}
+}
+
+func testIntermediateDirectoryReplacement(t *testing.T) {
+	root, repository := trackedSwapFixture(t)
+	called := false
+	trackedInputTestHook = func(point, relative string) {
+		if called || point != "after-component-lstat" || relative != "nested/input.txt" {
+			return
+		}
+		called = true
+		if err := os.Rename(filepath.Join(root, "nested"), filepath.Join(root, "nested-owned")); err != nil {
+			t.Fatal("intermediate directory move failed")
+		}
+		if err := os.Mkdir(filepath.Join(root, "nested"), 0o700); err != nil || os.WriteFile(filepath.Join(root, "nested", "input.txt"), []byte("same-bytes\n"), 0o600) != nil {
+			t.Fatal("intermediate replacement directory unavailable")
+		}
+	}
+	t.Cleanup(func() { trackedInputTestHook = nil })
+	if _, err := validateTrackedInput(filepath.Join(root, "nested", "input.txt"), repository); !called || err == nil {
+		t.Fatal("tracked reader accepted a replaced intermediate directory")
+	}
+}
+
+func testFinalFileReplacement(t *testing.T) {
+	root, repository := trackedSwapFixture(t)
+	called := false
+	trackedInputTestHook = func(point, relative string) {
+		if called || point != "after-file-lstat" || relative != "nested/input.txt" {
+			return
+		}
+		called = true
+		path := filepath.Join(root, "nested", "input.txt")
+		if err := os.Rename(path, path+".owned"); err != nil || os.WriteFile(path, []byte("same-bytes\n"), 0o600) != nil {
+			t.Fatal("final file replacement unavailable")
+		}
+	}
+	t.Cleanup(func() { trackedInputTestHook = nil })
+	if _, err := validateTrackedInput(filepath.Join(root, "nested", "input.txt"), repository); !called || err == nil {
+		t.Fatal("tracked reader accepted a byte-identical final-file replacement")
+	}
+}
+
+func testFinalFIFOReplacement(t *testing.T) {
+	root, repository := trackedSwapFixture(t)
+	called := false
+	trackedInputTestHook = func(point, relative string) {
+		if called || point != "after-file-lstat" || relative != "nested/input.txt" {
+			return
+		}
+		called = true
+		path := filepath.Join(root, "nested", "input.txt")
+		if err := os.Rename(path, path+".owned"); err != nil || syscall.Mkfifo(path, 0o600) != nil {
+			t.Fatal("final FIFO replacement unavailable")
+		}
+	}
+	t.Cleanup(func() { trackedInputTestHook = nil })
+	started := time.Now()
+	if _, err := validateTrackedInput(filepath.Join(root, "nested", "input.txt"), repository); !called || err == nil || time.Since(started) > time.Second {
+		t.Fatal("tracked reader accepted or blocked on a FIFO replacement")
+	}
+}
+
+func trackedSwapFixture(t *testing.T) (string, *trackedRepository) {
+	t.Helper()
+	root := newTrackedRepositoryFixture(t, map[string]string{"nested/input.txt": "same-bytes\n"})
+	repository, err := openTrackedRepository(root)
+	if err != nil {
+		t.Fatal("tracked repository reader unavailable")
+	}
+	t.Cleanup(repository.close)
+	return root, repository
 }
 
 func newTrackedRepositoryFixture(t *testing.T, files map[string]string) string {

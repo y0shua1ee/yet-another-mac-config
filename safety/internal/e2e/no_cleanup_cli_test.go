@@ -235,8 +235,9 @@ func testExactTrackedGitPlumbing(t *testing.T) {
 		`"/usr/bin/git"`, `"--no-lazy-fetch"`, `"--literal-pathspecs"`, `"core.fsmonitor=false"`, `"core.hooksPath=/dev/null"`, `"protocol.allow=never"`,
 		`"GIT_CONFIG_NOSYSTEM=1"`, `"GIT_CONFIG_GLOBAL=/dev/null"`, `"GIT_OPTIONAL_LOCKS=0"`, `"GIT_NO_LAZY_FETCH=1"`, `"GIT_NO_REPLACE_OBJECTS=1"`,
 		`"GIT_LITERAL_PATHSPECS=1"`, `"GIT_TERMINAL_PROMPT=0"`, `"GIT_ASKPASS=/usr/bin/false"`, `"SSH_ASKPASS=/usr/bin/false"`,
-		`type gitProofOperation uint8`, `switch operation`,
-		`"rev-parse", "--show-toplevel"`, `"ls-files", "-z", "--stage", "--error-unmatch"`, `"rev-parse", "--verify", "HEAD^{commit}"`,
+		`type gitProofOperation uint8`, `switch operation`, `gitProofIndexSnapshot`, `headCommit`, `indexSnapshot`, `verifyFrozenView`,
+		`rootHandle`, `readTrackedWorktreeFile`, `OpenRoot`, `after-component-lstat`, `syscall.O_NOFOLLOW`, `0o100`,
+		`"rev-parse", "--show-toplevel"`, `"ls-files", "-z", "--stage"`, `"rev-parse", "--verify", "HEAD^{commit}"`,
 		`"ls-tree", "-z", "--full-tree"`, `"cat-file", "blob"`,
 	} {
 		if !strings.Contains(text, required) {
