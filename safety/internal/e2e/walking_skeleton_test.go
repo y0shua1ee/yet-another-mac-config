@@ -174,11 +174,11 @@ func readStoredArtifacts(t *testing.T, storeRoot string) map[string]envelope {
 	if err != nil {
 		t.Fatalf("artifact store unavailable")
 	}
-	if len(entries) != 7 {
-		t.Fatalf("expected seven content-addressed objects")
-	}
 	result := make(map[string]envelope, len(entries))
 	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".pending-") {
+			continue
+		}
 		if entry.IsDir() {
 			t.Fatalf("unexpected directory in artifact object set")
 		}
@@ -198,6 +198,9 @@ func readStoredArtifacts(t *testing.T, storeRoot string) map[string]envelope {
 			t.Fatalf("duplicate content digest collapsed a stored artifact")
 		}
 		result[artifact.ContentDigest] = artifact
+	}
+	if len(result) != 7 {
+		t.Fatalf("expected seven content-addressed objects")
 	}
 	return result
 }

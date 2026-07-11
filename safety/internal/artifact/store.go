@@ -46,9 +46,10 @@ type persistedTransition struct {
 
 type Store struct {
 	root                string
-	rootIdentity        os.FileInfo
+	filesystem          *storeFilesystem
 	objectDirectory     *storeDirectory
 	transitionDirectory *storeDirectory
+	mutable             bool
 	now                 func() time.Time
 	objects             map[string]storedMetadata
 	planTransitions     map[string]planTransition
@@ -59,6 +60,20 @@ func NewStore(root, repositoryRoot string) (*Store, error) {
 }
 
 func NewStoreWithClock(root, repositoryRoot string, clock func() time.Time) (*Store, error) {
+	return openStoreWithClock(root, repositoryRoot, clock, true)
+}
+
+// OpenStore reopens an existing capability strictly for validation and reads.
+// A persisted pathname never grants a second writer authority.
+func OpenStore(root, repositoryRoot string) (*Store, error) {
+	return OpenStoreWithClock(root, repositoryRoot, time.Now)
+}
+
+func OpenStoreWithClock(root, repositoryRoot string, clock func() time.Time) (*Store, error) {
+	return openStoreWithClock(root, repositoryRoot, clock, false)
+}
+
+func openStoreWithClock(root, repositoryRoot string, clock func() time.Time, mutable bool) (*Store, error) {
 	validated, err := ValidateExternalRoot(root, repositoryRoot)
 	if err != nil {
 		return nil, err
@@ -66,15 +81,16 @@ func NewStoreWithClock(root, repositoryRoot string, clock func() time.Time) (*St
 	if clock == nil {
 		return nil, contractError(CodeStoreUnavailable, "/clock")
 	}
-	rootIdentity, objectDirectory, transitionDirectory, err := initializeStoreFilesystem(validated)
+	filesystem, objectDirectory, transitionDirectory, err := initializeStoreFilesystem(validated, mutable)
 	if err != nil {
 		return nil, contractError(CodeStoreUnavailable, "/store")
 	}
 	store := &Store{
 		root:                validated,
-		rootIdentity:        rootIdentity,
+		filesystem:          filesystem,
 		objectDirectory:     objectDirectory,
 		transitionDirectory: transitionDirectory,
+		mutable:             mutable,
 		now:                 clock,
 		objects:             make(map[string]storedMetadata),
 		planTransitions:     make(map[string]planTransition),
@@ -132,6 +148,9 @@ func (store *Store) Write(canonical []byte) (string, error) {
 }
 
 func (store *Store) write(canonical []byte) (digest string, created bool, resultErr error) {
+	if store == nil || !store.mutable {
+		return "", false, contractError(CodeStoreUnavailable, "/store")
+	}
 	if len(canonical) == 0 || len(canonical) > maxStoredArtifactBytes {
 		return "", false, contractError(CodeStoreUnavailable, "/artifact")
 	}
@@ -185,6 +204,9 @@ type graphWrite struct {
 }
 
 func (store *Store) WriteGraph(mode LineageMode, graph LineageGraph) (map[string]string, error) {
+	if store == nil || !store.mutable {
+		return nil, contractError(CodeStoreUnavailable, "/store")
+	}
 	if err := ValidateLineage(mode, graph); err != nil {
 		return nil, err
 	}
@@ -207,22 +229,14 @@ func (store *Store) WriteGraph(mode LineageMode, graph LineageGraph) (map[string
 		return nil, err
 	}
 	metadataBefore := cloneMetadata(store.objects)
-	createdDigests := make([]string, 0, len(ordered))
-	rollback := func() {
-		store.objects = metadataBefore
-		for _, digest := range createdDigests {
-			store.removeCreatedObjectFile(digest)
-		}
-	}
 	result := make(map[string]string, len(ordered))
 	for _, item := range ordered {
-		digest, created, err := store.write(item.canonical)
+		digest, _, err := store.write(item.canonical)
 		if err != nil {
-			rollback()
+			// immutable bytes are append-only; a failed graph only rolls back the
+			// in-memory visibility map. Whole-fixture teardown reclaims unreferenced bytes.
+			store.objects = metadataBefore
 			return nil, err
-		}
-		if created {
-			createdDigests = append(createdDigests, digest)
 		}
 		result[item.label] = digest
 	}
@@ -274,12 +288,6 @@ func (store *Store) Read(digest string) (canonical []byte, envelope Envelope, re
 }
 
 func (store *Store) Delete(digest string) (resultErr error) {
-	metadataBefore := cloneMetadata(store.objects)
-	defer func() {
-		if resultErr != nil {
-			store.objects = metadataBefore
-		}
-	}()
 	_, envelope, err := store.loadExact(digest, false)
 	if err != nil {
 		return err
@@ -308,18 +316,15 @@ func (store *Store) Delete(digest string) (resultErr error) {
 	default:
 		return contractError(CodeStoreDeleteDenied, "/kind")
 	}
-	if err := store.removeObjectFile(digest); err != nil {
-		return contractError(CodeStoreUnavailable, "/store")
-	}
-	if envelope.Kind == GeneratedPlan {
-		_ = store.removeTransitionFile(digest)
-	}
-	delete(store.objects, digest)
-	delete(store.planTransitions, digest)
-	return nil
+	// Phase 1 store is physically append-only. Expiry controls read eligibility,
+	// while marker-owned fixture teardown is the sole physical reclamation path.
+	return contractError(CodeStoreDeleteDenied, "/lifecycle/retention")
 }
 
 func (store *Store) TransitionPlan(planDigest string, state TerminalState, recordDigest string) (resultErr error) {
+	if store == nil || !store.mutable {
+		return contractError(CodePlanTransition, "/store")
+	}
 	metadataBefore := cloneMetadata(store.objects)
 	defer func() {
 		if resultErr != nil {

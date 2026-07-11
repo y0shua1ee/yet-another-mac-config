@@ -49,9 +49,11 @@
 | `verification-evidence` | append-only evidence bundle，并固定引用上游 digest |
 | `readiness-report` | append-only evidence bundle，并固定引用 evidence digest |
 
-外部 store 以自己的可信时钟校验 snapshot 生命周期：`created_at` 最多只允许比 store 时钟快 2 分钟，`expires_at` 也不得超过 store 当前时间加 24 小时与同一 2 分钟偏差。该检查同时覆盖 write、reopen、read 与 delete，调用方不能用未来时间延长 retention。
+外部 store 以自己的可信时钟校验 snapshot 生命周期：`created_at` 最多只允许比 store 时钟快 2 分钟，`expires_at` 也不得超过 store 当前时间加 24 小时与同一 2 分钟偏差。该检查覆盖 write、只读 reopen 与 read，调用方不能用未来时间延长 retention。到期只会使未被 pin 的 snapshot 不再可读；Phase 1 的 `Delete` 始终拒绝物理删除。
 
-store 初始化会原子创建或验证 exact `sha256` 与 `transitions` direct-child directories，记录 root/child inode identity，并让所有 list/read/create/link/remove 都通过保持打开的 rooted directory handles 执行。每次操作前后都会重新验证 named root、child identity 与 resolved containment；目录 symlink 或替换会 fail closed。artifact 与 transition 只接受 no-follow、nonblocking 打开的 regular file，读取前后核对 named/opened identity、mode、size 与 mtime，并使用 `limit+1` 上限；symlink、FIFO、device、socket、oversize 或 race 都不会被读取、跟随或写出到所选 store root 之外。
+mutable store 只能独占创建一个此前不存在的 fresh root；同一路径的第二个 writer 与 caller 预建目录都会拒绝。创建时会发布 private capability marker，并在 store lifetime 内保留 parent → root → `sha256` / `transitions` 的完整 rooted handle 与 inode 链。existing store 只能通过只读 reopen 校验和读取，不能重新取得 write/transition authority。
+
+object 与 transition 采用 append-only 发布：在 exact fresh child capability 内创建不可预测 staging file，完成 bounded write 与 `fsync` 后以 no-replace hard link 发布 final name。成功或失败都不按 pathname 删除 staging/final 文件，graph 失败也只撤销内存可见性，绝不 rollback/unlink 已发布名字；`Delete` 不物理删除 object 或 transition。若 same-UID 并发方移动目录，retained handle 仍只代表最初选择的 fresh capability，named chain 漂移会使结果 non-zero，但不会删除替换对象或把现有任意目录变成 cleanup target。所有物理回收统一交给 verdict 冻结后的整棵 marker-owned fixture teardown。artifact/transition read 仍要求 no-follow、nonblocking regular file，并在 bounded `limit+1` 读取前后核对 named/opened identity、mode、size 与 mtime；symlink、FIFO、device、socket、oversize 与替换都会有界失败。
 
 apply 路径因此是六种 kind、七个 instance：`desired -> observed-before -> plan -> receipt -> observed-fresh -> evidence -> report`。更精确地说，plan 绑定 desired、before observation 与 expected postconditions；receipt 绑定 plan；fresh observation 绑定 receipt；evidence 绑定 plan、receipt、desired、fresh observation、expected postconditions 以及 sentinel before/after；report 绑定 evidence。read-only 与 apply evidence 的 compact fresh descriptor 都必须把 scope 和 state 绑定到 exact observed artifact 中真实存在的 facts，不能只依赖合法的 logical-ref 语法。所有边使用 canonical content digest 反向验证，evidence/receipt/report 的上游会被递归 pin。Phase 1 没有破坏性 prune；snapshot 到期也不授权删除任意现有用户状态。
 
@@ -82,7 +84,7 @@ namespace 与 `surface_domain` 是两张不同的闭合表。当前五个 domain
 
 ## Fixture、tier 与网络边界
 
-公开 `fixture run` 不接受物理 child/store 路径。它只在经过 containment 检查的外部 base 下，以不可预测 nonce 原子建立本次 direct child；artifact store、HOME/XDG、manager roots、fake PATH 与 sentinel scratch 都由该 child 派生。existing/non-empty/HOME-shaped child、fixture/store overlap 和预先存在的 witness 不能通过参数成为写入目标；初始化失败的 rollback 与运行后 finalize 都只处理本次 marker-owned child。
+公开 `fixture run` 不接受物理 child/store 路径。它只在经过 containment 检查的外部 base 下，以不可预测 nonce 原子建立本次 direct child；HOME/XDG、manager roots、fake PATH 与 sentinel scratch 由该 child 派生，artifact store 路径则保留到首次 writer 独占创建。existing/non-empty/HOME-shaped child、fixture/store overlap 和预先存在的 witness 不能通过参数成为写入目标；初始化失败的 rollback 与运行后 finalize 都只处理本次 marker-owned child。
 
 fixture base 和 artifact store 必须位于仓库外。每次运行只在显式 base 的直接子级创建一个新目录；ownership marker 先写入同目录 temp、完成 `fsync`/close，再以 no-replace hard-link 原子发布，内容包含 logical ID、创建/过期时间、effective UID 与随机 nonce。若初始化期间发生无 marker、partial marker 或目录创建失败，rollback capability 只绑定本次 fresh child 的 directory inode、UID、nonce 与 direct-child containment；它会保留 base/sibling。运行后删除前仍会重新验证完整 marker、UID、nonce、非 symlink、直接子级 containment 和最长 24 小时 TTL。
 

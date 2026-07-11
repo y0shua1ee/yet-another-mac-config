@@ -28,9 +28,11 @@
 
 唯一允许的删除是：主 verdict 已冻结后，重新验证 marker、effective UID、nonce、非 symlink、直接子级 containment 与 TTL，再删除**本次创建的仓库外 fixture 子目录**。默认删除；只有运行前显式 keep 才可保留最多 24 小时。不得把这个 teardown 例外扩展成真实环境清理权限。
 
-外部 artifact store 必须用 store 自己的时钟约束 24 小时 snapshot；只允许明确的 2 分钟正向 clock skew，并在 write、reopen、read、delete 全部 fail closed。测试必须注入时钟，不能依赖固定日期或通过未来 `created_at` 延长生命周期。
+外部 artifact store 必须用 store 自己的时钟约束 24 小时 snapshot；只允许明确的 2 分钟正向 clock skew，并在 write、只读 reopen 与 read 全部 fail closed。到期只改变未 pin snapshot 的可读性，不能授权物理删除。测试必须注入时钟，不能依赖固定日期或通过未来 `created_at` 延长生命周期。
 
-外部 store 的 `sha256` 与 `transitions` 必须是 exact root 的 direct-child directories，并在 store lifetime 内绑定初始 inode identity。所有 object/transition 操作必须使用 rooted directory handles，在前后重新验证 named root/child identity 与 containment；禁止 path API 跟随目录替换。文件只能通过 no-follow、nonblocking、regular-file、bounded `limit+1` 与 named/opened identity recheck 读取；symlink、FIFO、device、socket、oversize 或 race 必须有界失败且零 root 外写入。
+mutable store 只能独占创建此前不存在的 fresh root，并发布 private capability marker；caller 预建目录、第二个 writer 或 existing pathname 不能取得 mutation authority。store 必须保留 parent → root → `sha256` / `transitions` 的 rooted handle/inode 链；existing store 只允许 read-only reopen。
+
+object、transition 与 staging 全部 append-only：使用不可预测 staging name、bounded write、`fsync` 与 no-replace hard link，禁止 publish failure cleanup、graph rollback、lifecycle delete 或任何按名 unlink。目录 rename 后 retained handle 只代表原 fresh capability；named chain 不一致必须 non-zero，但任何不确定性都不得删除 replacement。唯一物理回收仍是整棵 marker-owned fixture teardown。读取必须使用 no-follow、nonblocking regular file、bounded `limit+1` 与 named/opened identity recheck；symlink、FIFO、device、socket、oversize 或 race 必须有界失败。
 
 ## 测试契约
 

@@ -260,7 +260,6 @@ func createFixtureDirectories(paths Paths, mkdirAll func(string, os.FileMode) er
 		filepath.Join(paths.NodeManager, "cache"),
 		paths.Trust,
 		paths.NetworkCache,
-		paths.ArtifactStore,
 		paths.BlueprintWorktree,
 		paths.SentinelScratch,
 	}

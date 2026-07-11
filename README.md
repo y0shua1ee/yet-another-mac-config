@@ -172,7 +172,7 @@ brew services restart <name>    # 重启服务
 - `.config/ghostty/*.bak`：Ghostty 配置备份文件。
 - `.DS_Store`：macOS 自动生成的目录元数据文件。
 
-Safety runner 的 fixture、artifact store、隔离 HOME/XDG、Go cache 与 manager roots 也只存在于仓库外的运行时解析目录。它们默认在 verdict 冻结后按 ownership marker 删除；若运行前显式保留，也仍是本机临时状态，不应复制进仓库或用 broad `.gitignore` / Gitleaks 例外掩盖。
+Safety runner 的 fixture、artifact store、隔离 HOME/XDG、Go cache 与 manager roots 也只存在于仓库外的运行时解析目录。artifact store 由单一 writer 在 fresh fixture 内独占创建并保持 append-only；object/transition 不做逐文件 rollback 或 delete，物理回收只随 verdict 冻结后的整棵 ownership-marker fixture teardown 发生。若运行前显式保留，它们仍是本机临时状态，不应复制进仓库或用 broad `.gitignore` / Gitleaks 例外掩盖。
 
 `setup_mac.sh` 只会处理 Git 已跟踪的 `.config` 目录，因此这些本地忽略目录不会出现在同步提示里。
 

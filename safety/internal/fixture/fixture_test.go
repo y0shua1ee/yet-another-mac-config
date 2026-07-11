@@ -99,8 +99,11 @@ func testFixtureRoots(t *testing.T) {
 		"homebrew": paths.HomebrewManager, "mise": paths.MiseManager, "uv": paths.UVManager,
 		"rustup": paths.RustupManager, "cargo": paths.CargoManager, "go": paths.GoManager,
 		"node": paths.NodeManager, "trust": paths.Trust, "network-cache": paths.NetworkCache,
-		"artifact-store": paths.ArtifactStore, "blueprint-worktree": paths.BlueprintWorktree,
-		"sentinel-scratch": paths.SentinelScratch,
+		"blueprint-worktree": paths.BlueprintWorktree,
+		"sentinel-scratch":   paths.SentinelScratch,
+	}
+	if _, err := os.Lstat(paths.ArtifactStore); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("artifact store was not reserved for an exclusive writer capability")
 	}
 	for name, path := range all {
 		info, err := os.Lstat(path)

@@ -14,6 +14,8 @@ import (
 
 var errStoreFileCollision = errors.New("store file collision")
 
+const storeClaimFileName = ".yamc-store-capability"
+
 // storeFilesystemTestHook 只为同包的受控竞态测试提供确定性调度点。
 // production 默认值恒为 nil，调用方不能通过公开 API 或环境变量设置它。
 var storeFilesystemTestHook func(point string, directory *storeDirectory, name string) error
@@ -26,12 +28,24 @@ func runStoreFilesystemTestHook(point string, directory *storeDirectory, name st
 }
 
 type storeDirectory struct {
+	name     string
 	path     string
 	root     *os.Root
 	identity os.FileInfo
 }
 
-func initializeStoreFilesystem(root string) (os.FileInfo, *storeDirectory, *storeDirectory, error) {
+type storeFilesystem struct {
+	parentPath     string
+	base           string
+	parentRoot     *os.Root
+	parentIdentity os.FileInfo
+	rootHandle     *os.Root
+	rootIdentity   os.FileInfo
+	claimFile      *os.File
+	claimIdentity  os.FileInfo
+}
+
+func initializeStoreFilesystem(root string, mutable bool) (*storeFilesystem, *storeDirectory, *storeDirectory, error) {
 	parentPath := filepath.Dir(root)
 	base := filepath.Base(root)
 	if !validStoreFileName(base) {
@@ -45,82 +59,123 @@ func initializeStoreFilesystem(root string) (os.FileInfo, *storeDirectory, *stor
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	defer parentRoot.Close()
+	failed := true
+	defer func() {
+		if failed {
+			_ = parentRoot.Close()
+		}
+	}()
 	openedParent, err := parentRoot.Stat(".")
 	if err != nil || !os.SameFile(parentIdentity, openedParent) {
 		return nil, nil, nil, errors.New("store parent replaced")
 	}
-	createdRoot := false
-	if err := parentRoot.Mkdir(base, 0o700); err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return nil, nil, nil, err
+	if mutable {
+		// mutable store 必须由当前调用独占创建；existing pathname 只能走只读 reopen。
+		if err := parentRoot.Mkdir(base, 0o700); err != nil {
+			return nil, nil, nil, errors.New("store root is not fresh")
 		}
-	} else {
-		createdRoot = true
 	}
 	rootIdentity, err := parentRoot.Lstat(base)
 	if err != nil || !rootIdentity.IsDir() || rootIdentity.Mode()&os.ModeSymlink != 0 {
-		if createdRoot {
-			_ = parentRoot.Remove(base)
-		}
 		return nil, nil, nil, errors.New("store root rejected")
 	}
 	rootHandle, err := parentRoot.OpenRoot(base)
 	if err != nil {
-		if createdRoot {
-			_ = parentRoot.Remove(base)
-		}
 		return nil, nil, nil, err
 	}
-	defer rootHandle.Close()
+	defer func() {
+		if failed {
+			_ = rootHandle.Close()
+		}
+	}()
 	openedRoot, err := rootHandle.Stat(".")
 	if err != nil || !os.SameFile(rootIdentity, openedRoot) {
-		if createdRoot {
-			_ = parentRoot.Remove(base)
-		}
 		return nil, nil, nil, errors.New("store root replaced")
 	}
 
-	objects, objectsCreated, err := openExactStoreDirectory(root, rootHandle, "sha256")
+	claimFile, claimIdentity, err := openStoreClaim(rootHandle, mutable)
 	if err != nil {
-		if createdRoot {
-			_ = parentRoot.Remove(base)
-		}
 		return nil, nil, nil, err
 	}
-	transitions, transitionsCreated, err := openExactStoreDirectory(root, rootHandle, "transitions")
+	defer func() {
+		if failed {
+			_ = claimFile.Close()
+		}
+	}()
+	objects, err := openExactStoreDirectory(root, rootHandle, "sha256", mutable)
 	if err != nil {
-		_ = objects.root.Close()
-		if objectsCreated {
-			_ = rootHandle.Remove("sha256")
-		}
-		if createdRoot {
-			_ = parentRoot.Remove(base)
-		}
 		return nil, nil, nil, err
 	}
-	rollback := func() {
+	defer func() {
+		if failed {
+			_ = objects.root.Close()
+		}
+	}()
+	transitions, err := openExactStoreDirectory(root, rootHandle, "transitions", mutable)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	filesystem := &storeFilesystem{
+		parentPath: parentPath, base: base, parentRoot: parentRoot, parentIdentity: parentIdentity,
+		rootHandle: rootHandle, rootIdentity: rootIdentity, claimFile: claimFile, claimIdentity: claimIdentity,
+	}
+	if err := verifyStoreFilesystem(filesystem, objects, transitions); err != nil {
 		_ = transitions.root.Close()
-		_ = objects.root.Close()
-		if transitionsCreated {
-			_ = rootHandle.Remove("transitions")
-		}
-		if objectsCreated {
-			_ = rootHandle.Remove("sha256")
-		}
-		if createdRoot {
-			_ = parentRoot.Remove(base)
-		}
+		return nil, nil, nil, err
 	}
-	rootNamedAgain, rootErr := exactDirectoryIdentity(root)
-	objectsNamedAgain, objectsErr := exactDirectoryIdentity(objects.path)
-	transitionsNamedAgain, transitionsErr := exactDirectoryIdentity(transitions.path)
-	parentNamedAgain, parentErr := exactDirectoryIdentity(parentPath)
-	if rootErr != nil || objectsErr != nil || transitionsErr != nil || parentErr != nil || !os.SameFile(rootIdentity, rootNamedAgain) || !os.SameFile(objects.identity, objectsNamedAgain) || !os.SameFile(transitions.identity, transitionsNamedAgain) || !os.SameFile(parentIdentity, parentNamedAgain) {
-		rollback()
-		return nil, nil, nil, errors.New("store filesystem replaced")
+	failed = false
+	return filesystem, objects, transitions, nil
+}
+
+func openStoreClaim(root *os.Root, create bool) (*os.File, os.FileInfo, error) {
+	if create {
+		name, err := storeTemporaryName()
+		if err != nil {
+			return nil, nil, err
+		}
+		claim, err := root.OpenFile(storeClaimFileName, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			return nil, nil, errors.New("store capability unavailable")
+		}
+		failed := true
+		defer func() {
+			if failed {
+				_ = claim.Close()
+			}
+		}()
+		if _, err := io.WriteString(claim, strings.TrimPrefix(name, ".pending-")+"\n"); err != nil || claim.Sync() != nil {
+			return nil, nil, errors.New("store capability unavailable")
+		}
+		identity, err := claim.Stat()
+		if err != nil || !identity.Mode().IsRegular() || identity.Size() != 33 {
+			return nil, nil, errors.New("store capability rejected")
+		}
+		failed = false
+		return claim, identity, nil
 	}
-	return rootIdentity, objects, transitions, nil
+	identity, err := root.Lstat(storeClaimFileName)
+	if err != nil || !identity.Mode().IsRegular() || identity.Mode()&os.ModeSymlink != 0 || identity.Size() != 33 {
+		return nil, nil, errors.New("store capability rejected")
+	}
+	claim, err := root.OpenFile(storeClaimFileName, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, errors.New("store capability rejected")
+	}
+	opened, err := claim.Stat()
+	if err != nil || !os.SameFile(identity, opened) {
+		_ = claim.Close()
+		return nil, nil, errors.New("store capability replaced")
+	}
+	data, err := io.ReadAll(io.LimitReader(claim, 34))
+	if err != nil || len(data) != 33 || data[32] != '\n' {
+		_ = claim.Close()
+		return nil, nil, errors.New("store capability rejected")
+	}
+	if _, err := hex.DecodeString(string(data[:32])); err != nil {
+		_ = claim.Close()
+		return nil, nil, errors.New("store capability rejected")
+	}
+	return claim, identity, nil
 }
 
 func exactDirectoryIdentity(path string) (os.FileInfo, error) {
@@ -139,75 +194,73 @@ func exactDirectoryIdentity(path string) (os.FileInfo, error) {
 	return info, nil
 }
 
-func openExactStoreDirectory(root string, rootHandle *os.Root, name string) (*storeDirectory, bool, error) {
+func openExactStoreDirectory(root string, rootHandle *os.Root, name string, create bool) (*storeDirectory, error) {
 	path := filepath.Join(root, name)
-	created := false
-	if err := rootHandle.Mkdir(name, 0o700); err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return nil, false, err
+	if create {
+		if err := rootHandle.Mkdir(name, 0o700); err != nil {
+			return nil, errors.New("store directory unavailable")
 		}
-	} else {
-		created = true
 	}
 	identity, err := rootHandle.Lstat(name)
 	if err != nil || !identity.IsDir() || identity.Mode()&os.ModeSymlink != 0 {
-		if created {
-			_ = rootHandle.Remove(name)
-		}
-		return nil, false, errors.New("store directory rejected")
+		return nil, errors.New("store directory rejected")
 	}
 	inside, err := isWithin(root, path)
 	if err != nil || !inside || filepath.Dir(path) != root {
-		if created {
-			_ = rootHandle.Remove(name)
-		}
-		return nil, false, errors.New("store directory rejected")
+		return nil, errors.New("store directory rejected")
 	}
 	rooted, err := rootHandle.OpenRoot(name)
 	if err != nil {
-		if created {
-			_ = rootHandle.Remove(name)
-		}
-		return nil, false, err
+		return nil, err
 	}
 	opened, err := rooted.Stat(".")
 	if err != nil || !opened.IsDir() || !os.SameFile(identity, opened) {
 		_ = rooted.Close()
-		if created {
-			_ = rootHandle.Remove(name)
-		}
-		return nil, false, errors.New("store directory rejected")
+		return nil, errors.New("store directory rejected")
 	}
 	namedAgain, err := rootHandle.Lstat(name)
 	if err != nil || !os.SameFile(identity, namedAgain) {
 		_ = rooted.Close()
-		if created {
-			_ = rootHandle.Remove(name)
-		}
-		return nil, false, errors.New("store directory rejected")
+		return nil, errors.New("store directory rejected")
 	}
-	return &storeDirectory{path: path, root: rooted, identity: identity}, created, nil
+	return &storeDirectory{name: name, path: path, root: rooted, identity: identity}, nil
 }
 
 func (store *Store) verifyStoreDirectory(directory *storeDirectory) error {
-	if store == nil || directory == nil || directory.root == nil || store.rootIdentity == nil {
+	if store == nil || store.filesystem == nil || directory == nil || directory.root == nil {
 		return errors.New("store directory rejected")
 	}
-	rootInfo, err := exactDirectoryIdentity(store.root)
-	if err != nil || !os.SameFile(store.rootIdentity, rootInfo) {
-		return errors.New("store directory replaced")
+	return verifyStoreFilesystem(store.filesystem, directory)
+}
+
+func verifyStoreFilesystem(filesystem *storeFilesystem, directories ...*storeDirectory) error {
+	if filesystem == nil || filesystem.parentRoot == nil || filesystem.rootHandle == nil || filesystem.claimFile == nil {
+		return errors.New("store filesystem rejected")
 	}
-	named, err := exactDirectoryIdentity(directory.path)
-	if err != nil || !os.SameFile(directory.identity, named) {
-		return errors.New("store directory replaced")
+	parentNamed, err := exactDirectoryIdentity(filesystem.parentPath)
+	parentOpened, openedErr := filesystem.parentRoot.Stat(".")
+	if err != nil || openedErr != nil || !os.SameFile(filesystem.parentIdentity, parentNamed) || !os.SameFile(filesystem.parentIdentity, parentOpened) {
+		return errors.New("store parent replaced")
 	}
-	opened, err := directory.root.Stat(".")
-	if err != nil || !opened.IsDir() || !os.SameFile(directory.identity, opened) || !os.SameFile(named, opened) {
-		return errors.New("store directory replaced")
+	rootNamed, err := filesystem.parentRoot.Lstat(filesystem.base)
+	rootOpened, openedErr := filesystem.rootHandle.Stat(".")
+	if err != nil || openedErr != nil || !rootNamed.IsDir() || rootNamed.Mode()&os.ModeSymlink != 0 || !os.SameFile(filesystem.rootIdentity, rootNamed) || !os.SameFile(filesystem.rootIdentity, rootOpened) {
+		return errors.New("store root replaced")
 	}
-	inside, err := isWithin(store.root, directory.path)
-	if err != nil || !inside || filepath.Dir(directory.path) != store.root {
-		return errors.New("store directory escaped")
+	claimNamed, err := filesystem.rootHandle.Lstat(storeClaimFileName)
+	claimOpened, openedErr := filesystem.claimFile.Stat()
+	if err != nil || openedErr != nil || !claimNamed.Mode().IsRegular() || claimNamed.Mode()&os.ModeSymlink != 0 || !os.SameFile(filesystem.claimIdentity, claimNamed) || !os.SameFile(filesystem.claimIdentity, claimOpened) {
+		return errors.New("store capability replaced")
+	}
+	for _, directory := range directories {
+		if directory == nil || directory.root == nil {
+			return errors.New("store directory rejected")
+		}
+		named, nameErr := filesystem.rootHandle.Lstat(directory.name)
+		opened, openErr := directory.root.Stat(".")
+		if nameErr != nil || openErr != nil || !named.IsDir() || named.Mode()&os.ModeSymlink != 0 || !os.SameFile(directory.identity, named) || !os.SameFile(directory.identity, opened) {
+			return errors.New("store directory replaced")
+		}
 	}
 	return nil
 }
@@ -270,8 +323,7 @@ func (store *Store) publishTransitionFile(planDigest string, data []byte) (bool,
 	return store.publishStoreFile(store.transitionDirectory, strings.TrimPrefix(planDigest, "sha256:")+".json", data)
 }
 
-func (store *Store) publishStoreFile(directory *storeDirectory, name string, data []byte) (created bool, resultErr error) {
-	published := false
+func (store *Store) publishStoreFile(directory *storeDirectory, name string, data []byte) (bool, error) {
 	if !validStoreFileName(name) || len(data) == 0 || len(data) > maxStoredArtifactBytes {
 		return false, errors.New("store file rejected")
 	}
@@ -294,10 +346,7 @@ func (store *Store) publishStoreFile(directory *storeDirectory, name string, dat
 	if err != nil {
 		return false, err
 	}
-	defer func() {
-		_ = temporary.Close()
-		_ = directory.root.Remove(temporaryName)
-	}()
+	defer temporary.Close()
 	if _, err := io.Copy(temporary, bytes.NewReader(data)); err != nil {
 		return false, err
 	}
@@ -307,20 +356,15 @@ func (store *Store) publishStoreFile(directory *storeDirectory, name string, dat
 	if err := temporary.Close(); err != nil {
 		return false, err
 	}
+	if err := store.verifyStoreDirectory(directory); err != nil {
+		return false, err
+	}
 	if err := directory.root.Link(temporaryName, name); err != nil {
 		if existing, readErr := store.readStoreFile(directory, name); readErr == nil && bytes.Equal(existing, data) {
 			return false, nil
 		}
 		return false, errStoreFileCollision
 	}
-	created = true
-	published = true
-	defer func() {
-		if resultErr != nil && published {
-			_ = directory.root.Remove(name)
-			_ = syncStoreDirectory(directory)
-		}
-	}()
 	if err := runStoreFilesystemTestHook("publish-after-link", directory, name); err != nil {
 		return false, err
 	}
@@ -331,45 +375,6 @@ func (store *Store) publishStoreFile(directory *storeDirectory, name string, dat
 		return false, err
 	}
 	return true, nil
-}
-
-func (store *Store) removeObjectFile(digest string) error {
-	return store.removeStoreFile(store.objectDirectory, strings.TrimPrefix(digest, "sha256:"))
-}
-
-func (store *Store) removeTransitionFile(planDigest string) error {
-	return store.removeStoreFile(store.transitionDirectory, strings.TrimPrefix(planDigest, "sha256:")+".json")
-}
-
-func (store *Store) removeStoreFile(directory *storeDirectory, name string) error {
-	if !validStoreFileName(name) {
-		return errors.New("store file rejected")
-	}
-	if err := store.verifyStoreDirectory(directory); err != nil {
-		return err
-	}
-	info, err := directory.root.Lstat(name)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("store file rejected")
-	}
-	if err := runStoreFilesystemTestHook("delete-before-remove", directory, name); err != nil {
-		return err
-	}
-	if err := directory.root.Remove(name); err != nil {
-		return err
-	}
-	if err := syncStoreDirectory(directory); err != nil {
-		return err
-	}
-	return store.verifyStoreDirectory(directory)
-}
-
-func (store *Store) removeCreatedObjectFile(digest string) {
-	name := strings.TrimPrefix(digest, "sha256:")
-	if validStoreFileName(name) && store.objectDirectory != nil && store.objectDirectory.root != nil {
-		_ = store.objectDirectory.root.Remove(name)
-		_ = syncStoreDirectory(store.objectDirectory)
-	}
 }
 
 func (store *Store) objectDirectoryEntries() ([]os.DirEntry, error) {
@@ -399,7 +404,18 @@ func (store *Store) storeDirectoryEntries(target *storeDirectory) ([]os.DirEntry
 	if err := store.verifyStoreDirectory(target); err != nil {
 		return nil, err
 	}
-	return entries, nil
+	result := make([]os.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".pending-") {
+			info, infoErr := target.root.Lstat(entry.Name())
+			if infoErr != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() < 0 || info.Size() > maxStoredArtifactBytes {
+				return nil, errors.New("store staging entry rejected")
+			}
+			continue
+		}
+		result = append(result, entry)
+	}
+	return result, nil
 }
 
 func syncStoreDirectory(directory *storeDirectory) error {
@@ -435,5 +451,16 @@ func (store *Store) closeStoreFilesystem() {
 	}
 	if store.transitionDirectory != nil && store.transitionDirectory.root != nil {
 		_ = store.transitionDirectory.root.Close()
+	}
+	if store.filesystem != nil {
+		if store.filesystem.claimFile != nil {
+			_ = store.filesystem.claimFile.Close()
+		}
+		if store.filesystem.rootHandle != nil {
+			_ = store.filesystem.rootHandle.Close()
+		}
+		if store.filesystem.parentRoot != nil {
+			_ = store.filesystem.parentRoot.Close()
+		}
 	}
 }

@@ -963,7 +963,7 @@ func validateArtifactGraph(storeRoot, repositoryRoot string, summary Summary) er
 	if len(summary.Artifacts) != len(wantKinds) {
 		return errors.New("phase artifact set rejected")
 	}
-	store, err := artifact.NewStore(storeRoot, repositoryRoot)
+	store, err := artifact.OpenStore(storeRoot, repositoryRoot)
 	if err != nil {
 		return errors.New("phase artifact store rejected")
 	}
@@ -988,7 +988,13 @@ func validateArtifactGraph(storeRoot, repositoryRoot string, summary Summary) er
 		canonical[label] = data
 	}
 	entries, err := os.ReadDir(filepath.Join(storeRoot, "sha256"))
-	if err != nil || len(entries) != len(wantKinds) {
+	objectCount := 0
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), ".pending-") {
+			objectCount++
+		}
+	}
+	if err != nil || objectCount != len(wantKinds) {
 		return errors.New("phase artifact object set rejected")
 	}
 	var evidencePayload artifact.VerificationEvidencePayload

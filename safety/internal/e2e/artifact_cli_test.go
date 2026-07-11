@@ -122,7 +122,7 @@ func assertFutureSnapshotClockBoundary(t *testing.T) {
 	if err := rewindStore.Delete(digest); err == nil {
 		t.Fatal("future-relative snapshot reached delete after clock rewind")
 	}
-	if _, err := artifact.NewStoreWithClock(rewindRoot, repositoryRoot, clock); err == nil {
+	if _, err := artifact.OpenStoreWithClock(rewindRoot, repositoryRoot, clock); err == nil {
 		t.Fatal("store reopen accepted a future-relative snapshot")
 	}
 }
@@ -269,7 +269,7 @@ func assertStoreLifecycle(t *testing.T, apply graphBundle) {
 		}
 	}
 
-	reopened, err := artifact.NewStoreWithClock(storeRoot, repositoryRoot, clock)
+	reopened, err := artifact.OpenStoreWithClock(storeRoot, repositoryRoot, clock)
 	if err != nil {
 		t.Fatalf("persisted store reopen failed")
 	}
@@ -328,9 +328,6 @@ func assertStoreChildContainment(t *testing.T, apply graphBundle, repositoryRoot
 
 	replacementEscape := t.TempDir()
 	replacementRoot := filepath.Join(t.TempDir(), "replacement-store")
-	if err := os.Mkdir(replacementRoot, 0o700); err != nil || os.Mkdir(filepath.Join(replacementRoot, "sha256"), 0o700) != nil || os.Mkdir(filepath.Join(replacementRoot, "transitions"), 0o700) != nil {
-		t.Fatal("store directory replacement fixture unavailable")
-	}
 	store, err := artifact.NewStoreWithClock(replacementRoot, repositoryRoot, func() time.Time { return apply.createdAt })
 	if err != nil {
 		t.Fatal("store directory replacement setup failed")
@@ -402,7 +399,7 @@ func assertStoreChildContainment(t *testing.T, apply graphBundle, repositoryRoot
 		t.Fatal("transition FIFO fixture unavailable")
 	}
 	started = time.Now()
-	if _, err := artifact.NewStoreWithClock(transitionFIFORoot, repositoryRoot, func() time.Time { return apply.createdAt }); err == nil {
+	if _, err := artifact.OpenStoreWithClock(transitionFIFORoot, repositoryRoot, func() time.Time { return apply.createdAt }); err == nil {
 		t.Fatal("store accepted a FIFO transition record")
 	}
 	if time.Since(started) > 750*time.Millisecond {
@@ -447,18 +444,18 @@ func assertExpiredAndReleasedPins(t *testing.T, apply graphBundle, repositoryRoo
 	if err := store.TransitionPlan(planDigest, artifact.TerminalAbandoned, abandonmentRecordDigest(t, planDigest)); err != nil {
 		t.Fatalf("explicit abandoned transition rejected")
 	}
-	reopened, err := artifact.NewStoreWithClock(storeRoot, repositoryRoot, func() time.Time { return now })
+	reopened, err := artifact.OpenStoreWithClock(storeRoot, repositoryRoot, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("abandoned store reopen failed")
 	}
-	if err := reopened.Delete(planDigest); err != nil {
-		t.Fatalf("terminal unpinned plan deletion rejected")
+	if err := reopened.Delete(planDigest); err == nil {
+		t.Fatalf("read-only reopen accepted physical plan deletion")
 	}
 	if _, _, err := reopened.Read(desiredDigest); err == nil {
 		t.Fatalf("expired unpinned snapshot remained usable")
 	}
-	if err := reopened.Delete(desiredDigest); err != nil {
-		t.Fatalf("expired unpinned snapshot deletion rejected")
+	if err := reopened.Delete(desiredDigest); err == nil {
+		t.Fatalf("read-only reopen accepted physical snapshot deletion")
 	}
 }
 
@@ -1052,7 +1049,13 @@ func storeCLIArguments(mode artifact.LineageMode, root, repositoryRoot string, f
 func assertObjectCount(t *testing.T, root string, want int) {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Join(root, "sha256"))
-	if err != nil || len(entries) != want {
+	count := 0
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), ".pending-") {
+			count++
+		}
+	}
+	if err != nil || count != want {
 		t.Fatalf("unexpected content-addressed object count")
 	}
 }
