@@ -1,68 +1,49 @@
 ---
 phase: 01-safety-privacy-and-state-foundation
 status: fixed
-findings_in_scope: 7
-fixed: 7
+findings_in_scope: 4
+fixed: 4
 skipped: 0
-iteration: 2
+iteration: 3
 ---
 
 # Phase 01 Code Review Fix Report
 
 ## CR-01 — Fixed
 
-- Files: public fixture CLI, fixture lifecycle E2E, privacy/no-cleanup regressions, and root/safety documentation.
-- Commit: `b385442`
-- Change: removed the legacy public `--fixture-root` / `--store-root` execution path. Public fixture runs now accept only an external base plus logical fixture ID, create a fresh marker-owned direct child, derive the artifact store internally, and finalize only that owned child. Existing roots, HOME-shaped roots, fixture/store overlap, in-repository bases, traversal, unsupported modes, overclaims, and pre-existing witnesses all fail before mutation.
-- Tests: `task walking-skeleton`; `task bounded-capture`; `task fixture-lifecycle`; `task no-destructive-defaults`; `task docs-and-phase-gate`.
-- Status: fixed
-
-## CR-02 — Fixed
-
-- Files: artifact run metadata and validation, privacy gate/tests, canary data, affected CLI/E2E fixtures, and root/safety documentation.
-- Commit: `75eed85`
-- Change: `run_id` is generated only by the trusted metadata builder as an opaque digest-derived ID; suites and operations use fixed registries. Command results use a closed field/type schema with no default arbitrary-string branch. Neutral identities, opaque credentials, stable machine IDs, unknown keys, and numeric identities are rejected through construction, rendering, CLI, and store paths without echo or persistence.
-- Tests: `task privacy-boundary`; `task artifact-kinds`; `task artifact-lineage`; `task walking-skeleton`; `task bounded-capture`; `task fixture-lifecycle`; `task tier-network-policy`; `task sentinel-manifest`; `task sentinel-verdicts`; `task controlplane-contract`; `task no-destructive-defaults`; `task phase-e2e`; `task docs-and-phase-gate`.
-- Status: fixed
-
-## CR-03 — Fixed
-
-- Files: real sentinel manager-tree observation/tests, real-adapter proof manifest, offline-suite binding, and safety documentation.
-- Commits: `d1d3997`, `9a9bbcd`
-- Change: manager-tree observation canonicalizes the exact manager root and resolves every internal symlink through lexical, parent, and final-target containment checks. Relative, absolute, and chained escapes return `symlink-escape` / incomplete with no token or claim; changing an escaped external target can no longer preserve a complete token. Source, negative-suite, adapter, and offline manifest digests were refreshed to bind the corrected implementation.
-- Tests: `task real-sentinel-envelope`; `task phase-e2e`; `task docs-and-phase-gate`.
+- Files: rooted artifact-store filesystem layer, store lifecycle and CLI preflight, artifact unit/E2E negatives, and safety documentation.
+- Commit: `b7e5519`
+- Change: the store root is now created or validated through an identity-bound rooted parent handle; `sha256` and `transitions` are exact direct children created through that root handle, opened as retained `os.Root` handles, and bound to the initial parent/root/child filesystem identities. Every list/read/create/link/remove path revalidates the named root, named child, opened handle identity, and resolved containment before and after the operation. Immutable objects and transition records use rooted exclusive temporary files plus rooted hard-link publication and rooted rollback; they no longer use path-following `MkdirAll`, `CreateTemp`, `Link`, or `Remove` on store children.
+- Read boundary: object and transition reads require a no-follow/nonblocking regular file, precheck size, read at most `limit+1`, and compare named/opened identity, mode, size, and mtime before and after. Symlink, FIFO, directory, device/socket-shaped non-regular entries, oversize data, replacement, or uncertainty fail bounded and non-zero.
+- Tests: pre-existing `sha256` symlink, pre-existing `transitions` symlink, symlinked digest object, FIFO digest object, post-open `sha256` replacement, post-open `transitions` replacement, and FIFO transition record. Every case proves no write in the escape target or original moved child; FIFO cases return within the bounded window. Invalid read-only CLI lineage is also rejected before store-root creation.
+- Verification: `task artifact-kinds`; `task artifact-lineage`; `task walking-skeleton`; `task phase-e2e`; all seven waves; full phase.
 - Status: fixed
 
 ## WR-01 — Fixed
 
-- Files: fixture root lifecycle, fixture lifecycle tests, and safety documentation.
-- Commit: `45077da`
-- Change: ownership markers are written to a same-directory temporary file, synced, closed, published with no-replace semantics, and followed by directory sync. Initialization rollback is bound to the fresh direct child's containment, inode, UID, and nonce capability, so a truncated partial marker is removed safely with the child while sibling/base witnesses remain untouched. Retention still requires a complete marker.
-- Tests: `task fixture-lifecycle`; `task docs-and-phase-gate`.
+- Files: public offline runner, phase/real-sentinel E2E canaries, root/safety documentation.
+- Commit: `d4a58f1`
+- Change: removed the caller-selectable watchdog re-exec handshake entirely. Every public `test.sh` invocation now unconditionally starts the watchdog in a scrubbed environment; the watchdog reads one fixed, size-bounded embedded body from the same script and executes it in the monitored process group. There is no internal argv mode and no environment/PID/inherited-FD/nonce combination that skips wrapper creation.
+- Tests: the deadline matrix now includes a self-consistent direct parent with a live inherited FD and matching 64-hex nonce, in addition to setup/docs/child, PID-only, and stale guard cases. All cases return the single `runner-deadline-exceeded` envelope with exit `124`, terminate the fixed helper/process group, remove its marker and marker-owned runner root, and stay within the wall bound. Test-only 800 ms budgets use a 200 ms termination grace; production 15/47/305-second budgets retain the 500 ms grace.
+- Verification: Bash syntax; `task phase-e2e`; `task real-sentinel-envelope`; `task docs-and-phase-gate`; `wave phase-integration`; all tasks/waves/full phase.
 - Status: fixed
 
 ## WR-02 — Fixed
 
-- Files: offline runner watchdog, phase E2E watchdog canaries, and root/safety documentation.
-- Commit: `3956add`
-- Change: runner internal re-exec now requires a direct-parent PID, a private inherited pipe FD, and a random 64-hex nonce read from that pipe. Ambient PID-only and stale PID/FD/nonce values cannot bypass the lifecycle watchdog; internal guard variables are cleared after authentication. Forged/stale canaries retain the exact bounded timeout envelope, exit `124`, and leave no orphan or temporary root.
-- Tests: `/bin/bash -n safety/scripts/test.sh`; `task phase-e2e`; `task docs-and-phase-gate`; `wave phase-integration`.
+- Files: tracked-input reader/proof, walking-skeleton Git fixtures, root/safety documentation.
+- Commit: `47c84ad`
+- Change: bounded worktree reads now use no-follow/nonblocking open plus before/opened/after identity, mode, size, and mtime checks. The mode observed with the exact consumed bytes is mapped to Git `100644` or `100755` from its executable bits and must equal both the unique stage-0 index entry and frozen HEAD tree mode before the HEAD blob is accepted as those consumed bytes.
+- Tests: canonical temporary Git roots now prove the existing negatives reach the intended Git gate. Added `100644 -> 100755` and `100755 -> 100644` chmod-only worktree drift cases; both fail before fixture/store creation while byte substitution, index substitution, untracked, ignored, symlink, and non-worktree negatives remain intact.
+- Verification: `task walking-skeleton`; `task no-destructive-defaults`; all tasks/waves/full phase.
 - Status: fixed
 
 ## WR-03 — Fixed
 
-- Files: real sentinel envelope/tests, privacy reason registry, real-adapter/offline manifest bindings, and root/safety documentation.
-- Commit: `2ec3f4b`
-- Change: the public real-envelope options no longer accept caller-owned key material. After the proof gate, production creates a fresh internal 32-byte key for each run; only the same run's before/after snapshots share it, and every return path clears the internal buffer. Package-private deterministic factories support tests without exposing a production key input. Tests prove same-run comparability, different tokens across runs, and key clearing after entropy, workload, and claim-consumer failures.
-- Tests: `task real-sentinel-envelope`; `task phase-e2e`; `task docs-and-phase-gate`.
-- Status: fixed
-
-## WR-04 — Fixed
-
-- Files: synthetic workflow input validation, walking-skeleton tracked-input negatives, no-destructive command-edge contract, and root/safety documentation.
-- Commit: `ff306f8`
-- Change: repository inputs use a closed five-operation `/usr/bin/git` plumbing path with a blank environment, disabled hooks/fsmonitor/replace objects/protocol/optional locks/lazy fetch/prompts, and bounded context/output. Each input must be a non-symlink regular file in the exact worktree top-level, have one stage-0 index entry, match the frozen HEAD tree mode/blob, and have HEAD blob bytes equal to the bounded bytes actually consumed. Git absence/query failure, non-worktrees, untracked, ignored, symlinked, worktree-substituted, and index-substituted inputs fail before fixture/store creation.
-- Tests: `task walking-skeleton`; `task no-destructive-defaults`; `task phase-e2e`; `task docs-and-phase-gate`.
+- Files: read-only lineage validator, artifact/store/CLI E2E, safety documentation.
+- Commit: `2b8f368`
+- Change: read-only freshness now requires `FreshObserved.State` to be present in the typed facts of the exact observed-state object, matching the apply-path semantic check. Digest, content digest, scope, provenance, and lexical logical-ref validity cannot substitute for the observed fact.
+- Tests: correct-state control, absent-state, and different-valid-logical-state cases cover `ValidateLineage`; the invalid graph is also rejected by `Store.WriteGraph` with zero objects and by public CLI `store --mode read-only` before store-root creation.
+- Verification: `task artifact-lineage`; all tasks/waves/full phase.
 - Status: fixed
 
 ## Final Regression
@@ -70,5 +51,6 @@ iteration: 2
 - Tasks: all 14 fixed task routes passed: `walking-skeleton`, `artifact-kinds`, `artifact-lineage`, `privacy-boundary`, `bounded-capture`, `fixture-lifecycle`, `tier-network-policy`, `sentinel-manifest`, `sentinel-verdicts`, `real-sentinel-envelope`, `controlplane-contract`, `no-destructive-defaults`, `phase-e2e`, and `docs-and-phase-gate`.
 - Waves: all seven fixed waves passed: `skeleton`, `artifact-contracts`, `privacy`, `fixture-policy`, `sentinels`, `controlplane`, and `phase-integration`.
 - Phase: `./safety/scripts/test.sh phase` passed with `synthetic-sentinel-passed`.
-- Commit hygiene: each finding or tightly coupled manifest refresh used an atomic English commit; exact-file staging, cached diff checks, targeted privacy review, and staged Gitleaks passed; nothing was pushed.
-- Residual boundary: the tracked `launchctl print` isolated negative proof remains intentionally missing, so current-host execution still stops before adapters/workload as `manual-required` / `indeterminate`. This is a preserved safety boundary, not an unfixed review finding.
+- Static checks: `/bin/bash -n safety/scripts/test.sh`, `gofmt -d` over every `safety/**/*.go`, and an isolated offline `go vet ./...` all passed.
+- Privacy and commit hygiene: each finding used an atomic English commit with exact-file staging, cached diff checks, targeted path/identity/credential review, and staged Gitleaks. Final `gitleaks detect --no-git --source safety --redact --no-banner` scanned the full safety tree with no leak. Nothing was pushed.
+- Residual boundary: the tracked `launchctl print` isolated negative proof remains intentionally missing. Current-host execution still returns `manual-required` / `32` / `indeterminate` before every adapter and workload call; no live host probe, service command, network, install, activation, switch, update, or cleanup was run.
