@@ -138,7 +138,9 @@ func testRealSentinelRunnerContract(t *testing.T) {
 		"RUNNER_BUDGET_SECONDS=15",
 		"RUNNER_BUDGET_SECONDS=47",
 		"RUNNER_BUDGET_SECONDS=305",
-		"YAMC_RUNNER_WATCHDOG_PID",
+		": __YAMC_RUNNER_BODY__",
+		`exec "/bin/bash", "-c", $body`,
+		"/usr/bin/env -i",
 		"runner_test_block setup",
 		"runner_test_block docs",
 		"runner_test_block child",
@@ -154,6 +156,9 @@ func testRealSentinelRunnerContract(t *testing.T) {
 		if !strings.Contains(text, required) {
 			t.Fatalf("real sentinel runner literal missing: %s", required)
 		}
+	}
+	if strings.Contains(text, "YAMC_RUNNER_WATCHDOG_") {
+		t.Fatal("real sentinel runner still exposes a caller-selectable watchdog bypass")
 	}
 	waitIndex := strings.Index(text, "waitpid($pid, 0)")
 	descendantCleanupIndex := strings.Index(text, "$stop_descendants->();")

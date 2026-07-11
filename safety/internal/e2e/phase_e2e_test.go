@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -330,10 +331,10 @@ func testPhaseRunnerContract(t *testing.T) {
 		"RUNNER_BUDGET_SECONDS=15",
 		"RUNNER_BUDGET_SECONDS=47",
 		"RUNNER_BUDGET_SECONDS=305",
-		"YAMC_RUNNER_WATCHDOG_PID",
-		"YAMC_RUNNER_WATCHDOG_FD",
-		"YAMC_RUNNER_WATCHDOG_NONCE",
-		"FD_CLOEXEC",
+		": __YAMC_RUNNER_BODY__",
+		`exec "/bin/bash", "-c", $body`,
+		"length($body) > 262144",
+		"/usr/bin/env -i",
 		"YAMC_RUNNER_TEST_BUDGET_MS",
 		"runner_test_block setup",
 		"runner_test_block docs",
@@ -346,6 +347,9 @@ func testPhaseRunnerContract(t *testing.T) {
 		if !strings.Contains(text, required) {
 			t.Fatalf("phase runner literal missing: %s", required)
 		}
+	}
+	if strings.Contains(text, "YAMC_RUNNER_WATCHDOG_") || strings.Count(text, ": __YAMC_RUNNER_BODY__") != 2 {
+		t.Fatal("public runner still exposes a caller-selectable watchdog bypass")
 	}
 	if strings.Count(text, "task:phase-e2e)") != 1 || strings.Count(text, "phase:phase)") != 1 {
 		t.Fatal("phase runner labels are not unique literals")
@@ -394,6 +398,7 @@ func testRunnerEntryDeadlines(t *testing.T) {
 		{name: "child dispatch", arguments: []string{"wave", "artifact-contracts"}, blockPoint: "child"},
 		{name: "forged ambient guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "forged"},
 		{name: "stale ambient guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "stale"},
+		{name: "self-consistent inherited guard", arguments: []string{"task", "walking-skeleton"}, blockPoint: "setup", guardMode: "self-consistent"},
 	}
 
 	for _, testCase := range cases {
@@ -405,8 +410,11 @@ func testRunnerEntryDeadlines(t *testing.T) {
 			t.Cleanup(func() { _ = os.RemoveAll(markerRoot) })
 			markerPath := filepath.Join(markerRoot, "helper.pid")
 
-			command := exec.Command("/bin/bash", append([]string{runnerPath}, testCase.arguments...)...)
+			commandContext, cancelCommand := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+			defer cancelCommand()
+			command := exec.CommandContext(commandContext, "/bin/bash", append([]string{runnerPath}, testCase.arguments...)...)
 			command.Env = runnerDeadlineEnvironment(testCase.blockPoint, markerPath)
+			var guardRead *os.File
 			switch testCase.guardMode {
 			case "forged":
 				command.Env = append(command.Env, "YAMC_RUNNER_WATCHDOG_PID="+strconv.Itoa(os.Getpid()))
@@ -416,17 +424,47 @@ func testRunnerEntryDeadlines(t *testing.T) {
 					"YAMC_RUNNER_WATCHDOG_FD=9",
 					"YAMC_RUNNER_WATCHDOG_NONCE="+strings.Repeat("a", 64),
 				)
+			case "self-consistent":
+				var guardWrite *os.File
+				var pipeErr error
+				guardRead, guardWrite, pipeErr = os.Pipe()
+				if pipeErr != nil {
+					t.Fatal("runner inherited guard pipe unavailable")
+				}
+				nonce := strings.Repeat("b", 64)
+				_, pipeErr = guardWrite.WriteString(nonce + "\n")
+				closeErr := guardWrite.Close()
+				if pipeErr != nil || closeErr != nil {
+					_ = guardRead.Close()
+					t.Fatal("runner inherited guard pipe setup failed")
+				}
+				command.ExtraFiles = []*os.File{guardRead}
+				command.Env = append(command.Env,
+					"YAMC_RUNNER_WATCHDOG_PID="+strconv.Itoa(os.Getpid()),
+					"YAMC_RUNNER_WATCHDOG_FD=3",
+					"YAMC_RUNNER_WATCHDOG_NONCE="+nonce,
+				)
+				command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 			}
 			var combined bytes.Buffer
 			command.Stdout = &combined
 			command.Stderr = &combined
 			started := time.Now()
 			if err := command.Start(); err != nil {
+				if guardRead != nil {
+					_ = guardRead.Close()
+				}
 				t.Fatal("runner deadline process did not start")
 			}
+			if guardRead != nil {
+				_ = guardRead.Close()
+			}
 
-			helperPID, helperSeen := waitForHelperPID(markerPath, 900*time.Millisecond)
+			helperPID, helperSeen := waitForHelperPID(markerPath, 650*time.Millisecond)
 			runErr := command.Wait()
+			if testCase.guardMode == "self-consistent" && command.Process != nil && commandContext.Err() != nil {
+				_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+			}
 			elapsed := time.Since(started)
 			if !helperSeen {
 				t.Fatalf("fixed blocking helper did not publish its PID before the deadline: output=%q", combined.String())
@@ -468,7 +506,7 @@ func runnerDeadlineEnvironment(blockPoint, markerPath string) []string {
 	}
 	return append(environment,
 		"YAMC_RUNNER_TEST_MODE=1",
-		"YAMC_RUNNER_TEST_BUDGET_MS=1200",
+		"YAMC_RUNNER_TEST_BUDGET_MS=800",
 		"YAMC_RUNNER_TEST_BLOCK="+blockPoint,
 		"YAMC_RUNNER_TEST_MARKER="+markerPath,
 	)
