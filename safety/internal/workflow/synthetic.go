@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"example.invalid/yamc/safety/internal/artifact"
@@ -438,7 +439,7 @@ func validateTrackedInput(path string, repository *trackedRepository) (trackedIn
 		return rejected()
 	}
 	relative = filepath.ToSlash(relative)
-	data, err := readBoundedNoSymlink(resolved)
+	data, worktreeMode, err := readBoundedNoSymlinkWithMode(resolved)
 	if err != nil || len(data) > trackedInputMaxBytes {
 		return rejected()
 	}
@@ -460,7 +461,7 @@ func validateTrackedInput(path string, repository *trackedRepository) (trackedIn
 		return rejected()
 	}
 	treeMode, treeObject, err := parseGitTreeEntry(treeOutput, relative)
-	if err != nil || treeMode != indexMode || treeObject != indexObject {
+	if err != nil || treeMode != indexMode || treeObject != indexObject || worktreeMode != indexMode {
 		return rejected()
 	}
 	blob, err := repository.gitOutput(gitProofBlob, "", treeObject)
@@ -1013,22 +1014,41 @@ func decodeClosedPhase(data []byte, target any) error {
 }
 
 func readBoundedNoSymlink(path string) ([]byte, error) {
+	data, _, err := readBoundedNoSymlinkWithMode(path)
+	return data, err
+}
+
+func readBoundedNoSymlinkWithMode(path string) ([]byte, string, error) {
 	if path == "" || !filepath.IsAbs(path) {
-		return nil, errors.New("phase input rejected")
+		return nil, "", errors.New("phase input rejected")
 	}
 	before, err := os.Lstat(path)
 	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Size() > 64<<10 {
-		return nil, errors.New("phase input rejected")
+		return nil, "", errors.New("phase input rejected")
 	}
-	data, err := os.ReadFile(path)
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, "", errors.New("phase input rejected")
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
+		return nil, "", errors.New("phase input rejected")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, (64<<10)+1))
 	if err != nil || len(data) > 64<<10 {
-		return nil, errors.New("phase input rejected")
+		return nil, "", errors.New("phase input rejected")
 	}
 	after, err := os.Lstat(path)
-	if err != nil || !after.Mode().IsRegular() || after.Mode()&os.ModeSymlink != 0 || !os.SameFile(before, after) || before.Size() != after.Size() || before.Mode() != after.Mode() || !before.ModTime().Equal(after.ModTime()) {
-		return nil, errors.New("phase input rejected")
+	openedAfter, openedErr := file.Stat()
+	if err != nil || openedErr != nil || !after.Mode().IsRegular() || after.Mode()&os.ModeSymlink != 0 || !openedAfter.Mode().IsRegular() || !os.SameFile(before, after) || !os.SameFile(before, openedAfter) || before.Size() != after.Size() || before.Size() != openedAfter.Size() || before.Mode() != after.Mode() || before.Mode() != openedAfter.Mode() || !before.ModTime().Equal(after.ModTime()) || !before.ModTime().Equal(openedAfter.ModTime()) {
+		return nil, "", errors.New("phase input rejected")
 	}
-	return data, nil
+	mode := "100644"
+	if before.Mode().Perm()&0o111 != 0 {
+		mode = "100755"
+	}
+	return data, mode, nil
 }
 
 func digestPhaseBytes(data []byte) string {

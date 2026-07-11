@@ -457,6 +457,11 @@ func assertNegativeRoutes(t *testing.T, safetyRoot, repoRoot, blueprintPath, sur
 func assertTrackedInputRoutes(t *testing.T, safetyRoot string) {
 	t.Helper()
 	repositoryRoot := filepath.Join(t.TempDir(), "tracked-input-repository")
+	canonicalParent, err := filepath.EvalSymlinks(filepath.Dir(repositoryRoot))
+	if err != nil {
+		t.Fatal("tracked-input repository parent unavailable")
+	}
+	repositoryRoot = filepath.Join(canonicalParent, filepath.Base(repositoryRoot))
 	blueprintRelative := filepath.Join("safety", "testdata", "blueprints", "walking-skeleton", "input.json")
 	surfacesRelative := filepath.Join("safety", "testdata", "blueprints", "walking-skeleton", "protected-surfaces.json")
 	rawRelative := filepath.Join("safety", "testdata", "raw", "fake-adapter.json")
@@ -512,6 +517,30 @@ func assertTrackedInputRoutes(t *testing.T, safetyRoot string) {
 	runFixtureGit(t, repositoryRoot, "add", "--", filepath.ToSlash(blueprintRelative))
 	if err := os.WriteFile(blueprintPath, original, 0o600); err != nil {
 		t.Fatal("index substitution worktree restore unavailable")
+	}
+	assertTrackedInputRejected(t, repositoryRoot, blueprintPath, surfacesPath, "tracked input rejected")
+	runFixtureGit(t, repositoryRoot, "add", "--", filepath.ToSlash(blueprintRelative))
+
+	if err := os.Chmod(blueprintPath, 0o700); err != nil {
+		t.Fatal("executable worktree mode drift fixture unavailable")
+	}
+	assertTrackedInputRejected(t, repositoryRoot, blueprintPath, surfacesPath, "tracked input rejected")
+	if err := os.Chmod(blueprintPath, 0o600); err != nil {
+		t.Fatal("non-executable worktree mode restore unavailable")
+	}
+
+	if err := os.Chmod(blueprintPath, 0o700); err != nil {
+		t.Fatal("executable tracked mode fixture unavailable")
+	}
+	runFixtureGit(t, repositoryRoot, "add", "--", filepath.ToSlash(blueprintRelative))
+	runFixtureGit(t, repositoryRoot,
+		"-c", "user.name=synthetic-fixture",
+		"-c", "user.email=synthetic@example.invalid",
+		"-c", "commit.gpgsign=false",
+		"commit", "-q", "-m", "synthetic executable baseline",
+	)
+	if err := os.Chmod(blueprintPath, 0o600); err != nil {
+		t.Fatal("non-executable worktree mode drift fixture unavailable")
 	}
 	assertTrackedInputRejected(t, repositoryRoot, blueprintPath, surfacesPath, "tracked input rejected")
 
