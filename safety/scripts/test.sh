@@ -193,16 +193,44 @@ else
   manual_required
 fi
 
-# 每次运行都使用新的系统临时根；真实 HOME、XDG、缓存和管理器状态不会被继承。
-readonly TEST_ROOT="$(/usr/bin/mktemp -d '/tmp/yamc-safety.XXXXXXXX')"
-readonly TEST_MARKER="${TEST_ROOT}/.yamc-owned-test-root"
-/usr/bin/touch "${TEST_MARKER}"
+# public body 与每个固定内部 child 都创建自己的临时根。
+# 内部 child 只是同一受监控 process group 中的 Bash subshell，不再递归 public entry。
+TEST_ROOT=''
+TEST_MARKER=''
+ISOLATED_HOME=''
+XDG_CONFIG_HOME=''
+XDG_DATA_HOME=''
+XDG_CACHE_HOME=''
+XDG_STATE_HOME=''
+XDG_RUNTIME_DIR=''
+ISOLATED_TMP=''
+GOCACHE_ROOT=''
+GOMODCACHE_ROOT=''
+GOPATH_ROOT=''
+MANAGER_ROOT=''
+RUNNER_TEST_BODY_MARKER=''
+RUNNER_TEST_BODY_PID=''
+OFFLINE_ENV=()
+
+cleanup_runner_test_body_marker() {
+  local observed_pid=''
+  if [[ -z "${RUNNER_TEST_BODY_MARKER:-}" || -z "${RUNNER_TEST_BODY_PID:-}" || \
+        "${RUNNER_TEST_BODY_MARKER}" != /tmp/yamc-runner-contract.*/body.pid || \
+        -L "${RUNNER_TEST_BODY_MARKER}" || ! -f "${RUNNER_TEST_BODY_MARKER}" ]]; then
+    return 0
+  fi
+  IFS= read -r observed_pid <"${RUNNER_TEST_BODY_MARKER}" || return 0
+  if [[ "${observed_pid}" == "${RUNNER_TEST_BODY_PID}" ]]; then
+    /bin/rm -f -- "${RUNNER_TEST_BODY_MARKER}"
+  fi
+}
 
 cleanup_test_root() {
   # 仅删除本次创建且带 marker 的外部临时子目录，任何不确定性都会保留现场。
   if [[ -n "${TEST_ROOT:-}" && "${TEST_ROOT}" == /tmp/yamc-safety.* && ! -L "${TEST_ROOT}" && -f "${TEST_MARKER}" ]]; then
     /bin/rm -rf -- "${TEST_ROOT}"
   fi
+  cleanup_runner_test_body_marker
 }
 
 handle_test_signal() {
@@ -212,16 +240,13 @@ handle_test_signal() {
   exit "${exit_code}"
 }
 
-trap cleanup_test_root EXIT
-trap 'handle_test_signal 129' HUP
-trap 'handle_test_signal 130' INT
-trap 'handle_test_signal 143' TERM
-
 runner_test_block() {
   local block_point="$1"
   local marker_path=''
   local marker_root=''
   local marker_suffix=''
+  local body_marker=''
+  local block_status=0
 
   if [[ "${YAMC_RUNNER_TEST_MODE:-}" != '1' || "${YAMC_RUNNER_TEST_BLOCK:-}" != "${block_point}" ]]; then
     return 0
@@ -235,80 +260,113 @@ runner_test_block() {
     printf '%s\n' '{"status":"harness-error","reason":"runner-test-marker-invalid"}' >&2
     return 70
   fi
-  { /bin/bash "${SAFETY_ROOT}/testdata/runner/block-helper.sh" "${marker_path}"; } >/dev/null 2>&1
+  body_marker="${marker_root}/body.pid"
+  if [[ -e "${body_marker}" || -L "${body_marker}" ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"runner-test-marker-invalid"}' >&2
+    return 70
+  fi
+  RUNNER_TEST_BODY_MARKER="${body_marker}"
+  # macOS 系统 Bash 没有 BASHPID；固定子 shell 只写入它的直接父 PID，也就是当前 embedded body。
+  if ! /bin/sh -c 'umask 077; set -C; printf "%s\n" "$PPID" >"$1"' yamc-runner-body "${RUNNER_TEST_BODY_MARKER}" 2>/dev/null; then
+    RUNNER_TEST_BODY_MARKER=''
+    RUNNER_TEST_BODY_PID=''
+    printf '%s\n' '{"status":"harness-error","reason":"runner-test-marker-invalid"}' >&2
+    return 70
+  fi
+  IFS= read -r RUNNER_TEST_BODY_PID <"${RUNNER_TEST_BODY_MARKER}" || RUNNER_TEST_BODY_PID=''
+  if [[ ! "${RUNNER_TEST_BODY_PID}" =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s\n' '{"status":"harness-error","reason":"runner-test-marker-invalid"}' >&2
+    return 70
+  fi
+  { /bin/bash "${SAFETY_ROOT}/testdata/runner/block-helper.sh" "${marker_path}"; } >/dev/null 2>&1 || block_status=$?
+  cleanup_runner_test_body_marker
+  return "${block_status}"
 }
 
-# 固定阻塞点位于 marker-owned root 创建之后、其余 setup 之前，用来证明 watchdog 也覆盖清理。
-runner_test_block setup
+initialize_test_context() {
+  # 每次 context 都使用新的系统临时根；真实 HOME、XDG、缓存和管理器状态不会被继承。
+  TEST_ROOT="$(/usr/bin/mktemp -d '/tmp/yamc-safety.XXXXXXXX')"
+  TEST_MARKER="${TEST_ROOT}/.yamc-owned-test-root"
+  /usr/bin/touch "${TEST_MARKER}"
+  trap cleanup_test_root EXIT
+  trap 'handle_test_signal 129' HUP
+  trap 'handle_test_signal 130' INT
+  trap 'handle_test_signal 143' TERM
 
-readonly ISOLATED_HOME="${TEST_ROOT}/home"
-readonly XDG_CONFIG_HOME="${TEST_ROOT}/xdg/config"
-readonly XDG_DATA_HOME="${TEST_ROOT}/xdg/data"
-readonly XDG_CACHE_HOME="${TEST_ROOT}/xdg/cache"
-readonly XDG_STATE_HOME="${TEST_ROOT}/xdg/state"
-readonly XDG_RUNTIME_DIR="${TEST_ROOT}/xdg/runtime"
-readonly ISOLATED_TMP="${TEST_ROOT}/tmp"
-readonly GOCACHE_ROOT="${TEST_ROOT}/go/build-cache"
-readonly GOMODCACHE_ROOT="${TEST_ROOT}/go/module-cache"
-readonly GOPATH_ROOT="${TEST_ROOT}/go/path"
-readonly MANAGER_ROOT="${TEST_ROOT}/managers"
+  # 固定阻塞点位于 marker-owned root 创建之后、其余 setup 之前，用来证明 watchdog 也覆盖清理。
+  runner_test_block setup
 
-/bin/mkdir -p \
-  "${ISOLATED_HOME}" \
-  "${XDG_CONFIG_HOME}" \
-  "${XDG_DATA_HOME}" \
-  "${XDG_CACHE_HOME}" \
-  "${XDG_STATE_HOME}" \
-  "${XDG_RUNTIME_DIR}" \
-  "${ISOLATED_TMP}" \
-  "${GOCACHE_ROOT}" \
-  "${GOMODCACHE_ROOT}" \
-  "${GOPATH_ROOT}" \
-  "${MANAGER_ROOT}/mise/config" \
-  "${MANAGER_ROOT}/mise/data" \
-  "${MANAGER_ROOT}/mise/cache" \
-  "${MANAGER_ROOT}/uv/cache" \
-  "${MANAGER_ROOT}/uv/python" \
-  "${MANAGER_ROOT}/rustup" \
-  "${MANAGER_ROOT}/cargo" \
-  "${MANAGER_ROOT}/nix" \
-  "${MANAGER_ROOT}/homebrew/cache" \
-  "${MANAGER_ROOT}/homebrew/logs"
+  ISOLATED_HOME="${TEST_ROOT}/home"
+  XDG_CONFIG_HOME="${TEST_ROOT}/xdg/config"
+  XDG_DATA_HOME="${TEST_ROOT}/xdg/data"
+  XDG_CACHE_HOME="${TEST_ROOT}/xdg/cache"
+  XDG_STATE_HOME="${TEST_ROOT}/xdg/state"
+  XDG_RUNTIME_DIR="${TEST_ROOT}/xdg/runtime"
+  ISOLATED_TMP="${TEST_ROOT}/tmp"
+  GOCACHE_ROOT="${TEST_ROOT}/go/build-cache"
+  GOMODCACHE_ROOT="${TEST_ROOT}/go/module-cache"
+  GOPATH_ROOT="${TEST_ROOT}/go/path"
+  MANAGER_ROOT="${TEST_ROOT}/managers"
 
-# 从空环境构造固定 allowlist，显式关闭 Go 自动工具链和依赖网络访问。
-readonly -a OFFLINE_ENV=(
-  /usr/bin/env -i
-  "PATH=${GO_DIR}:/usr/bin:/bin"
-  "HOME=${ISOLATED_HOME}"
-  "XDG_CONFIG_HOME=${XDG_CONFIG_HOME}"
-  "XDG_DATA_HOME=${XDG_DATA_HOME}"
-  "XDG_CACHE_HOME=${XDG_CACHE_HOME}"
-  "XDG_STATE_HOME=${XDG_STATE_HOME}"
-  "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
-  "TMPDIR=${ISOLATED_TMP}"
-  "GOTOOLCHAIN=local"
-  "GOPROXY=off"
-  "GOSUMDB=off"
-  "GOENV=off"
-  "GOWORK=off"
-  "CGO_ENABLED=0"
-  "GOCACHE=${GOCACHE_ROOT}"
-  "GOMODCACHE=${GOMODCACHE_ROOT}"
-  "GOPATH=${GOPATH_ROOT}"
-  "MISE_CONFIG_DIR=${MANAGER_ROOT}/mise/config"
-  "MISE_DATA_DIR=${MANAGER_ROOT}/mise/data"
-  "MISE_CACHE_DIR=${MANAGER_ROOT}/mise/cache"
-  "UV_CACHE_DIR=${MANAGER_ROOT}/uv/cache"
-  "UV_PYTHON_INSTALL_DIR=${MANAGER_ROOT}/uv/python"
-  "RUSTUP_HOME=${MANAGER_ROOT}/rustup"
-  "CARGO_HOME=${MANAGER_ROOT}/cargo"
-  "NIX_STATE_DIR=${MANAGER_ROOT}/nix"
-  "HOMEBREW_CACHE=${MANAGER_ROOT}/homebrew/cache"
-  "HOMEBREW_LOGS=${MANAGER_ROOT}/homebrew/logs"
-  "YAMC_TEST_EXTERNAL_ROOT=${TEST_ROOT}"
-  "YAMC_TEST_TIER=offline-static"
-  "YAMC_NETWORK=deny"
-)
+  /bin/mkdir -p \
+    "${ISOLATED_HOME}" \
+    "${XDG_CONFIG_HOME}" \
+    "${XDG_DATA_HOME}" \
+    "${XDG_CACHE_HOME}" \
+    "${XDG_STATE_HOME}" \
+    "${XDG_RUNTIME_DIR}" \
+    "${ISOLATED_TMP}" \
+    "${GOCACHE_ROOT}" \
+    "${GOMODCACHE_ROOT}" \
+    "${GOPATH_ROOT}" \
+    "${MANAGER_ROOT}/mise/config" \
+    "${MANAGER_ROOT}/mise/data" \
+    "${MANAGER_ROOT}/mise/cache" \
+    "${MANAGER_ROOT}/uv/cache" \
+    "${MANAGER_ROOT}/uv/python" \
+    "${MANAGER_ROOT}/rustup" \
+    "${MANAGER_ROOT}/cargo" \
+    "${MANAGER_ROOT}/nix" \
+    "${MANAGER_ROOT}/homebrew/cache" \
+    "${MANAGER_ROOT}/homebrew/logs"
+
+  # 从空环境构造固定 allowlist，显式关闭 Go 自动工具链和依赖网络访问。
+  OFFLINE_ENV=(
+    /usr/bin/env -i
+    "PATH=${GO_DIR}:/usr/bin:/bin"
+    "HOME=${ISOLATED_HOME}"
+    "XDG_CONFIG_HOME=${XDG_CONFIG_HOME}"
+    "XDG_DATA_HOME=${XDG_DATA_HOME}"
+    "XDG_CACHE_HOME=${XDG_CACHE_HOME}"
+    "XDG_STATE_HOME=${XDG_STATE_HOME}"
+    "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
+    "TMPDIR=${ISOLATED_TMP}"
+    "GOTOOLCHAIN=local"
+    "GOPROXY=off"
+    "GOSUMDB=off"
+    "GOENV=off"
+    "GOWORK=off"
+    "CGO_ENABLED=0"
+    "GOCACHE=${GOCACHE_ROOT}"
+    "GOMODCACHE=${GOMODCACHE_ROOT}"
+    "GOPATH=${GOPATH_ROOT}"
+    "MISE_CONFIG_DIR=${MANAGER_ROOT}/mise/config"
+    "MISE_DATA_DIR=${MANAGER_ROOT}/mise/data"
+    "MISE_CACHE_DIR=${MANAGER_ROOT}/mise/cache"
+    "UV_CACHE_DIR=${MANAGER_ROOT}/uv/cache"
+    "UV_PYTHON_INSTALL_DIR=${MANAGER_ROOT}/uv/python"
+    "RUSTUP_HOME=${MANAGER_ROOT}/rustup"
+    "CARGO_HOME=${MANAGER_ROOT}/cargo"
+    "NIX_STATE_DIR=${MANAGER_ROOT}/nix"
+    "HOMEBREW_CACHE=${MANAGER_ROOT}/homebrew/cache"
+    "HOMEBREW_LOGS=${MANAGER_ROOT}/homebrew/logs"
+    "YAMC_TEST_EXTERNAL_ROOT=${TEST_ROOT}"
+    "YAMC_TEST_TIER=offline-static"
+    "YAMC_NETWORK=deny"
+  )
+}
+
+initialize_test_context
 
 run_wave_child() {
   local suite_name="$1"
@@ -322,9 +380,8 @@ run_wave_child() {
     return 124
   fi
 
-  # 子 task 自己拥有 hard deadline；wave 不再叠加新的 process group，避免超时后遗留孙进程。
-  runner_test_block child
-  output="$(/bin/bash "${SCRIPT_DIR}/test.sh" task "${suite_name}" 2>&1)" || child_status=$?
+  # 子 task 在同一 supervisor/PGID 中运行固定 embedded body，同时拥有独立临时根与 cache。
+  output="$(run_embedded_task_body "${suite_name}" 2>&1)" || child_status=$?
   # 任何已观察到的 deadline 都必须先原样传播，不能被输出上限改写成其他状态。
   if [[ "${child_status}" -eq 124 ]]; then
     if [[ "${output}" != "${RUNNER_DEADLINE_ENVELOPE}" ]]; then
@@ -955,9 +1012,8 @@ run_phase_wave_child() {
     return 124
   fi
 
-  # 组件 wave 自己拥有 47 秒预算；phase 只做启动前保留与完成后校验。
-  runner_test_block child
-  output="$(/bin/bash "${SCRIPT_DIR}/test.sh" wave "${suite_name}" 2>&1)" || child_status=$?
+  # 组件 wave 由同一受监控 embedded body 内部分发，不再递归 public watchdog。
+  output="$(run_embedded_wave_body "${suite_name}" 2>&1)" || child_status=$?
   if [[ "${child_status}" -eq 124 ]]; then
     if [[ "${output}" != "${RUNNER_DEADLINE_ENVELOPE}" ]]; then
       printf '%s\n' '{"status":"harness-error","reason":"phase-child-deadline-invalid"}' >&2
@@ -998,9 +1054,8 @@ run_phase_task_child() {
     return 124
   fi
 
-  # 最终 task 自己拥有 15 秒 hard deadline；phase 不叠加 process group。
-  runner_test_block child
-  output="$(/bin/bash "${SCRIPT_DIR}/test.sh" task "${suite_name}" 2>&1)" || child_status=$?
+  # 最终 task 使用同一固定内部分发，不产生第二个 watchdog 或 process group。
+  output="$(run_embedded_task_body "${suite_name}" 2>&1)" || child_status=$?
   if [[ "${child_status}" -eq 124 ]]; then
     if [[ "${output}" != "${RUNNER_DEADLINE_ENVELOPE}" ]]; then
       printf '%s\n' '{"status":"harness-error","reason":"phase-child-deadline-invalid"}' >&2
@@ -1028,6 +1083,99 @@ run_phase_task_child() {
     return 124
   fi
 }
+
+run_embedded_task_body() (
+  local suite_name="${1:-}"
+
+  # 这是只能由已闭合聚合器调用的固定内部 task body；public argv/env 没有 internal mode。
+  initialize_test_context
+  runner_test_block child
+  runner_test_block nested-body
+  case "${suite_name}" in
+    walking-skeleton)
+      run_green_walking_skeleton
+      ;;
+    artifact-kinds)
+      run_artifact_kinds
+      ;;
+    artifact-lineage)
+      run_artifact_lineage
+      ;;
+    privacy-boundary)
+      run_privacy_boundary
+      ;;
+    bounded-capture)
+      run_bounded_capture
+      ;;
+    fixture-lifecycle)
+      run_fixture_lifecycle
+      ;;
+    tier-network-policy)
+      run_tier_network_policy
+      ;;
+    sentinel-manifest)
+      run_sentinel_manifest
+      ;;
+    sentinel-verdicts)
+      run_sentinel_verdicts
+      ;;
+    real-sentinel-envelope)
+      run_real_sentinel_envelope
+      ;;
+    controlplane-contract)
+      run_controlplane_contract
+      ;;
+    no-destructive-defaults)
+      run_no_destructive_defaults
+      ;;
+    phase-e2e)
+      run_phase_e2e
+      ;;
+    docs-and-phase-gate)
+      run_docs_and_phase_gate
+      ;;
+    *)
+      printf '%s\n' '{"status":"harness-error","reason":"internal-task-dispatch-rejected"}' >&2
+      return 70
+      ;;
+  esac
+)
+
+run_embedded_wave_body() (
+  local suite_name="${1:-}"
+
+  # 内部 wave body 与最外 body 共享唯一 PGID；它只创建 fresh context，不建立新 supervisor。
+  initialize_test_context
+  runner_test_block child
+  runner_test_block nested-body
+  case "${suite_name}" in
+    skeleton)
+      run_green_walking_skeleton
+      ;;
+    artifact-contracts)
+      run_artifact_contracts_wave
+      ;;
+    privacy)
+      run_privacy_wave
+      ;;
+    fixture-policy)
+      run_fixture_policy_wave
+      ;;
+    sentinels)
+      run_sentinels_wave
+      ;;
+    controlplane)
+      run_controlplane_wave
+      ;;
+    phase-integration)
+      run_phase_integration_wave
+      ;;
+    *)
+      printf '%s\n' '{"status":"harness-error","reason":"internal-wave-dispatch-rejected"}' >&2
+      return 70
+      ;;
+  esac
+)
 
 run_phase_gate() {
   # 六个固定组件 wave 后只运行 phase-e2e；完整预算为 6*47+15+8=305 秒。

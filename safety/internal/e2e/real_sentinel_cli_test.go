@@ -231,7 +231,7 @@ func testRealSentinelRunnerContract(t *testing.T) {
 	}
 	waveChild := text[waveChildStart : waveChildStart+waveChildEnd]
 	for _, required := range []string{
-		"/bin/bash \"${SCRIPT_DIR}/test.sh\" task \"${suite_name}\"",
+		"run_embedded_task_body \"${suite_name}\"",
 		"child_status}\" -eq 124",
 		"remaining}\" -lt 15",
 		"output}\" != \"${RUNNER_DEADLINE_ENVELOPE}",
@@ -244,6 +244,9 @@ func testRealSentinelRunnerContract(t *testing.T) {
 	}
 	if strings.Contains(waveChild, "run_with_runner_deadline") {
 		t.Fatal("wave child helper nests a process-group deadline")
+	}
+	if strings.Contains(waveChild, `/bin/bash "${SCRIPT_DIR}/test.sh"`) {
+		t.Fatal("wave child helper recursively invokes the public watchdog entry")
 	}
 	waveDeadline := strings.Index(waveChild, "child_status}\" -eq 124")
 	waveOutputCap := strings.Index(waveChild, "${#output} > 65536")
