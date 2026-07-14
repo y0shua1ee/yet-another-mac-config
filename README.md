@@ -142,6 +142,7 @@ brew services restart <name>    # 重启服务
 
 - `.codex/`：Codex 本地配置。
 - `.claude/`：Claude Code 的项目级状态（worktrees、settings.local.json 等）。
+- `.config/alma/`：Alma 的聊天、媒体、任务、认证桥接与运行状态；整个目录都属于本机私密数据，不纳入版本控制。
 - `.config/gh/hosts.yml`：GitHub CLI 登录 / 凭据状态，部分环境会写入 OAuth token。
 - `.config/himalaya/`：Himalaya 邮箱账号配置，包含邮箱地址与 app password。
 - `.config/mpv/watch_later/`：mpv 本地观看进度，可能暴露媒体历史。

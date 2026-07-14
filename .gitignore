@@ -8,6 +8,7 @@
 !**/CLAUDE.md
 
 # 本地应用状态
+.config/alma/
 .config/jgit/
 .config/linearmouse/
 .config/mole/
