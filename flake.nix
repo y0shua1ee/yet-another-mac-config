@@ -1,10 +1,10 @@
 {
-  # yet-another-mac-config：渐进式 Nix 迁移骨架（Phase 1）
+  # yet-another-mac-config：多主机 Mac 声明式配置入口
   # 参考文档：
   #   - Determinate Nix: https://docs.determinate.systems/
   #   - nix-darwin:      https://github.com/nix-darwin/nix-darwin
   #   - Home Manager:    https://nix-community.github.io/home-manager/
-  description = "yet-another-mac-config: Determinate Nix + nix-darwin + Home Manager (Phase 1 skeleton)";
+  description = "Multi-host Mac configuration with Determinate Nix, nix-darwin, and Home Manager";
 
   inputs = {
     # 跟随 unstable 以便获取较新的 macOS 支持
@@ -19,56 +19,66 @@
       url = "github:nix-community/home-manager/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # 官方 Determinate module 负责协调 Determinate Nix 与 nix-darwin，
+    # 同时提供 determinateNix.* 配置入口。不要让它 follows 仓库 nixpkgs，
+    # 以便继续使用 Determinate 官方缓存的构建产物。
+    determinate.url = "https://flakehub.com/f/DeterminateSystems/determinate/3";
   };
 
-  outputs = { self, nixpkgs, nix-darwin, home-manager, ... }@inputs:
+  outputs = inputs@{ nixpkgs, nix-darwin, home-manager, ... }:
     let
-      # Phase 1 仅面向当前这台 Apple Silicon Mac；后续可扩展到多主机
-      system = "aarch64-darwin";
-      username = "areslee";
-      hostname = "AresdeMacBook-Air";
+      hosts = import ./nix/hosts;
+
+      mkDarwinConfiguration = hostname: host:
+        let
+          inherit (host) system username repoPath;
+          extraModules = host.modules or [ ];
+        in
+        nix-darwin.lib.darwinSystem {
+          inherit system;
+          specialArgs = { inherit inputs hostname system username repoPath; };
+          modules = [
+            inputs.determinate.darwinModules.default
+            {
+              # 由 Determinate Nix 管理 Nix daemon 与 /etc/nix 配置，
+              # 避免 nix-darwin 同时接管同一边界。
+              determinateNix.enable = true;
+            }
+            ./nix/darwin
+            home-manager.darwinModules.home-manager
+            {
+              home-manager.useGlobalPkgs = true;
+              home-manager.useUserPackages = true;
+              # 激活时如果目标文件已存在，先备份为 *.hm-backup，避免覆盖手写配置
+              home-manager.backupFileExtension = "hm-backup";
+              home-manager.extraSpecialArgs = {
+                inherit inputs hostname system username repoPath;
+              };
+              home-manager.users.${username} = import ./nix/home;
+            }
+          ] ++ extraModules;
+        };
+
+      supportedSystems = nixpkgs.lib.unique (
+        map (host: host.system) (builtins.attrValues hosts)
+      );
     in
     {
-      # 用法（详见 README「安全激活步骤」章节）：
-      #   - switch 会写入 /run/current-system 等系统路径，必须 sudo；build 无需 sudo。
-      #   - 全新机器首次激活，darwin-rebuild 尚未在 PATH，必须用 nix run 引导：
-      #       nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
-      #         build --flake .#AresdeMacBook-Air
-      #       sudo nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
-      #         switch --flake .#AresdeMacBook-Air
-      #   - 从第二次起可直接：
-      #       darwin-rebuild build --flake .#AresdeMacBook-Air
-      #       sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
-      darwinConfigurations.${hostname} = nix-darwin.lib.darwinSystem {
-        inherit system;
-        specialArgs = { inherit inputs username hostname; };
-        modules = [
-          {
-            # nixpkgs-unstable `mise` 2026.6.11 currently fails one Darwin check
-            # around preserving special permission bits in an OCI-layer unit test.
-            # Keep the package upgrade and verify the runtime via post-check instead.
-            nixpkgs.overlays = [
-              (final: prev: {
-                mise = prev.mise.overrideAttrs (_old: {
-                  doCheck = false;
-                });
-              })
-            ];
-          }
-          ./nix/darwin
-          home-manager.darwinModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            # 激活时如果目标文件已存在，先备份为 *.hm-backup，避免覆盖手写配置
-            home-manager.backupFileExtension = "hm-backup";
-            home-manager.extraSpecialArgs = { inherit inputs username; };
-            home-manager.users.${username} = import ./nix/home;
-          }
-        ];
-      };
+      # 每台 Mac 都有显式 output；激活时必须选择真实主机名，避免 default 指向错误机器。
+      darwinConfigurations = nixpkgs.lib.mapAttrs mkDarwinConfiguration hosts;
 
-      # 方便 `nix flake check` / CI 引用的快捷别名
-      darwinConfigurations.default = self.darwinConfigurations.${hostname};
+      # 首次安装还没有 darwin-rebuild 时，sync_mac.sh 从锁定的 nix-darwin input
+      # 构建这个入口，避免临时运行未锁定的 master。
+      packages = nixpkgs.lib.genAttrs supportedSystems (system: {
+        darwin-rebuild = nix-darwin.packages.${system}.darwin-rebuild;
+      });
+
+      apps = nixpkgs.lib.genAttrs supportedSystems (system: {
+        darwin-rebuild = {
+          type = "app";
+          program = "${nix-darwin.packages.${system}.darwin-rebuild}/bin/darwin-rebuild";
+        };
+      });
     };
 }

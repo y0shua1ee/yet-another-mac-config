@@ -1,4 +1,4 @@
-{ pkgs, lib, username, ... }:
+{ system, username, ... }:
 {
   # =============================================================================
   # nix-darwin 系统层配置
@@ -12,13 +12,10 @@
     ./defaults.nix
   ];
 
-  # 目标平台
-  nixpkgs.hostPlatform = "aarch64-darwin";
+  # 目标平台来自 nix/hosts 中的主机 profile，允许多台 Apple Silicon Mac
+  # 共享模块；Intel 机器需在 Determinate 官方支持与实机验证后再加入。
+  nixpkgs.hostPlatform = system;
   nixpkgs.config.allowUnfree = true;
-
-  # Determinate Nix 自行管理 nix 守护进程与安装，禁止 nix-darwin 再插手
-  # 参考：https://determinate.systems/posts/nix-darwin-on-determinate/
-  nix.enable = false;
 
   # 用户基础信息；实际 shell、home 配置由 Home Manager 接管
   users.users.${username} = {
@@ -32,7 +29,6 @@
   # nix-darwin state version。升级前请阅读 release notes
   system.stateVersion = 5;
 
-  # Phase 3A 已开始接管：Homebrew 清单（保守模式，见 ./homebrew.nix）。
-  # Phase 3C 已开始接管：少量稳定的 system.defaults 项（见 ./defaults.nix）。
-  # 仍未接管：`brew services`、大范围 `system.defaults.*`、字体、GUI 自动化等，按后续阶段推进。
+  # Homebrew 清单、两个低风险服务试点与少量稳定 system.defaults 已分别
+  # 在子模块中声明。账号态、TCC 权限和大范围 app state 仍保留为本机状态。
 }

@@ -1,269 +1,161 @@
-# 渐进式 Nix 迁移说明
-
-这份文档记录 `yet-another-mac-config` 里 Nix 路线的定位、当前覆盖范围、激活方式，以及后续迁移边界。
-
-如果你只是想在新 Mac 上把仓库同步起来，优先看根目录的 [`README.md`](../README.md)。这里只讲 Nix 这条可选路径。
-
-另见：
-
-- 面向维护约束的 agent 文档：[`CLAUDE.md`](./CLAUDE.md)
-- Phase 3 规划草案：[`phase-3-plan.md`](./phase-3-plan.md)
-
-## 目标与边界
-
-本仓库采用的是**渐进式** Nix 迁移，而不是“一次性全部声明式接管”。
-
-底层运行时选用 [Determinate Nix](https://docs.determinate.systems/)，系统层使用 [nix-darwin](https://github.com/nix-darwin/nix-darwin)，用户层使用 [Home Manager](https://nix-community.github.io/home-manager/)。
-
-当前目标应理解为：
-
-- 帮助一台新 Mac 更快恢复到大约 70% 到 85% 的可用状态
-- 保持迁移过程小步、可回退、不破坏现状
-- 不追求 100% 自动化或 100% 声明式接管
-
-当前明确**不**追求全面接管的内容包括：
-
-- secrets / 登录态
-- 大范围 app state
-- 很多主观、易漂移、或机器差异较大的系统偏好
-- 不值得长期维护的零碎本地状态
-
-## 当前已纳入的内容
-
-### Phase 1：骨架
-
-- `flake.nix` 作为入口，定义 `darwinConfigurations.AresdeMacBook-Air`
-- `nix/darwin/default.nix` 作为最小系统层配置
-- `nix/home/default.nix` 作为 Home Manager 用户层入口
-- `nix/modules/zsh.nix` 作为 zsh 模块
-
-其中一个关键约束是：`nix.enable = false;`，让 Determinate Nix 自己管理守护进程，避免与 nix-darwin 冲突。
-
-### Phase 2：Home Manager 扩展与 zsh 接管
-
-已纳入：
-
-- 少量稳定 CLI 工具（如 `ripgrep`、`fd`、`jq`、`tree`、`bat`）
-- 通用非私密 shell 环境变量（如 `EDITOR=nvim`）
-- Home Manager 版 zsh
-- `zsh/shared.zsh` 作为仓库共享 shell 逻辑事实源
-
-当前状态：Home Manager 已实际接管 `~/.zshrc`；机器相关或私密片段继续放在 `~/.zshrc.local`。仓库里的 `zsh/.zshrc` 只作为非 Nix / Home Manager 场景的备用软链接入口。
-
-### Phase 3A：保守 Homebrew inventory
-
-已引入 `nix/darwin/homebrew.nix`，并采用保守激活参数：
-
-- `onActivation.autoUpdate = false`
-- `onActivation.upgrade = false`
-- `onActivation.cleanup = "none"`
-
-这意味着：
-
-- `darwin-rebuild switch` 不会自动 `brew update` / `brew upgrade`
-- 不会清理未声明的本机 brew 包
-- 仍允许平时继续直接 `brew install` / `brew install --cask`
-
-当前已纳入的 inventory 以稳定、低风险条目为主，覆盖范围包括（含 Phase 4B 扩张项，下文单列）：
-
-- taps：`nikitabobko/tap`、`felixkratz/formulae`、`antoniorodr/memo`、`steipete/tap`、`xdevplatform/tap`
-- brews：`ast-grep`、`btop`、`fastfetch`、`fzf`、`gh`、`gitleaks`、`git`、`lazygit`、`neovim`、`tree-sitter-cli`、`starship`、`tmux`、`wget`、`yazi`、`yt-dlp`、`zsh-completions`
-- casks：`aerospace`、`ghostty`、`typora`、`hammerspoon`、`font-maple-mono-nf`、`claude-code@latest`、`codex`、`cc-switch`、`xurl`
-
-### Phase 3B：tmux 运行时声明化
-
-这里只接管 `tmux` **运行时**，不重写配置体系。
-
-保持不变的边界：
-
-- `.config/tmux/tmux.conf.local` 仍是配置事实源
-- `~/.config/tmux/tmux.conf` 仍是指向本地 oh-my-tmux 的软链接
-- 不迁到 Home Manager `programs.tmux.extraConfig`
-- 不重构 tmux 插件体系
-
-### Phase 3C：少量稳定 `system.defaults.*`
-
-当前只纳入极少数长期稳定、且已与当前机器现状一致的默认项：
-
-- Finder 扩展名显示
-- Finder 路径栏
-- Finder 状态栏
-- Finder 列表视图
-- Dock `mru-spaces = false`
-- 键盘重复速率两项
-
-刻意未纳入：输入法、触控板、通知、窗口动画、Dock 大量偏好项、自动替换 / 拼写修正等更主观或更易漂移的设置。
-
-### Phase 4 最小版
-
-目前只做三件事：
-
-1. 把 `borders` / `nginx` 作为 `brew services` 试点纳入声明
-2. 补上 Ghostty 明确依赖的字体 `font-maple-mono-nf`
-3. 把 `hammerspoon` cask 纳入清单
-
-这里对 `brew services` 的策略是 `start_service = true`，也就是：**只在服务未运行时启动，不会重启或停止已运行服务**。
-
-当前仍未纳入：
-
-- `clouddrive2`（账号态 / 本地数据）
-- `unbound`（非默认开机自启）
-- 更大范围字体或 GUI 自动化 app
-
-### Phase 5A：语言 / 工具链管理器入口
-
-Phase 5A 只往 Home Manager 里加**管理器本体**，不动任何现有语言运行时。
-
-新增模块：`nix/home/dev-toolchains.nix`，并由 `nix/home/default.nix` import。
-
-通过 `home.packages` 引入：
-
-- `mise`：多语言版本编排器，长期作为 NVM 的替代候选（覆盖 Node / Go / Deno / Bun 等）
-- `uv`：Python 项目 / 包 / 虚拟环境管理器
-- `rustup`：Rust 工具链管理器
-
-通过 `programs.direnv` 启用：
-
-- `direnv` + `nix-direnv`，为项目内 `.envrc` / Nix devShell 提供自动加载
-
-Phase 5A **明确不**做的事：
-
-- 不迁移当前活跃 Node：NVM 与 `~/.nvm` 体系保持原状
-- 不删除或替换 Homebrew 中已有的 `go` / `rust` / `nvm` / `pnpm` / `uv` / `deno` / `llvm@21` 等
-- 实际项目里的运行时版本约定继续走项目本地文件；仓库级 `.config/mise/config.toml` 只保存少量全局 fallback
-- Phase 5A 当时暂缓 `mise activate zsh` 等 shell 集成；Phase 5B 已单独接入并验证
-
-项目特定运行时版本约定继续走项目本地文件：
-
-- Node / Go / Deno / Bun：项目内 `.mise.toml`
-- Python：`pyproject.toml` + `uv.lock`
-- Rust：`rust-toolchain.toml`
-- 需要系统库 / 编译器的项目：项目内 `flake.nix` 的 devShell
-
-### Phase 5B：Node 从 NVM 迁向 mise
-
-Phase 5B 开始把默认 Node 管理权从 NVM 迁到 mise，但仍保留 NVM 作为回滚 fallback。
-
-已完成的安全前置：
-
-- `mise use -g node@24.11.0` 与 `mise use -g go@1.26.3` 已生成仓库内 `.config/mise/config.toml`，全局固定 Node `24.11.0` 与 Go `1.26.3`。
-- `mise install` 已安装同版本 Node，`mise exec -- node -v` 返回 `v24.11.0`，`mise exec -- npm -v` 返回 `11.6.1`。
-- `~/Documents/mise-node-pilot/.mise.toml` pilot 验证通过；在 mise Node 下运行最小 Claude Code 任务成功返回 `OK`，说明依赖 `node` 的 Claude/GSD hooks 在该版本下可用。
-
-当前变更：
-
-- `nix/modules/zsh.nix` 在 source `~/.zshrc.local` 之后启用 `mise activate zsh`。
-- 顺序刻意保持为「先 NVM，后 mise」：`~/.zshrc.local` 里的 NVM 仍作为 fallback；当前 switch 后，默认 `node` / `npm` / `go` 已由 mise 全局配置提供。
-- 当前机器已执行 `mise trust -C ~/Documents/dev/config/yet-another-mac-config`；新机器或仓库路径迁移后如出现 untrusted 提示，重新 trust 当前路径即可。
-- 暂不删除 `~/.nvm`、暂不卸载 Homebrew `nvm`，也暂不清理 NVM 里的旧 Node 版本。NVM 的最终停用和清理放到 Phase 5C 单独确认。
-
-### Phase 4B：小幅 Homebrew inventory 扩张
-
-Phase 4B 在 Phase 4 最小版基础上做一次**小步**扩张，目的是把仓库工作流已经长期、稳定使用，但之前没有声明化的少量条目补齐，让新机器在 `darwin-rebuild switch` 之后就直接可用，而不是“装完再缺什么补什么”。
-
-激活策略保持不变：`autoUpdate = false`、`upgrade = false`、`cleanup = "none"`。`brew services` 接管范围仍然只有 `borders` / `nginx`，**不**扩张。
-
-新增的 taps：
-
-- `felixkratz/formulae`：`borders`（JankyBorders）的来源
-- `antoniorodr/memo`：`memo`（Apple Notes CLI）的来源
-- `steipete/tap`：`remindctl`（Apple Reminders CLI）的来源
-
-新增的 brews：
-
-- 容器：`colima`、`docker`、`docker-compose`（仅声明 CLI / 运行时；`colima` **不**纳入 `brew services`，仍按需 `colima start`）
-- Yazi / 媒体 / 文档 helper：`sevenzip`、`imagemagick`、`mpv`、`poppler`、`zoxide`、`media-info`、`exiftool`（多数是 `install_yazi_plugins.sh` 末尾提示过的依赖）
-- Neovim / Treesitter helper：`tree-sitter-cli`
-- Email / 助手类 CLI：`himalaya`、`antoniorodr/memo/memo`、`steipete/tap/remindctl`
-
-新增的 casks：
-
-- `claude-code@latest`：Claude Code CLI（沿用 Homebrew 上游的 `@latest` 版本通道）
-- `codex`：Codex CLI
-- `cc-switch`：Claude Code 切换辅助
-- `xurl`：X API 官方 CLI；凭据仍保留在本机 `~/.xurl`，仓库只声明安装入口
-
-Phase 4B **刻意不纳入**的内容（继续延后或永久不纳入）：
-
-- 多语言运行时 / 版本管理器：`go`、`rust`、`nvm`、`pnpm`、`uv`、`deno`、`python@*`、`llvm` 等。这类工具状态管理复杂，且与未来 Home Manager / devshell / `mise` 等方案耦合度高，单独评估，不在本轮一刀切引入。
-- 账号态 / 登录态较重的 GUI app：`raycast`、`telegram`、`discord`、`feishu`、`google-drive`、`tailscale`、`notion`、`spotify`、`zotero`、`jetbrains-toolbox`、`termius` 等。这些 app 的本地数据 / 登录态远比 cask 安装本身更关键，不适合声明式接管。
-- 扩张 `brew services`：`colima`、`clouddrive2`、`unbound` 仍按现有人工 `brew services` 流程管理。
-- 更大范围字体：`font-hack-nerd-font` 等本机已安装但未被仓库配置引用的字体仍不纳入。
-
-## 安全激活步骤
-
-> 全新机器上还没有 `darwin-rebuild` 命令，因此首次激活需要用 `nix run` 引导；之后再切回 `darwin-rebuild`。
-
-### Step 0：安装 Determinate Nix（仅首次）
+# Determinate Nix + Home Manager 管理说明
+
+本目录是这份 Mac 配置仓库的声明式主控制面。目标是在 Apple Silicon Mac 上安装基础前置后，clone 同一仓库、选择对应主机 profile，并通过一条受控命令同步机器级与用户级配置。
+
+## 管理模型
+
+- **Determinate Nix**：安装并维护 Nix、Nix daemon 与 `/etc/nix` 的受支持配置边界。
+- **Determinate nix-darwin module**：通过 `determinateNix.enable = true` 协调 Determinate Nix 与 nix-darwin，防止两者同时管理 Nix。
+- **nix-darwin**：组合 macOS 系统设置、Homebrew inventory、服务试点与 Home Manager 激活。
+- **Home Manager**：管理用户 packages、shell、环境变量、工具链管理器入口，以及仓库内配置到 home 目录的链接。
+- **Homebrew / mise / uv / rustup**：作为明确委托的 payload owner；它们的下游状态不会因为存在 Nix module 就自动变成 Nix store 内容。
+
+仓库保存期望状态，当前 Mac 是激活目标。`flake.lock` 必须跟随 Git 提交；正常 clone / build 使用已锁定版本，不会先更新依赖。
+
+## 目录结构
+
+```text
+nix/
+├── hosts/default.nix      # 主机 registry：system、username、repoPath
+├── darwin/                # 所有 Mac 共用的系统层配置
+│   ├── default.nix
+│   ├── defaults.nix
+│   └── homebrew.nix
+├── home/                  # Home Manager 用户层
+│   ├── default.nix
+│   ├── dotfiles.nix       # 受审计的配置链接 allowlist
+│   ├── packages.nix
+│   ├── shell-env.nix
+│   └── dev-toolchains.nix
+└── modules/zsh.nix        # Home Manager zsh 配置
+```
+
+根目录的 `sync_mac.sh` 是统一 build / switch 入口；`setup_mac.sh` 只保留为非 Nix 回退工具。
+
+## 当前主机与多机添加
+
+`nix/hosts/default.nix` 中每个属性都会生成一个 `darwinConfigurations.<LocalHostName>`。名称必须与目标机器的以下命令一致：
 
 ```bash
-curl -fsSL https://install.determinate.systems/nix | sh -s -- install
+scutil --get LocalHostName
+```
+
+新增另一台 Apple Silicon Mac 时，先复制一个 profile：
+
+```nix
+{
+  "another-mac" = {
+    system = "aarch64-darwin";
+    username = "yourname";
+    repoPath = "/Users/yourname/Documents/dev/config/yet-another-mac-config";
+  };
+}
+```
+
+若某台机器需要独有配置，可在 profile 中增加 `modules = [ ./another-mac.nix ];`，把差异留在 host module，共享配置继续留在 `darwin/` 与 `home/`。
+
+当前正式验收范围是 Apple Silicon。nix-darwin 可以描述 Intel Mac，但截至 2026-07-14，Determinate Installer 的公开稳定支持矩阵没有给 Intel macOS 与 Apple Silicon 相同的承诺；不要在未核对最新官方支持并实机验证前把 `x86_64-darwin` 当作已支持恢复路径。
+
+## Home Manager 管理的仓库配置
+
+`home/dotfiles.nix` 使用显式 allowlist，把下列目录以 out-of-store symlink 链接到 `~/.config`：
+
+- AeroSpace、borders、btop
+- GitHub CLI 共享偏好、Ghostty、mise、mpv
+- Neovim、tmux、Typora、Yazi
+- `.hammerspoon` 链接到 `~/.hammerspoon`
+
+使用 out-of-store symlink 是为了继续直接编辑 Git 工作区并让 app 立即看到变化。代价是仓库必须保留在 profile 的 `repoPath`；移动仓库后要先更新 profile，再重新 switch。
+
+allowlist 不做目录自动发现。Alma、账号登录态、聊天/媒体、缓存、凭据和其他本机状态不会因为出现在 `.config` 下就自动进入 Home Manager。
+
+## 全新 Mac 首次同步
+
+### 1. 安装 Determinate Nix
+
+官方优先提供 macOS 安装包，也保留 CLI installer。先按 [Determinate 官方文档](https://docs.determinate.systems/) 完成安装，再确认：
+
+```bash
 nix --version
 ```
 
-### Step 1：生成 / 锁定依赖
+输出应明确包含 `Determinate Nix`。flake 中的 Determinate module 负责配置协调，不负责在完全没有 Nix 的机器上安装 Nix。
+
+### 2. 安装 Homebrew
+
+nix-darwin 的 `homebrew` module 只管理 formula / cask / service 清单，不安装 Homebrew 本身。按 [Homebrew 官方文档](https://brew.sh/) 安装后确认：
 
 ```bash
-nix flake lock
+brew --version
+```
+
+### 3. Clone 到 profile 声明的路径
+
+```bash
+mkdir -p ~/Documents/dev/config
+git clone <repository-url> ~/Documents/dev/config/yet-another-mac-config
+cd ~/Documents/dev/config/yet-another-mac-config
+```
+
+如果用户名、路径或 LocalHostName 不同，先修改 `nix/hosts/default.nix` 并提交，不要靠临时命令隐藏主机差异。
+
+### 4. 先构建，再激活
+
+```bash
+./sync_mac.sh --build-only
+./sync_mac.sh
+```
+
+脚本会：
+
+1. 检查 macOS、Determinate Nix、Homebrew、主机 profile、当前用户名与仓库物理路径。
+2. 从仓库锁定的 nix-darwin input 构建 `darwin-rebuild`，不临时运行未锁定的 `master`。
+3. 执行 `darwin-rebuild build`。
+4. 只有在构建通过并得到确认后才执行 `sudo darwin-rebuild switch`。
+
+无人值守地接受 switch 可用 `./sync_mac.sh --yes`；日常默认仍建议保留确认。
+
+## 日常同步与依赖升级
+
+同步已提交配置：
+
+```bash
+git pull --ff-only
+./sync_mac.sh
+```
+
+只检查当前提交：
+
+```bash
 nix flake check
+./sync_mac.sh --build-only
 ```
 
-### Step 2：首次 build（无需 sudo）
+依赖升级是独立维护动作，不属于普通 clone / sync：
 
 ```bash
-nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
-  build --flake .#AresdeMacBook-Air
+nix flake update nixpkgs home-manager nix-darwin determinate
+nix flake check
+./sync_mac.sh --build-only
 ```
 
-### Step 3：首次 switch（需要 sudo）
+这四个 input 共享兼容边界，应在同一次维护中验证；只更新 nix-darwin 而保留过旧 nixpkgs 可能让文档构建工具接口不匹配。评审 `flake.lock`、构建结果和运行时验证后再 switch。`home.stateVersion = "24.11"` 是兼容边界，不随 Home Manager 版本一起升级。
 
-```bash
-sudo nix run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
-  switch --flake .#AresdeMacBook-Air
-```
+## 当前边界
 
-### Step 4：之后的迭代
+- Homebrew 激活保持保守：`autoUpdate = false`、`upgrade = false`、`cleanup = "none"`。它会补齐声明项，但不会删除机器上额外安装的软件，也不保证所有 Mac 的 Homebrew payload 版本完全相同。
+- `borders` 与 `nginx` 是仅有的 `brew services` 试点，使用 `start_service = true`；不要未经评审扩大到账号态或本地数据较重的服务。
+- Node / Go 的全局 fallback 由 `.config/mise/config.toml` 声明，mise 负责实际 runtime payload。项目版本仍优先使用项目内 `.mise.toml`、`pyproject.toml + uv.lock`、`rust-toolchain.toml` 或 devShell。
+- secrets、`~/.zshrc.local`、登录态、TCC / Accessibility 权限、云盘数据与聊天/媒体不纳入仓库。
+- Hammerspoon app 与配置可以声明和链接，但 Accessibility 权限仍需在系统设置中人工授予。
+- tmux 的仓库配置继续配合本地 oh-my-tmux；`.config/tmux/tmux.conf` 是机器相关软链接，不进入 Git。
 
-```bash
-darwin-rebuild build --flake .#AresdeMacBook-Air
-sudo darwin-rebuild switch --flake .#AresdeMacBook-Air
-```
+## 回滚与故障处理
 
-## 激活时的注意事项
+- build 失败不会切换当前 generation。
+- Home Manager 遇到已有目标时使用 `hm-backup` 后缀备份；首次接管前应检查是否有同名备份。
+- 回滚上一代：`sudo darwin-rebuild switch --rollback`。
+- 仓库被移动后，先修正 host profile 的 `repoPath`，否则 out-of-store symlink 会失效。
+- `existing file would be overwritten` 表示目标所有权仍有冲突；先检查目标和 `*.hm-backup`，不要直接删除用户数据。
 
-- 不要直接用 `--flake .`，显式指定 `.#AresdeMacBook-Air`
-- 切到新机器前，先确认 `flake.nix` 里的 `hostname` / `username` / `system` 是否需要调整
-- 若遇到 `existing file would be overwritten` 一类冲突，Home Manager 会用 `hm-backup` 备份目标文件
-- 本仓库不依赖 Nix 去做卸载或大扫除；回退优先用 `sudo darwin-rebuild switch --rollback`
-
-## Hammerspoon 补充说明
-
-虽然 `hammerspoon` cask 已纳入 Homebrew 清单，但 macOS 的 Accessibility 权限无法由 Nix 自动授予。
-
-在新机器上完整启用它，一般需要：
-
-1. `darwin-rebuild switch` 或 `brew install --cask hammerspoon` 安装 app
-2. 运行仓库根目录的 `./setup_mac.sh`，把 `.hammerspoon` 同步到 `~/.hammerspoon`
-3. 在「系统设置 → 隐私与安全性 → 辅助功能」里给 Hammerspoon 授权
-4. 确认 Ghostty 已安装，因为当前 `Ctrl+Alt+T` 快捷键依赖它
-5. Hammerspoon 启动后，当前配置已加载 `hs.ipc`，可用 `/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs -c 'hs.reload()'` 远程刷新配置
-
-如果权限列表里已勾选但仍不生效，常见处理是：先删除 Hammerspoon 条目，再重新添加并重启 Hammerspoon。
-
-## 日常使用建议
-
-当前推荐的节奏不是“所有东西必须先声明式化”，而是：
-
-1. 平时照常用 `brew install` / `brew install --cask` / `brew services ...`
-2. 某个软件、服务或配置被验证为长期保留、值得迁移后
-3. 再把它吸收到 `nix/` 或仓库的声明式管理里
-
-由于当前 Homebrew 模块处于保守模式，这种“先手动安装，后按价值纳管”的工作流是被允许且适合这份仓库的。
-
-## 后续方向
-
-- 继续保持谨慎、可回退、逐项评估
-- 不做扫荡式迁移
-- 是否扩大 `brew services`、字体、更多 GUI 自动化 app 或更多系统默认项，后续再单独判断
-
-如果需要实现细节、编辑约束或 agent 侧注意事项，再看 [`nix/CLAUDE.md`](./CLAUDE.md)。
+维护约束与验证命令见 [`CLAUDE.md`](./CLAUDE.md)。

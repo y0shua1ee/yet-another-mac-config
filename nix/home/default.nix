@@ -10,6 +10,10 @@
     ./packages.nix
     ./shell-env.nix
 
+    # 仓库内受跟踪的 app 配置与 Hammerspoon 入口由 Home Manager 统一链接。
+    # 目标仍指向工作区，保持日常编辑后立即生效；同步边界由显式 allowlist 控制。
+    ./dotfiles.nix
+
     # Phase 5A：语言 / 工具链管理器入口（mise / uv / rustup + direnv）
     # - 只负责安装管理器本身，不迁移现有 NVM / Homebrew 语言运行时
     # - 实际运行时版本由项目内 .mise.toml / uv.lock / rust-toolchain.toml / devShell 声明

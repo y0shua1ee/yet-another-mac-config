@@ -19,14 +19,19 @@ My Mac config
 | `.config/yazi` | Yazi 文件管理器及插件 |
 | `.hammerspoon` | Hammerspoon 自动化（含 `hs.ipc` CLI 控制） |
 | `zsh/.zshrc` | Zsh 备用软链接入口（当前主路径由 Home Manager 的 `nix/modules/zsh.nix` 接管；二者共享 `zsh/shared.zsh`） |
-| `flake.nix` + `nix/` | 可选的渐进式 Nix 路线，用来在新机上更快补齐部分运行时与系统偏好；覆盖范围与启用方式见 [`nix/README.md`](nix/README.md) |
+| `flake.nix` + `nix/` | Determinate Nix + nix-darwin + Home Manager 主控制面；包含多主机 profile、软件清单、系统偏好与配置链接，详见 [`nix/README.md`](nix/README.md) |
+| `sync_mac.sh` | 根据当前 Mac 的 LocalHostName 选择 profile，先构建、确认后再激活 |
 
-## 前置依赖
+## 主同步流程
 
-- 需要先安装 [Homebrew](https://brew.sh/)；本仓库的各类 app、CLI、后台服务均通过 `brew` 安装。
-- `setup_mac.sh` 只负责在新机器上同步本仓库的配置（建立软链接等），**不会**安装 Homebrew 本身，也不会替你安装具体的 app。
+- 先安装 [Determinate Nix](https://docs.determinate.systems/) 与 [Homebrew](https://brew.sh/)。Determinate Nix 提供 Nix 与 daemon；nix-darwin 的 Homebrew module 只管理清单，不负责安装 Homebrew 本身。
+- 把仓库 clone 到 `nix/hosts/default.nix` 中当前主机声明的 `repoPath`。
+- 正常同步运行 `./sync_mac.sh`。脚本会使用 `scutil --get LocalHostName` 选择 `darwinConfigurations.<host>`，先执行 build，只有确认后才执行需要 `sudo` 的 switch。
+- 只验证、不激活时运行 `./sync_mac.sh --build-only`。完整的首次安装、多主机添加与回滚流程见 [`nix/README.md`](nix/README.md)。
 
-## 使用说明
+## 手工软链接流程（非 Nix 回退）
+
+`setup_mac.sh` 保留给尚未启用 Home Manager、紧急回退或只想链接部分配置的场景。正常 Nix 路线由 Home Manager 管理仓库配置入口，不需要再运行它。
 
 1. 赋予脚本执行权限：`chmod +x setup_mac.sh`
 2. 执行脚本：`./setup_mac.sh`
@@ -112,7 +117,7 @@ colima delete           # 删除 VM（释放磁盘空间）
 
 ## 后台服务管理
 
-下表中的 app / 服务需要你自己用 Homebrew 安装（例如 `brew install nginx`、`brew install --cask clouddrive`），`setup_mac.sh` 只负责同步相关配置，不会替你安装这些 app；装好之后再用 `brew services` 接管运行状态。
+下表中已进入 `nix/darwin/homebrew.nix` 的 app / 服务会在 switch 时由 nix-darwin 补齐；未进入清单的条目仍需按需使用 Homebrew 安装与管理。
 
 以下服务通过 `brew services` 管理：
 
@@ -155,21 +160,25 @@ brew services restart <name>    # 重启服务
 - `.config/ghostty/*.bak`：Ghostty 配置备份文件。
 - `.DS_Store`：macOS 自动生成的目录元数据文件。
 
-`setup_mac.sh` 只会处理 Git 已跟踪的 `.config` 目录，因此这些本地忽略目录不会出现在同步提示里。
+Home Manager 的配置链接使用显式 allowlist，`setup_mac.sh` 也只处理 Git 已跟踪的 `.config` 目录；本地忽略目录不会被自动同步。
 
 如果后续新增只适用于当前机器的配置或缓存文件，建议继续补充到 `.gitignore`，避免误提交到仓库。
 
-## 可选：使用 Nix 激活这份配置
+## Determinate Nix + Home Manager 管理边界
 
-如果你希望在新机器上用 Nix 来补齐这份仓库的部分运行时与系统层配置，可以走仓库内的渐进式 Nix 路线。当前定位是**帮助新 Mac 更快恢复到可用状态**，并不追求 100% 声明式接管：secrets、登录态、大范围 app state 与琐碎系统偏好仍然默认人工处理。
+这个仓库是 Mac 期望状态的事实源：Determinate Nix 管理 Nix 与 daemon，nix-darwin 负责机器级组合和激活，Home Manager 负责用户配置、shell、工具入口和仓库配置链接。Homebrew、mise、uv、rustup 继续作为明确委托的安装或运行时 owner。
+
+Home Manager 当前会把受跟踪的 AeroSpace、borders、btop、GitHub CLI 共享偏好、Ghostty、mise、mpv、Neovim、tmux、Typora、Yazi 与 Hammerspoon 配置链接到 home 目录。链接目标是当前仓库工作区，便于日常直接编辑；因此仓库必须保留在主机 profile 声明的 `repoPath`。
+
+这不等于同步所有本机状态。secrets、账号登录态、聊天和媒体、TCC / Accessibility 权限、缓存、设备专属数据与大范围 app state 仍然留在本机，并通过 `.gitignore` 与显式 allowlist 排除。
 
 当前 Nix 路线除 Home Manager zsh、少量稳定 CLI、保守 Homebrew inventory、`borders` / `nginx` 服务试点与少量 `system.defaults` 外，也已补入 Phase 4B 的小范围 Homebrew 扩张：容器 CLI、Yazi / 媒体 / 文档 helper、Neovim / Treesitter 运行时 helper、Biya/Hermes 常用的 Apple 辅助 CLI、X/Twitter 工具 `xurl`，以及 Claude Code / Codex / CC Switch。账号态较重的 GUI app 仍刻意留待后续单独评估。
 
 Phase 5A 起，Home Manager 还会装好语言 / 工具链管理器**入口**：`mise` / `uv` / `rustup`，并启用 `direnv` + `nix-direnv`；实际运行时版本优先由项目本地的 `.mise.toml` / `pyproject.toml + uv.lock` / `rust-toolchain.toml` / 项目 `flake.nix` devShell 管理；仓库内 `.config/mise/config.toml` 只保存少量全局 fallback。
 
-Phase 5B–5D 已完成 switch 与 post-check：默认 Node / npm / Go 已迁到 mise，仓库内的 `.config/mise/config.toml` 固定全局 Node `24.11.0` 与 Go `1.26.3`；登录 zsh 中 `node` / `npm` / `go` 会解析到 `~/.local/share/mise/installs/...` 下的版本。Homebrew `nvm` 与 `~/.nvm` 已清理，Node / Go 完全由 mise 管理。2026-06-24 `nixpkgs` refresh 将 Home Manager 的 mise 目标版本从 `2026.4.6` 升至 `2026.6.11`；该版本在 Darwin 上跳过一个 OCI metadata 单测，并通过 runtime post-check 验证。
+Phase 5B–5D 已完成 switch 与 post-check：默认 Node / npm / Go 已迁到 mise，仓库内的 `.config/mise/config.toml` 固定全局 Node `24.11.0` 与 Go `1.26.3`；登录 zsh 中 `node` / `npm` / `go` 会解析到 `~/.local/share/mise/installs/...` 下的版本。Homebrew `nvm` 与 `~/.nvm` 已清理，Node / Go 完全由 mise 管理。2026-07-14 更新后的 nixpkgs 提供 mise `2026.7.5`，旧版 Darwin 单测 workaround 已移除，恢复使用上游可缓存 derivation。
 
-完整的覆盖范围、激活步骤与回滚方式见：
+完整的覆盖范围、多主机 profile、激活步骤与回滚方式见：
 
 - 面向使用者：[`nix/README.md`](nix/README.md)
 - 面向后续维护 / 约束：[`nix/CLAUDE.md`](nix/CLAUDE.md)

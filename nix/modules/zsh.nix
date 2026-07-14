@@ -12,6 +12,10 @@
   programs.zsh = {
     enable = true;
 
+    # Home Manager 26.05+ 将默认迁到 XDG 目录；显式锁定现有 ~/.zshrc 行为，
+    # 避免未来更新 input 时无意改变已经验证过的加载路径。
+    dotDir = config.home.homeDirectory;
+
     # Home Manager 原生实现：补全、自动建议、语法高亮
     enableCompletion = true;
     autosuggestion.enable = true;
