@@ -107,6 +107,14 @@ if [[ "$build_only" == true ]]; then
   exit 0
 fi
 
+# 旧版仓库曾把整个 ~/.config 链到 checkout。Home Manager 现在只拥有显式
+# 白名单入口；若父目录仍是链接，switch 可能透过它改写仓库，必须先人工迁移。
+if [[ -L "$HOME/.config" ]]; then
+  echo "拒绝激活：$HOME/.config 仍是旧版整体符号链接。" >&2
+  echo "请先按 nix/README.md 的旧版迁移步骤将它转换为真实目录。" >&2
+  exit 1
+fi
+
 if [[ "$assume_yes" != true ]]; then
   read -r -p "构建通过，是否 sudo 激活 .#${host}？[y/N] " answer
   if [[ ! "$answer" =~ ^[Yy]$ ]]; then

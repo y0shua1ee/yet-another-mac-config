@@ -29,6 +29,13 @@
   # nix-darwin state version。升级前请阅读 release notes
   system.stateVersion = 5;
 
+  # Determinate Installer 会先创建一个只含说明注释的 nix.custom.conf；首次由
+  # nix-darwin 接管时只接受这个已审核的精确哈希，并保留 .before-nix-darwin
+  # 备份。若文件包含任何真实自定义设置，哈希会不同，激活仍会安全失败。
+  environment.etc."nix/nix.custom.conf".knownSha256Hashes = [
+    "3bd68ef979a42070a44f8d82c205cfd8e8cca425d91253ec2c10a88179bb34aa"
+  ];
+
   # Homebrew 清单、两个低风险服务试点与少量稳定 system.defaults 已分别
   # 在子模块中声明。账号态、TCC 权限和大范围 app state 仍保留为本机状态。
 }

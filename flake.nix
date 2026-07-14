@@ -20,6 +20,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # oh-my-tmux 不是 flake；由 flake.lock 固定上游 revision，
+    # Home Manager 只链接其只读主配置，自定义仍保留在仓库 tmux.conf.local。
+    oh-my-tmux = {
+      url = "github:gpakosz/.tmux";
+      flake = false;
+    };
+
     # 官方 Determinate module 负责协调 Determinate Nix 与 nix-darwin，
     # 同时提供 determinateNix.* 配置入口。不要让它 follows 仓库 nixpkgs，
     # 以便继续使用 Determinate 官方缓存的构建产物。

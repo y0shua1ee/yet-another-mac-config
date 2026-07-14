@@ -24,13 +24,14 @@ nix/
 ├── home/                  # Home Manager 用户层
 │   ├── default.nix
 │   ├── dotfiles.nix       # 受审计的配置链接 allowlist
+│   ├── tmux.nix           # 锁定主配置、仓库自定义与可变插件的所有权边界
 │   ├── packages.nix
 │   ├── shell-env.nix
 │   └── dev-toolchains.nix
 └── modules/zsh.nix        # Home Manager zsh 配置
 ```
 
-根目录的 `sync_mac.sh` 是统一 build / switch 入口；`setup_mac.sh` 只保留为非 Nix 回退工具。
+根目录的 `sync_mac.sh` 是唯一统一 build / switch 入口。旧版 `setup_mac.sh` 已退役，避免手工链接与 Home Manager 同时拥有同一目标。
 
 ## 当前主机与多机添加
 
@@ -62,12 +63,20 @@ scutil --get LocalHostName
 
 - AeroSpace、borders、btop
 - GitHub CLI 共享偏好、Ghostty、mise、mpv
-- Neovim、tmux、Typora、Yazi
+- Neovim、Typora、Yazi
 - `.hammerspoon` 链接到 `~/.hammerspoon`
 
 使用 out-of-store symlink 是为了继续直接编辑 Git 工作区并让 app 立即看到变化。代价是仓库必须保留在 profile 的 `repoPath`；移动仓库后要先更新 profile，再重新 switch。
 
 allowlist 不做目录自动发现。Alma、账号登录态、聊天/媒体、缓存、凭据和其他本机状态不会因为出现在 `.config` 下就自动进入 Home Manager。
+
+tmux 使用更细的叶子文件所有权：
+
+- `~/.config/tmux/tmux.conf` 来自 `flake.lock` 固定 revision 的 oh-my-tmux source。
+- `~/.config/tmux/tmux.conf.local` 是指向仓库 `.config/tmux/tmux.conf.local` 的 out-of-store symlink。
+- `~/.config/tmux/plugins` 是 TPM 可写的本机状态，不由 Home Manager 或 Git 接管。
+
+因此 `~/.config/tmux` 本身必须是真实目录，而不是仓库整体链接。升级 oh-my-tmux 必须显式运行 `nix flake update oh-my-tmux`，评审 lock diff，并完成 build 与 tmux 隔离 smoke test。
 
 ## 全新 Mac 首次同步
 
@@ -115,6 +124,31 @@ cd ~/Documents/dev/config/yet-another-mac-config
 
 无人值守地接受 switch 可用 `./sync_mac.sh --yes`；日常默认仍建议保留确认。
 
+### 从旧版整体 `~/.config` 链接迁移
+
+旧版 `setup_mac.sh` 可能把整个 `~/.config` 链到仓库。`sync_mac.sh` 会在 build 后、switch 前拒绝这种布局，避免 Home Manager 透过父链接改写仓库。先关闭会写配置的 app，在仓库根目录执行以下迁移；命令只移动链接本身和明确列出的本机状态，不删除数据：
+
+```bash
+backup="$HOME/.config.pre-home-manager-$(date +%Y%m%d-%H%M%S)"
+mv "$HOME/.config" "$backup"
+mkdir -p "$HOME/.config/tmux"
+
+for name in alma himalaya jgit linearmouse mole op raycast; do
+  if [[ -d ".config/$name" && ! -L ".config/$name" ]]; then
+    mv ".config/$name" "$HOME/.config/$name"
+  fi
+done
+
+if [[ -d .config/tmux/plugins && ! -L .config/tmux/plugins ]]; then
+  mv .config/tmux/plugins "$HOME/.config/tmux/plugins"
+fi
+
+./sync_mac.sh --build-only
+./sync_mac.sh
+```
+
+激活完成后确认 `~/.config` 与 `~/.config/tmux` 都是真实目录，受管入口是符号链接，本机状态目录仍可读。`$backup` 是指回仓库的旧链接，保留到验证完成后再自行清理；不要把仓库中忽略的私密状态提交到 Git。
+
 ## 日常同步与依赖升级
 
 同步已提交配置：
@@ -139,7 +173,7 @@ nix flake check
 ./sync_mac.sh --build-only
 ```
 
-这四个 input 共享兼容边界，应在同一次维护中验证；只更新 nix-darwin 而保留过旧 nixpkgs 可能让文档构建工具接口不匹配。评审 `flake.lock`、构建结果和运行时验证后再 switch。`home.stateVersion = "24.11"` 是兼容边界，不随 Home Manager 版本一起升级。
+这四个 input 共享兼容边界，应在同一次维护中验证；只更新 nix-darwin 而保留过旧 nixpkgs 可能让文档构建工具接口不匹配。oh-my-tmux 是独立的非 flake source，使用 `nix flake update oh-my-tmux` 单独升级。评审 `flake.lock`、构建结果和运行时验证后再 switch。`home.stateVersion = "24.11"` 是兼容边界，不随 Home Manager 版本一起升级。
 
 ## 当前边界
 
@@ -148,12 +182,13 @@ nix flake check
 - Node / Go 的全局 fallback 由 `.config/mise/config.toml` 声明，mise 负责实际 runtime payload。项目版本仍优先使用项目内 `.mise.toml`、`pyproject.toml + uv.lock`、`rust-toolchain.toml` 或 devShell。
 - secrets、`~/.zshrc.local`、登录态、TCC / Accessibility 权限、云盘数据与聊天/媒体不纳入仓库。
 - Hammerspoon app 与配置可以声明和链接，但 Accessibility 权限仍需在系统设置中人工授予。
-- tmux 的仓库配置继续配合本地 oh-my-tmux；`.config/tmux/tmux.conf` 是机器相关软链接，不进入 Git。
+- tmux 二进制由 Homebrew 提供，oh-my-tmux 主配置由 flake 固定，仓库只保存 `tmux.conf.local`；TPM 插件与 resurrect 状态仍属于本机可变数据。
 
 ## 回滚与故障处理
 
 - build 失败不会切换当前 generation。
 - Home Manager 遇到已有目标时使用 `hm-backup` 后缀备份；首次接管前应检查是否有同名备份。
+- Determinate Installer 生成的空 `nix.custom.conf` 模板只在内容匹配已审核哈希时允许首次接管，并备份为 `/etc/nix/nix.custom.conf.before-nix-darwin`；任何真实自定义设置都会因哈希不同而安全失败，应先人工评审并改用 `determinateNix.customSettings` 声明。
 - 回滚上一代：`sudo darwin-rebuild switch --rollback`。
 - 仓库被移动后，先修正 host profile 的 `repoPath`，否则 out-of-store symlink 会失效。
 - `existing file would be overwritten` 表示目标所有权仍有冲突；先检查目标和 `*.hm-backup`，不要直接删除用户数据。

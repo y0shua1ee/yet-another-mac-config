@@ -32,7 +32,8 @@ nix/
 - 新增目录前先确认它是 Git 跟踪的静态配置，并同步根 README 的配置表与本地状态说明。
 - Alma、登录态、凭据、聊天/媒体、缓存与 app runtime state 不得加入 allowlist。
 - 移动仓库必须先修改 `repoPath` 并重新 build / switch。
-- `setup_mac.sh` 只是非 Nix 回退入口；不要让它与 Home Manager 长期并行拥有同一 target。
+- `setup_mac.sh` 已退役；不要恢复与 Home Manager 并行拥有同一 target 的手工链接流程。
+- tmux 是叶子文件接管的例外：`home/tmux.nix` 管理锁定的上游 `tmux.conf` 和仓库 `tmux.conf.local`，但必须让 `~/.config/tmux` 与 `plugins/` 保持本机可写目录。
 
 ## 现有边界
 
@@ -45,6 +46,7 @@ nix/
 - 不要恢复针对 mise `2026.6.11` 的 `doCheck = false` overlay；当前 nixpkgs 已升级到 mise `2026.7.5`，应优先使用上游可缓存 derivation。
 - `home.stateVersion = "24.11"` 是兼容边界，不随 input 更新。
 - Hammerspoon Accessibility、其他 TCC 权限、账号登录态与 secrets 仍需人工处理。
+- `/etc/nix/nix.custom.conf` 的 `knownSha256Hashes` 只能列入已审核的 Determinate Installer 空模板；真实自定义设置必须经 `determinateNix.customSettings` 声明，禁止用扩大哈希白名单绕过评审。
 
 ## 修改流程
 
@@ -77,6 +79,14 @@ nix build --no-link \
 
 ```bash
 nix flake update nixpkgs home-manager nix-darwin determinate
+nix flake check
+./sync_mac.sh --build-only
+```
+
+oh-my-tmux 独立升级并单独评审：
+
+```bash
+nix flake update oh-my-tmux
 nix flake check
 ./sync_mac.sh --build-only
 ```

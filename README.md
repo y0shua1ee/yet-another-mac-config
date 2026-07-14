@@ -14,7 +14,7 @@ My Mac config
 | `.config/mise` | mise 全局工具链配置（当前固定 Node `24.11.0` 与 Go `1.26.3` 作为全局 fallback） |
 | `.config/mpv` | mpv 播放器主配置（播放进度状态保留在本机） |
 | `.config/nvim` | Neovim（基于 LazyVim） |
-| `.config/tmux` | tmux（基于 oh-my-tmux） |
+| `.config/tmux` | tmux 自定义配置；oh-my-tmux 主配置由 `flake.lock` 固定并通过 Home Manager 链接 |
 | `.config/typora` | Typora 自定义主题 |
 | `.config/yazi` | Yazi 文件管理器及插件 |
 | `.hammerspoon` | Hammerspoon 自动化（含 `hs.ipc` CLI 控制） |
@@ -28,18 +28,6 @@ My Mac config
 - 把仓库 clone 到 `nix/hosts/default.nix` 中当前主机声明的 `repoPath`。
 - 正常同步运行 `./sync_mac.sh`。脚本会使用 `scutil --get LocalHostName` 选择 `darwinConfigurations.<host>`，先执行 build，只有确认后才执行需要 `sudo` 的 switch。
 - 只验证、不激活时运行 `./sync_mac.sh --build-only`。完整的首次安装、多主机添加与回滚流程见 [`nix/README.md`](nix/README.md)。
-
-## 手工软链接流程（非 Nix 回退）
-
-`setup_mac.sh` 保留给尚未启用 Home Manager、紧急回退或只想链接部分配置的场景。正常 Nix 路线由 Home Manager 管理仓库配置入口，不需要再运行它。
-
-1. 赋予脚本执行权限：`chmod +x setup_mac.sh`
-2. 执行脚本：`./setup_mac.sh`
-3. 根据提示输入目标 macOS 用户名，脚本会逐个遍历仓库中已跟踪的 `.config` 一级配置目录，并在 `/Users/<username>/.config` 中创建软链接；若某个目标项已存在，会先确认是否覆盖，默认则跳过。
-4. 如果当前工作区里本地存在 `.codex/config.toml`，脚本会额外询问是否同步到 `~/.codex/config.toml`；该文件默认只保留在本地，不会提交到仓库。
-5. 脚本会询问是否将 `zsh/.zshrc` 软链接到 `~/.zshrc`。这是非 Nix / Home Manager 场景的备用入口；当前 Nix 路线会由 Home Manager 生成 `~/.zshrc`。API 密钥、项目变量等隐私内容应写入 `~/.zshrc.local`（不纳入版本控制），会在 zsh 初始化末尾自动加载。
-6. 脚本会检测 `.config/tmux` 是否缺少 `tmux.conf`，如果缺少则提示安装 [oh-my-tmux](https://github.com/gpakosz/.tmux)，自动克隆到 `~/.local/share/tmux/oh-my-tmux` 并创建软链接。
-7. 脚本会检测仓库根目录下的 `.hammerspoon`，提示是否同步到 `~/.hammerspoon`。同步前先用 `brew install --cask hammerspoon` 安装 app，同步后仍需在「系统设置 → 隐私与安全性 → 辅助功能」中授予 Hammerspoon 权限，否则 `init.lua` 里的事件 tap 与快捷键不会生效；`Ctrl+Alt+T` 快捷键还依赖 Ghostty。当前配置会加载 `hs.ipc`，Hammerspoon 启动后可用 `/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs -c 'hs.reload()'` 远程刷新配置。Nix 路线下 cask 与字体已声明化，完整激活流程见 [`nix/README.md`](nix/README.md)。
 
 ## Ghostty
 
@@ -156,11 +144,11 @@ brew services restart <name>    # 重启服务
 - `.config/mole/`：清理工具运行日志与本地运行状态。
 - `.config/raycast/`：Raycast 本地扩展与缓存数据。
 - `.config/jgit/`：Jujutsu / Git 相关本地配置。
-- `.config/tmux/tmux.conf`：oh-my-tmux 主配置的软链接，指向本地克隆路径，机器相关。
+- `.config/tmux/plugins`：TPM 安装、更新的可变插件树，实际位于 `~/.config/tmux/plugins`；仓库同名路径如存在，只是旧版兼容链接。
 - `.config/ghostty/*.bak`：Ghostty 配置备份文件。
 - `.DS_Store`：macOS 自动生成的目录元数据文件。
 
-Home Manager 的配置链接使用显式 allowlist，`setup_mac.sh` 也只处理 Git 已跟踪的 `.config` 目录；本地忽略目录不会被自动同步。
+Home Manager 的配置链接使用显式 allowlist；本地忽略目录不会被自动同步。旧版 `setup_mac.sh` 已退役，避免它与 Home Manager 同时拥有相同目标。
 
 如果后续新增只适用于当前机器的配置或缓存文件，建议继续补充到 `.gitignore`，避免误提交到仓库。
 
@@ -168,7 +156,7 @@ Home Manager 的配置链接使用显式 allowlist，`setup_mac.sh` 也只处理
 
 这个仓库是 Mac 期望状态的事实源：Determinate Nix 管理 Nix 与 daemon，nix-darwin 负责机器级组合和激活，Home Manager 负责用户配置、shell、工具入口和仓库配置链接。Homebrew、mise、uv、rustup 继续作为明确委托的安装或运行时 owner。
 
-Home Manager 当前会把受跟踪的 AeroSpace、borders、btop、GitHub CLI 共享偏好、Ghostty、mise、mpv、Neovim、tmux、Typora、Yazi 与 Hammerspoon 配置链接到 home 目录。链接目标是当前仓库工作区，便于日常直接编辑；因此仓库必须保留在主机 profile 声明的 `repoPath`。
+Home Manager 当前会把受跟踪的 AeroSpace、borders、btop、GitHub CLI 共享偏好、Ghostty、mise、mpv、Neovim、Typora、Yazi 与 Hammerspoon 配置链接到 home 目录。tmux 单独按文件接管：主配置来自 `flake.lock` 固定的 oh-my-tmux source，`tmux.conf.local` 指向仓库，TPM 插件留在本机可写目录。仓库链接目标依赖当前工作区，因此仓库必须保留在主机 profile 声明的 `repoPath`。
 
 这不等于同步所有本机状态。secrets、账号登录态、聊天和媒体、TCC / Accessibility 权限、缓存、设备专属数据与大范围 app state 仍然留在本机，并通过 `.gitignore` 与显式 allowlist 排除。
 

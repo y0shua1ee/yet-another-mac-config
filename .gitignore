@@ -7,19 +7,19 @@
 !**/AGENTS.md
 !**/CLAUDE.md
 
-# 本地应用状态
-.config/alma/
-.config/jgit/
-.config/linearmouse/
-.config/mole/
-.config/op/
-.config/raycast/
+# 本地应用状态；不带尾随斜杠，同时覆盖真实目录与旧路径兼容链接
+.config/alma
+.config/jgit
+.config/linearmouse
+.config/mole
+.config/op
+.config/raycast
 
 # GitHub CLI 登录态在部分机器可能包含 OAuth token
 .config/gh/hosts.yml
 
 # Himalaya 邮箱配置包含账号地址与 app password，仅保留本机
-.config/himalaya/
+.config/himalaya
 
 # mpv 观看进度属于本地播放状态，可能暴露媒体历史
 .config/mpv/watch_later/
@@ -27,10 +27,10 @@
 # Home Manager / nix-direnv 生成的本机 helper，包含 Nix store 路径，不纳入版本控制
 .config/direnv/lib/hm-nix-direnv.sh
 
-# oh-my-tmux 主配置（软链接到本地安装路径，机器相关）
+# Home Manager 在 home 目录生成的 oh-my-tmux 主配置；仓库同名路径仅作旧版兼容
 .config/tmux/tmux.conf
-# tpm 管理的插件（运行时安装，不纳入版本控制）
-.config/tmux/plugins/
+# TPM 管理的插件属于 ~/.config/tmux/plugins；仓库同名路径仅作旧版兼容
+.config/tmux/plugins
 
 # 本地备份文件
 .config/ghostty/*.bak

@@ -11,7 +11,6 @@ let
     "mise"
     "mpv"
     "nvim"
-    "tmux"
     "typora"
     "yazi"
   ];
