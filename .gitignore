@@ -35,6 +35,9 @@
 # 本地备份文件
 .config/ghostty/*.bak
 
+# qBittorrent Compose 的本机下载、云盘与运行配置路径
+docker/qbittorrent/.env
+
 # Nix 构建产物（`darwin-rebuild build` 会生成 `result` / `result-*` 符号链接）
 /result
 /result-*

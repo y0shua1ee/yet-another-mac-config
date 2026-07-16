@@ -1,0 +1,36 @@
+name: qbittorrent
+
+services:
+  qbittorrent:
+    image: qbittorrentofficial/qbittorrent-nox:5.0.5-1
+    container_name: qbittorrent
+    environment:
+      QBT_EULA: accept
+      QBT_WEBUI_PORT: "8081"
+    ports:
+      - "8081:8081"
+      - "51515:51515"
+      - "51515:51515/udp"
+    volumes:
+      - type: bind
+        source: ${QBITTORRENT_DOWNLOADS_PATH:?Set QBITTORRENT_DOWNLOADS_PATH in .env}
+        target: /downloads
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${QBITTORRENT_GDRIVE_PATH:?Set QBITTORRENT_GDRIVE_PATH in .env}
+        target: /gdrive
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${QBITTORRENT_CONFIG_PATH:?Set QBITTORRENT_CONFIG_PATH in .env}
+        target: /config
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./auto_remove.sh
+        target: /config/auto_remove.sh
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped

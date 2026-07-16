@@ -18,6 +18,7 @@ My Mac config
 | `.config/typora` | Typora 自定义主题 |
 | `.config/yazi` | Yazi 文件管理器及插件 |
 | `.hammerspoon` | Hammerspoon 自动化（含 `hs.ipc` CLI 控制） |
+| `docker/qbittorrent` | qBittorrent Compose、下载完成钩子与显式配置检查入口 |
 | `zsh/.zshrc` | Zsh 备用软链接入口（当前主路径由 Home Manager 的 `nix/modules/zsh.nix` 接管；二者共享 `zsh/shared.zsh`） |
 | `flake.nix` + `nix/` | Determinate Nix + nix-darwin + Home Manager 主控制面；包含多主机 profile、软件清单、系统偏好与配置链接，详见 [`nix/README.md`](nix/README.md) |
 | `sync_mac.sh` | 根据当前 Mac 的 LocalHostName 选择 profile，先构建、确认后再激活 |
@@ -103,6 +104,28 @@ colima status           # 查看状态
 colima delete           # 删除 VM（释放磁盘空间）
 ```
 
+### qBittorrent 自动归档
+
+`docker/qbittorrent/` 管理 qBittorrent 容器的可复现部分。完成钩子只处理当前任务：先把完成内容从 `/downloads` 搬到 `/gdrive`，确认搬移成功后，再通过 Web API 删除 qBittorrent 任务且不删除数据。qBittorrent 的两项 `.torrent` 导出目录必须保持为空，避免元数据副本进入 Google Drive。
+
+首次使用先创建仅限本机的路径文件：
+
+```bash
+cp docker/qbittorrent/.env.example docker/qbittorrent/.env
+$EDITOR docker/qbittorrent/.env
+docker compose -f docker/qbittorrent/compose.yaml config --quiet
+docker compose -f docker/qbittorrent/compose.yaml up -d
+./docker/qbittorrent/configure.sh --apply
+```
+
+日常只读核对：
+
+```bash
+./docker/qbittorrent/configure.sh --check
+```
+
+Compose 使用本机 `.env` 注入下载目录、Google Drive 和 qBittorrent 可写配置目录；仓库脚本则以只读 bind mount 进入容器。按照 Docker 官方约定，`.env` 用于 Compose 插值，`docker compose config` 可渲染并验证最终模型。qBittorrent 的 WebUI 登录态、密码哈希、日志、BT backup、下载内容及云盘内容都不进入 Git。
+
 ## 后台服务管理
 
 下表中已进入 `nix/darwin/homebrew.nix` 的 app / 服务会在 switch 时由 nix-darwin 补齐；未进入清单的条目仍需按需使用 Homebrew 安装与管理。
@@ -146,6 +169,8 @@ brew services restart <name>    # 重启服务
 - `.config/jgit/`：Jujutsu / Git 相关本地配置。
 - `.config/tmux/plugins`：TPM 安装、更新的可变插件树，实际位于 `~/.config/tmux/plugins`；仓库同名路径如存在，只是旧版兼容链接。
 - `.config/ghostty/*.bak`：Ghostty 配置备份文件。
+- `docker/qbittorrent/.env`：qBittorrent Compose 的本机绝对路径；只提交 `.env.example`。
+- `~/docker/qbittorrent/config/qBittorrent/`：qBittorrent WebUI 凭据、日志、任务恢复数据等本机可变状态。
 - `.DS_Store`：macOS 自动生成的目录元数据文件。
 
 Home Manager 的配置链接使用显式 allowlist；本地忽略目录不会被自动同步。旧版 `setup_mac.sh` 已退役，避免它与 Home Manager 同时拥有相同目标。
