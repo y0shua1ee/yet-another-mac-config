@@ -62,9 +62,13 @@ automatically-unhide-macos-hidden-apps = false
     if.window-title-regex-substring = '^(?!WeChat \(Chats\)|微信 \(聊天\)).*$'
     run = 'layout floating'
 
-# DingTalk floating
+# DingTalk and DingTalk Meeting floating
 [[on-window-detected]]
     if.app-id = '5ZSL2CJU2T.com.dingtalk.mac'
+    run = 'layout floating'
+
+[[on-window-detected]]
+    if.app-id = '5ZSL2CJU2T.com.dingtalk.mac.tblive'
     run = 'layout floating'
 
 # QQ floating
