@@ -71,6 +71,11 @@ automatically-unhide-macos-hidden-apps = false
     if.app-id = '5ZSL2CJU2T.com.dingtalk.mac.tblive'
     run = 'layout floating'
 
+# OBS Studio floating
+[[on-window-detected]]
+    if.app-id = 'com.obsproject.obs-studio'
+    run = 'layout floating'
+
 # QQ floating
 [[on-window-detected]]
     if.app-id = 'com.tencent.qq'
