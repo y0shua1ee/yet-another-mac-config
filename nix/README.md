@@ -178,7 +178,7 @@ nix flake check
 ## 当前边界
 
 - Homebrew 激活保持保守：`autoUpdate = false`、`upgrade = false`、`cleanup = "none"`。它会补齐声明项，但不会删除机器上额外安装的软件，也不保证所有 Mac 的 Homebrew payload 版本完全相同。
-- `borders` 与 `nginx` 是仅有的 `brew services` 试点，使用 `start_service = true`；不要未经评审扩大到账号态或本地数据较重的服务。
+- `nginx` 是当前唯一使用 `start_service = true` 的 `brew services` 试点；`borders` 保留安装与配置，但使用 `start_service = false`，按需通过 `brew services run borders` 临时运行。不要未经评审扩大到账号态或本地数据较重的服务。
 - Node / Go 的全局 fallback 由 `.config/mise/config.toml` 声明，mise 负责实际 runtime payload。项目版本仍优先使用项目内 `.mise.toml`、`pyproject.toml + uv.lock`、`rust-toolchain.toml` 或 devShell。
 - secrets、`~/.zshrc.local`、登录态、TCC / Accessibility 权限、云盘数据与聊天/媒体不纳入仓库。
 - Hammerspoon app 与配置可以声明和链接，但 Accessibility 权限仍需在系统设置中人工授予。

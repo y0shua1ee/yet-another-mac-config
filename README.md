@@ -7,7 +7,7 @@ My Mac config
 | 目录/文件 | 说明 |
 |-----------|------|
 | `.config/aerospace` | AeroSpace 窗口管理器（默认不随用户登录启动，按需手动启动） |
-| `.config/borders` | JankyBorders 窗口边框 |
+| `.config/borders` | JankyBorders 窗口边框（默认不随用户登录启动，按需手动运行） |
 | `.config/btop` | btop 系统监控 |
 | `.config/ghostty` | Ghostty 终端（含 custom shader collection） |
 | `.config/gh` | GitHub CLI 共享偏好（凭据状态保留在本机 `hosts.yml`） |
@@ -134,7 +134,7 @@ Compose 使用本机 `.env` 注入下载目录、Google Drive 和 qBittorrent �
 
 | 服务 | 说明 | 开机自启 |
 |------|------|----------|
-| borders | JankyBorders 窗口边框 | 是 |
+| borders | JankyBorders 窗口边框 | 否 |
 | nginx | HTTP 服务器（默认端口 8080） | 是 |
 | clouddrive2 | CloudDrive2 云盘挂载 | 是 |
 | unbound | DNS resolver | 否 |
@@ -145,12 +145,13 @@ Compose 使用本机 `.env` 注入下载目录、Google Drive 和 qBittorrent �
 ```bash
 brew services list              # 查看当前运行状态
 brew services start <name>      # 启动服务（开机自启）
+brew services run <name>        # 临时运行（不注册开机自启）
 brew services stop <name>       # 停止服务（取消开机自启）
 brew services restart <name>    # 重启服务
 ```
 
 > **注意：** nginx 的配置路径为 `/opt/homebrew/etc/nginx/`。
-> **注意：** 走 Nix 路线时，`borders` / `nginx` 的开机自启会在首次 switch 时由 nix-darwin 帮忙拉起（日常 start/stop/restart 仍用上面的 `brew services` 命令）；其余服务继续按本节命令人工管理。详见 [`nix/README.md`](nix/README.md)。
+> **注意：** 走 Nix 路线时，只有 `nginx` 会在 switch 时由 nix-darwin 启动并登记登录项。`borders` 保持安装但不自启；需要时使用 `brew services run borders`，曾经启用过自启的机器需执行一次 `brew services stop borders`。其余服务继续按本节命令人工管理。详见 [`nix/README.md`](nix/README.md)。
 
 ## 本地文件同步约定
 
@@ -185,7 +186,7 @@ Home Manager 当前会把受跟踪的 AeroSpace、borders、btop、GitHub CLI �
 
 这不等于同步所有本机状态。secrets、账号登录态、聊天和媒体、TCC / Accessibility 权限、缓存、设备专属数据与大范围 app state 仍然留在本机，并通过 `.gitignore` 与显式 allowlist 排除。
 
-当前 Nix 路线除 Home Manager zsh、少量稳定 CLI、保守 Homebrew inventory、`borders` / `nginx` 服务试点与少量 `system.defaults` 外，也已补入 Phase 4B 的小范围 Homebrew 扩张：容器 CLI、Yazi / 媒体 / 文档 helper、Neovim / Treesitter 运行时 helper、Biya/Hermes 常用的 Apple 辅助 CLI、X/Twitter 工具 `xurl`，以及 Claude Code / Codex / CC Switch。账号态较重的 GUI app 仍刻意留待后续单独评估。
+当前 Nix 路线除 Home Manager zsh、少量稳定 CLI、保守 Homebrew inventory、`nginx` 服务试点（`borders` 按需运行）与少量 `system.defaults` 外，也已补入 Phase 4B 的小范围 Homebrew 扩张：容器 CLI、Yazi / 媒体 / 文档 helper、Neovim / Treesitter 运行时 helper、Biya/Hermes 常用的 Apple 辅助 CLI、X/Twitter 工具 `xurl`，以及 Claude Code / Codex / CC Switch。账号态较重的 GUI app 仍刻意留待后续单独评估。
 
 Phase 5A 起，Home Manager 还会装好语言 / 工具链管理器**入口**：`mise` / `uv` / `rustup`，并启用 `direnv` + `nix-direnv`；实际运行时版本优先由项目本地的 `.mise.toml` / `pyproject.toml + uv.lock` / `rust-toolchain.toml` / 项目 `flake.nix` devShell 管理；仓库内 `.config/mise/config.toml` 只保存少量全局 fallback。
 

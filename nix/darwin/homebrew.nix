@@ -4,8 +4,9 @@
   # Homebrew 声明式清单
   #   - Phase 3A：保守首版（CLI 工具 + 已管理配置的 GUI cask）
   #   - Phase 3B：新增 tmux 运行时
-  #   - Phase 4 最小版：新增 `brew services` 试点（仅 `borders` / `nginx`），
-  #     并补上 Ghostty 所需字体 `font-maple-mono-nf` 与 `hammerspoon` cask。
+  #   - Phase 4 最小版：新增 `brew services` 试点；当前仅 `nginx` 保持登录自启，
+  #     `borders` 保留安装与配置，但长期按需手动运行。
+  #     同时补上 Ghostty 所需字体 `font-maple-mono-nf` 与 `hammerspoon` cask。
   #   - Phase 4B 小幅扩张：补齐已被仓库工作流长期使用的少量 CLI helper，
   #     以及已稳定使用的 AI / 助手 / X 工具类 cask。仍刻意不引入语言运行时与
   #     账号态重的 GUI app（详见下方“刻意不纳入”小节）。
@@ -14,8 +15,9 @@
   # 设计要点：
   #   - 只纳入本机已使用、长期稳定、低风险的 formula / cask。
   #   - 不做自动 upgrade、autoUpdate、cleanup；未声明的本机 brew 包不会被动掉。
-  #   - `brew services` 目前只接管 `borders` 与 `nginx`，策略选 `start_service = true`
-  #     （只在服务未运行时启动，不会重启已运行服务），对现状零扰动。
+  #   - `brew services` 目前只为 `nginx` 设置 `start_service = true`
+  #     （只在服务未运行时启动，不会重启已运行服务）。`borders` 明确保持
+  #     `start_service = false`，避免 switch 时启动或注册为登录项。
   #     Phase 4B **不**扩张服务接管范围：colima / clouddrive2 / unbound
   #     仍走人工 `brew services` 流程。
   #   - 仍未纳入的字体：`font-hack-nerd-font`（本机当前虽已安装，但未被仓库配置引用）。
@@ -118,19 +120,20 @@
       "steipete/tap/remindctl"         # Apple Reminders 命令行助手（来自 steipete/tap）
 
       # -----------------------------------------------------------------
-      # Phase 4 最小版：`brew services` 试点（仅这两项）
+      # Phase 4 最小版：服务启动策略
       # -----------------------------------------------------------------
       # 策略说明：
-      #   - 使用 `start_service = true`：nix-darwin 会在 brew bundle 阶段调用
-      #     `brew services start`，**仅在服务未运行时启动**，不会重启或停止
-      #     已运行的服务，对当前状态零扰动。
-      #   - 本机当前两者均已 `started`，首次 switch 预期是幂等 no-op。
-      #   - 新机器走 Nix 路线 switch 后，会自动安装并登记为 login item。
+      #   - `nginx` 使用 `start_service = true`：nix-darwin 会在 brew bundle 阶段
+      #     调用 `brew services start`，仅在服务未运行时启动并登记为 login item。
+      #   - `borders` 使用 `start_service = false`：保留 formula 与配置，但 switch
+      #     不会启动或登记登录项；按需使用 `brew services run borders` 临时运行。
+      #   - 将 `start_service` 改为 false 不会停止已经登记的服务；旧机器需执行一次
+      #     `brew services stop borders`，同时停止进程并注销登录项。
       #   - 刻意未使用 `restart_service`：任何 `darwin-rebuild switch` 都不应
       #     重启这些长期运行的服务；仍沿用现有 `brew services restart <name>` 人工流程。
       #   - Phase 4B **不**扩张此名单：colima / clouddrive2 / unbound
       #     继续按 README 中的人工 `brew services` 流程管理。
-      { name = "borders"; start_service = true; }   # JankyBorders 窗口边框（配置：.config/borders）
+      { name = "borders"; start_service = false; }  # JankyBorders 窗口边框（按需运行；配置：.config/borders）
       { name = "nginx"; start_service = true; }     # 本地 HTTP 服务器（配置路径：/opt/homebrew/etc/nginx/）
     ];
 
