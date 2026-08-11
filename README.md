@@ -6,7 +6,7 @@ My Mac config
 
 | 目录/文件 | 说明 |
 |-----------|------|
-| `.config/aerospace` | AeroSpace 窗口管理器 |
+| `.config/aerospace` | AeroSpace 窗口管理器（默认不随用户登录启动，按需手动启动） |
 | `.config/borders` | JankyBorders 窗口边框 |
 | `.config/btop` | btop 系统监控 |
 | `.config/ghostty` | Ghostty 终端（含 custom shader collection） |

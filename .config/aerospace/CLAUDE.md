@@ -6,7 +6,7 @@
 
 ## Workflow
 - 修改前先查 [AeroSpace 官方文档](https://nikitabobko.github.io/AeroSpace/guide)，尤其是 commands/guide 两页。
-- 保持 `start-at-login = true`（已在仓库中启用）。
+- 保持 `start-at-login = false`（长期期望：不随用户登录自动启动，需要时手动启动）。
 - 保持 `config-version = 2`，并用 `persistent-workspaces = ['1'..'9']` 显式声明常驻数字 workspace；不要依赖旧版从快捷键推断 workspace 的行为。
 - 新增 `[[on-window-detected]]` 规则时，`if.app-id` / `if.window-title-regex-substring` 的取值必须通过 AeroSpace 官方内置 inspection 命令获得，不要依赖 OS 元数据（如 `mdls`、`osascript`）——AeroSpace 看到的标识可能与 macOS 系统 API 不同。
   - 常用查询：`aerospace list-windows --all`、`aerospace list-apps`。
@@ -15,3 +15,4 @@
 
 ## Reload
 - 执行 `aerospace reload-config` 应用改动；保存文件后 AeroSpace 不会自动重载。
+- 修改 `start-at-login` 后，需在 AeroSpace 正在运行时执行 `aerospace reload-config`，或手动启动一次再退出，让它同步 macOS 登录项；仅保存文件不会更新已注册的登录项。
