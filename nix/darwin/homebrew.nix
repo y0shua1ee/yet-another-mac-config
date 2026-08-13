@@ -4,22 +4,23 @@
   # Homebrew 声明式清单
   #   - Phase 3A：保守首版（CLI 工具 + 已管理配置的 GUI cask）
   #   - Phase 3B：新增 tmux 运行时
-  #   - Phase 4 最小版：新增 `brew services` 试点；当前仅 `nginx` 保持登录自启，
+  #   - Phase 4 最小版：新增 `brew services` 试点；`nginx` 保持登录自启，
   #     `borders` 保留安装与配置，但长期按需手动运行。
   #     同时补上 Ghostty 所需字体 `font-maple-mono-nf` 与 `hammerspoon` cask。
   #   - Phase 4B 小幅扩张：补齐已被仓库工作流长期使用的少量 CLI helper，
   #     以及已稳定使用的 AI / 助手 / X 工具类 cask。仍刻意不引入语言运行时与
   #     账号态重的 GUI app（详见下方“刻意不纳入”小节）。
+  #   - Ollama：替代独立 `llama.cpp`，由 Homebrew 提供运行时并常驻本机 API；
+  #     模型、缓存与身份状态仍留在 `~/.ollama`，不进入仓库。
   # =============================================================================
   #
   # 设计要点：
   #   - 只纳入本机已使用、长期稳定、低风险的 formula / cask。
   #   - 不做自动 upgrade、autoUpdate、cleanup；未声明的本机 brew 包不会被动掉。
-  #   - `brew services` 目前只为 `nginx` 设置 `start_service = true`
+  #   - `brew services` 为 `nginx` 与 `ollama` 设置 `start_service = true`
   #     （只在服务未运行时启动，不会重启已运行服务）。`borders` 明确保持
   #     `start_service = false`，避免 switch 时启动或注册为登录项。
-  #     Phase 4B **不**扩张服务接管范围：colima / clouddrive2 / unbound
-  #     仍走人工 `brew services` 流程。
+  #     colima / clouddrive2 / unbound 仍走人工 `brew services` 流程。
   #   - 仍未纳入的字体：`font-hack-nerd-font`（本机当前虽已安装，但未被仓库配置引用）。
   #     本轮字体只补 Ghostty 明确依赖的一项，避免“能配就都配”。
   #
@@ -120,21 +121,24 @@
       "steipete/tap/remindctl"         # Apple Reminders 命令行助手（来自 steipete/tap）
 
       # -----------------------------------------------------------------
-      # Phase 4 最小版：服务启动策略
+      # 服务启动策略
       # -----------------------------------------------------------------
       # 策略说明：
       #   - `nginx` 使用 `start_service = true`：nix-darwin 会在 brew bundle 阶段
       #     调用 `brew services start`，仅在服务未运行时启动并登记为 login item。
       #   - `borders` 使用 `start_service = false`：保留 formula 与配置，但 switch
       #     不会启动或登记登录项；按需使用 `brew services run borders` 临时运行。
+      #   - `ollama` 使用 `start_service = true`：提供 `ollama run` 依赖的本机服务；
+      #     默认只监听 127.0.0.1:11434，模型与运行状态保留在 ~/.ollama。
       #   - 将 `start_service` 改为 false 不会停止已经登记的服务；旧机器需执行一次
       #     `brew services stop borders`，同时停止进程并注销登录项。
       #   - 刻意未使用 `restart_service`：任何 `darwin-rebuild switch` 都不应
       #     重启这些长期运行的服务；仍沿用现有 `brew services restart <name>` 人工流程。
-      #   - Phase 4B **不**扩张此名单：colima / clouddrive2 / unbound
-      #     继续按 README 中的人工 `brew services` 流程管理。
+      #   - colima / clouddrive2 / unbound 继续按 README 中的人工
+      #     `brew services` 流程管理。
       { name = "borders"; start_service = false; }  # JankyBorders 窗口边框（按需运行；配置：.config/borders）
       { name = "nginx"; start_service = true; }     # 本地 HTTP 服务器（配置路径：/opt/homebrew/etc/nginx/）
+      { name = "ollama"; start_service = true; }    # 本地 LLM 服务（默认仅监听 127.0.0.1:11434）
     ];
 
     # cask GUI：只选“长期保留 + 仓库已管理其配置”或“仓库自动化依赖”的条目

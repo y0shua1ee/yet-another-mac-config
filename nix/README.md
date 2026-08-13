@@ -6,7 +6,7 @@
 
 - **Determinate Nix**：安装并维护 Nix、Nix daemon 与 `/etc/nix` 的受支持配置边界。
 - **Determinate nix-darwin module**：通过 `determinateNix.enable = true` 协调 Determinate Nix 与 nix-darwin，防止两者同时管理 Nix。
-- **nix-darwin**：组合 macOS 系统设置、Homebrew inventory、服务试点与 Home Manager 激活。
+- **nix-darwin**：组合 macOS 系统设置、Homebrew inventory、受控后台服务与 Home Manager 激活。
 - **Home Manager**：管理用户 packages、shell、环境变量、工具链管理器入口，以及仓库内配置到 home 目录的链接。
 - **Homebrew / mise / uv / rustup**：作为明确委托的 payload owner；它们的下游状态不会因为存在 Nix module 就自动变成 Nix store 内容。
 
@@ -68,7 +68,7 @@ scutil --get LocalHostName
 
 使用 out-of-store symlink 是为了继续直接编辑 Git 工作区并让 app 立即看到变化。代价是仓库必须保留在 profile 的 `repoPath`；移动仓库后要先更新 profile，再重新 switch。
 
-allowlist 不做目录自动发现。Alma、账号登录态、聊天/媒体、缓存、凭据和其他本机状态不会因为出现在 `.config` 下就自动进入 Home Manager。
+allowlist 不做目录自动发现。Alma、Ollama 模型与缓存、账号登录态、聊天/媒体、凭据和其他本机状态不会自动进入 Home Manager。
 
 tmux 使用更细的叶子文件所有权：
 
@@ -178,7 +178,7 @@ nix flake check
 ## 当前边界
 
 - Homebrew 激活保持保守：`autoUpdate = false`、`upgrade = false`、`cleanup = "none"`。它会补齐声明项，但不会删除机器上额外安装的软件，也不保证所有 Mac 的 Homebrew payload 版本完全相同。
-- `nginx` 是当前唯一使用 `start_service = true` 的 `brew services` 试点；`borders` 保留安装与配置，但使用 `start_service = false`，按需通过 `brew services run borders` 临时运行。不要未经评审扩大到账号态或本地数据较重的服务。
+- `nginx` 与 `ollama` 使用 `start_service = true`；Ollama 默认只监听 `127.0.0.1:11434`，模型、缓存与身份状态保留在 `~/.ollama`。`borders` 保留安装与配置，但使用 `start_service = false`，按需通过 `brew services run borders` 临时运行。不要未经评审扩大到账号态或本地数据较重的服务。
 - Node / Go 的全局 fallback 由 `.config/mise/config.toml` 声明，mise 负责实际 runtime payload。项目版本仍优先使用项目内 `.mise.toml`、`pyproject.toml + uv.lock`、`rust-toolchain.toml` 或 devShell。
 - secrets、`~/.zshrc.local`、登录态、TCC / Accessibility 权限、云盘数据与聊天/媒体不纳入仓库。
 - Hammerspoon app 与配置可以声明和链接，但 Accessibility 权限仍需在系统设置中人工授予。

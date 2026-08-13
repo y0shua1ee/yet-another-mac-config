@@ -136,6 +136,7 @@ Compose 使用本机 `.env` 注入下载目录、Google Drive 和 qBittorrent �
 |------|------|----------|
 | borders | JankyBorders 窗口边框 | 否 |
 | nginx | HTTP 服务器（默认端口 8080） | 是 |
+| ollama | 本地 LLM 服务（默认仅监听 `127.0.0.1:11434`） | 是 |
 | clouddrive2 | CloudDrive2 云盘挂载 | 是 |
 | unbound | DNS resolver | 否 |
 | colima | Colima 容器运行时（可选） | 否 |
@@ -151,7 +152,24 @@ brew services restart <name>    # 重启服务
 ```
 
 > **注意：** nginx 的配置路径为 `/opt/homebrew/etc/nginx/`。
-> **注意：** 走 Nix 路线时，只有 `nginx` 会在 switch 时由 nix-darwin 启动并登记登录项。`borders` 保持安装但不自启；需要时使用 `brew services run borders`，曾经启用过自启的机器需执行一次 `brew services stop borders`。其余服务继续按本节命令人工管理。详见 [`nix/README.md`](nix/README.md)。
+> **注意：** 走 Nix 路线时，`nginx` 与 `ollama` 会在 switch 时由 nix-darwin 启动并登记登录项。`borders` 保持安装但不自启；需要时使用 `brew services run borders`，曾经启用过自启的机器需执行一次 `brew services stop borders`。其余服务继续按本节命令人工管理。详见 [`nix/README.md`](nix/README.md)。
+
+## Ollama
+
+Ollama 由 `nix/darwin/homebrew.nix` 声明为 Homebrew formula，并通过 `brew services` 提供本机 API。首次运行模型时会自动下载所需内容：
+
+```bash
+ollama run gemma4
+```
+
+使用 `/bye` 离开聊天。常用状态命令：
+
+```bash
+ollama ls    # 已下载模型
+ollama ps    # 当前载入内存的模型与处理器分配
+```
+
+模型、缓存、身份文件与其他可变状态位于 `~/.ollama`，不由 Git 或 Home Manager 接管。独立 `llama.cpp` 不在声明式清单中；从旧环境迁移时需手动运行 `brew uninstall llama.cpp`，因为当前 `cleanup = "none"` 不会删除未声明 formula。
 
 ## 本地文件同步约定
 
@@ -167,6 +185,7 @@ brew services restart <name>    # 重启服务
 - `.config/linearmouse/`：鼠标与触控板的本机硬件配置。
 - `.config/mole/`：清理工具运行日志与本地运行状态。
 - `.config/raycast/`：Raycast 本地扩展与缓存数据。
+- `~/.ollama/`：Ollama 模型、缓存、身份文件与本地运行状态。
 - `.config/jgit/`：Jujutsu / Git 相关本地配置。
 - `.config/tmux/plugins`：TPM 安装、更新的可变插件树，实际位于 `~/.config/tmux/plugins`；仓库同名路径如存在，只是旧版兼容链接。
 - `.config/ghostty/*.bak`：Ghostty 配置备份文件。
@@ -186,7 +205,7 @@ Home Manager 当前会把受跟踪的 AeroSpace、borders、btop、GitHub CLI �
 
 这不等于同步所有本机状态。secrets、账号登录态、聊天和媒体、TCC / Accessibility 权限、缓存、设备专属数据与大范围 app state 仍然留在本机，并通过 `.gitignore` 与显式 allowlist 排除。
 
-当前 Nix 路线除 Home Manager zsh、少量稳定 CLI、保守 Homebrew inventory、`nginx` 服务试点（`borders` 按需运行）与少量 `system.defaults` 外，也已补入 Phase 4B 的小范围 Homebrew 扩张：容器 CLI、Yazi / 媒体 / 文档 helper、Neovim / Treesitter 运行时 helper、Biya/Hermes 常用的 Apple 辅助 CLI、X/Twitter 工具 `xurl`，以及 Claude Code / Codex / CC Switch。账号态较重的 GUI app 仍刻意留待后续单独评估。
+当前 Nix 路线除 Home Manager zsh、少量稳定 CLI、保守 Homebrew inventory、`nginx` 与 `ollama` 常驻服务（`borders` 按需运行）与少量 `system.defaults` 外，也已补入 Phase 4B 的小范围 Homebrew 扩张：容器 CLI、Yazi / 媒体 / 文档 helper、Neovim / Treesitter 运行时 helper、Biya/Hermes 常用的 Apple 辅助 CLI、X/Twitter 工具 `xurl`，以及 Claude Code / Codex / CC Switch。账号态较重的 GUI app 仍刻意留待后续单独评估。
 
 Phase 5A 起，Home Manager 还会装好语言 / 工具链管理器**入口**：`mise` / `uv` / `rustup`，并启用 `direnv` + `nix-direnv`；实际运行时版本优先由项目本地的 `.mise.toml` / `pyproject.toml + uv.lock` / `rust-toolchain.toml` / 项目 `flake.nix` devShell 管理；仓库内 `.config/mise/config.toml` 只保存少量全局 fallback。
 

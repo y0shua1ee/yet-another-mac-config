@@ -38,7 +38,7 @@ nix/
 ## 现有边界
 
 - Homebrew 保持 `autoUpdate = false`、`upgrade = false`、`cleanup = "none"`；未经单独评审不要改成删除型收敛。
-- `brew services` 只为 `nginx` 保持 `start_service = true`；`borders` 的长期期望是 `start_service = false`、按需手动运行。不要改成每次 switch 都重启。
+- `brew services` 为 `nginx` 与 `ollama` 保持 `start_service = true`；Ollama 默认只监听本机，`~/.ollama` 模型、缓存与身份状态不进仓库。`borders` 的长期期望是 `start_service = false`、按需手动运行。不要改成每次 switch 都重启。
 - 只纳入仓库配置明确依赖的字体；当前为 Ghostty 使用的 `font-maple-mono-nf`。
 - `system.defaults` 只保留当前已验证的 Finder、Dock 与键盘小集合。
 - Home Manager zsh 继续使用 `programs.zsh.initContent`，并显式用 `programs.zsh.dotDir = config.home.homeDirectory` 锁定 `~/.zshrc`；`~/.zshrc.local` 必须保留为私密/机器相关入口。
