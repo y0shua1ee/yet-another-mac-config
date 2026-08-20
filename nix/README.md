@@ -178,7 +178,7 @@ nix flake check
 ## 当前边界
 
 - Homebrew 激活保持保守：`autoUpdate = false`、`upgrade = false`、`cleanup = "none"`。它会补齐声明项，但不会删除机器上额外安装的软件，也不保证所有 Mac 的 Homebrew payload 版本完全相同。
-- `nginx` 与 `ollama` 使用 `start_service = true`；Ollama 默认只监听 `127.0.0.1:11434`，模型、缓存与身份状态保留在 `~/.ollama`。`borders` 保留安装与配置，但使用 `start_service = false`，按需通过 `brew services run borders` 临时运行。不要未经评审扩大到账号态或本地数据较重的服务。
+- `nginx` 与 `ollama` 使用 `start_service = true`；Ollama 默认只监听 `127.0.0.1:11434`，模型、缓存与身份状态保留在 `~/.ollama`。`borders` 与 `cliproxyapi` 使用 `start_service = false`：前者按需临时运行，后者必须先创建仅监听 `127.0.0.1` 的本机配置并完成 Codex OAuth，再显式启用服务；CLIProxyAPI 的 OAuth、客户端密钥与日志不进入仓库。不要未经评审扩大到账号态或本地数据较重的服务。
 - Node / Go 的全局 fallback 由 `.config/mise/config.toml` 声明，mise 负责实际 runtime payload。项目版本仍优先使用项目内 `.mise.toml`、`pyproject.toml + uv.lock`、`rust-toolchain.toml` 或 devShell。
 - secrets、`~/.zshrc.local`、登录态、TCC / Accessibility 权限、云盘数据与聊天/媒体不纳入仓库。
 - Hammerspoon app 与配置可以声明和链接，但 Accessibility 权限仍需在系统设置中人工授予。

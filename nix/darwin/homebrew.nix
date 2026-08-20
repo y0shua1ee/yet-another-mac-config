@@ -12,6 +12,8 @@
   #     账号态重的 GUI app（详见下方“刻意不纳入”小节）。
   #   - Ollama：替代独立 `llama.cpp`，由 Homebrew 提供运行时并常驻本机 API；
   #     模型、缓存与身份状态仍留在 `~/.ollama`，不进入仓库。
+  #   - CLIProxyAPI：提供仅限本机使用的 Codex OAuth 兼容 API；formula 由
+  #     Homebrew 管理，但认证、客户端密钥与服务启停保持本机显式操作。
   # =============================================================================
   #
   # 设计要点：
@@ -20,7 +22,7 @@
   #   - `brew services` 为 `nginx` 与 `ollama` 设置 `start_service = true`
   #     （只在服务未运行时启动，不会重启已运行服务）。`borders` 明确保持
   #     `start_service = false`，避免 switch 时启动或注册为登录项。
-  #     colima / clouddrive2 / unbound 仍走人工 `brew services` 流程。
+  #     cliproxyapi / colima / clouddrive2 / unbound 仍走人工 `brew services` 流程。
   #   - 仍未纳入的字体：`font-hack-nerd-font`（本机当前虽已安装，但未被仓库配置引用）。
   #     本轮字体只补 Ghostty 明确依赖的一项，避免“能配就都配”。
   #
@@ -130,13 +132,17 @@
       #     不会启动或登记登录项；按需使用 `brew services run borders` 临时运行。
       #   - `ollama` 使用 `start_service = true`：提供 `ollama run` 依赖的本机服务；
       #     默认只监听 127.0.0.1:11434，模型与运行状态保留在 ~/.ollama。
+      #   - `cliproxyapi` 使用 `start_service = false`：先由用户创建仅监听
+      #     127.0.0.1 的本机配置并完成 Codex OAuth，再显式启动服务，避免初始
+      #     配置意外绑定所有网络接口；认证与客户端密钥不进入仓库。
       #   - 将 `start_service` 改为 false 不会停止已经登记的服务；旧机器需执行一次
       #     `brew services stop borders`，同时停止进程并注销登录项。
       #   - 刻意未使用 `restart_service`：任何 `darwin-rebuild switch` 都不应
       #     重启这些长期运行的服务；仍沿用现有 `brew services restart <name>` 人工流程。
-      #   - colima / clouddrive2 / unbound 继续按 README 中的人工
+      #   - cliproxyapi / colima / clouddrive2 / unbound 继续按 README 中的人工
       #     `brew services` 流程管理。
       { name = "borders"; start_service = false; }  # JankyBorders 窗口边框（按需运行；配置：.config/borders）
+      { name = "cliproxyapi"; start_service = false; } # Codex OAuth 本机兼容 API（配置与认证仅保留在本机）
       { name = "nginx"; start_service = true; }     # 本地 HTTP 服务器（配置路径：/opt/homebrew/etc/nginx/）
       { name = "ollama"; start_service = true; }    # 本地 LLM 服务（默认仅监听 127.0.0.1:11434）
     ];

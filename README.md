@@ -135,6 +135,7 @@ Compose 使用本机 `.env` 注入下载目录、Google Drive 和 qBittorrent �
 | 服务 | 说明 | 开机自启 |
 |------|------|----------|
 | borders | JankyBorders 窗口边框 | 否 |
+| cliproxyapi | Codex OAuth 本机兼容 API（仅监听 `127.0.0.1:8317`） | 手动启用 |
 | nginx | HTTP 服务器（默认端口 8080） | 是 |
 | ollama | 本地 LLM 服务（默认仅监听 `127.0.0.1:11434`） | 是 |
 | clouddrive2 | CloudDrive2 云盘挂载 | 是 |
@@ -152,7 +153,18 @@ brew services restart <name>    # 重启服务
 ```
 
 > **注意：** nginx 的配置路径为 `/opt/homebrew/etc/nginx/`。
-> **注意：** 走 Nix 路线时，`nginx` 与 `ollama` 会在 switch 时由 nix-darwin 启动并登记登录项。`borders` 保持安装但不自启；需要时使用 `brew services run borders`，曾经启用过自启的机器需执行一次 `brew services stop borders`。其余服务继续按本节命令人工管理。详见 [`nix/README.md`](nix/README.md)。
+> **注意：** 走 Nix 路线时，`nginx` 与 `ollama` 会在 switch 时由 nix-darwin 启动并登记登录项。`borders` 与 `cliproxyapi` 保持安装但不自动启动；CLIProxyAPI 必须先建立仅监听本机的配置并完成 Codex OAuth，再显式执行 `brew services start cliproxyapi`。其余服务继续按本节命令人工管理。详见 [`nix/README.md`](nix/README.md)。
+
+## CLIProxyAPI
+
+CLIProxyAPI 由 `nix/darwin/homebrew.nix` 声明为 Homebrew formula，用于把个人 Codex OAuth 额度提供为仅限本机客户端访问的 OpenAI 兼容接口。上游 Homebrew 服务默认读取 `$(brew --prefix)/etc/cliproxyapi.conf`；本机配置必须至少满足：
+
+- `host: "127.0.0.1"`，不向局域网或公网暴露；
+- 使用随机生成的 `api-keys`，不保留上游示例密钥；
+- `remote-management.secret-key` 留空以禁用管理 API；
+- OAuth 文件、客户端密钥、日志与使用统计均保留在 `~/.cli-proxy-api/` 或 Homebrew 本机配置路径，不进入 Git。
+
+完成本机配置与 `cliproxyapi -codex-login` 后，再执行 `brew services start cliproxyapi`。客户端使用 `http://127.0.0.1:8317/v1` 作为 OpenAI Base URL，并填写本机配置中的客户端 API key。沉浸式翻译若要求完整 Chat Completions 地址，则使用 `http://127.0.0.1:8317/v1/chat/completions`。
 
 ## Ollama
 
@@ -186,6 +198,7 @@ ollama ps    # 当前载入内存的模型与处理器分配
 - `.config/mole/`：清理工具运行日志与本地运行状态。
 - `.config/raycast/`：Raycast 本地扩展与缓存数据。
 - `~/.ollama/`：Ollama 模型、缓存、身份文件与本地运行状态。
+- `~/.cli-proxy-api/`：CLIProxyAPI 的 Codex OAuth 文件、客户端密钥、日志与本地运行状态。
 - `.config/jgit/`：Jujutsu / Git 相关本地配置。
 - `.config/tmux/plugins`：TPM 安装、更新的可变插件树，实际位于 `~/.config/tmux/plugins`；仓库同名路径如存在，只是旧版兼容链接。
 - `.config/ghostty/*.bak`：Ghostty 配置备份文件。
