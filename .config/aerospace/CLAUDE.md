@@ -1,7 +1,7 @@
 # AeroSpace configuration guidance
 
 ## Structure
-- `aerospace.toml` is the single config file, read from `~/.config/aerospace/aerospace.toml` (symlinked from this repo via `setup_mac.sh`).
+- `aerospace.toml` is the single config file, read from `~/.config/aerospace/aerospace.toml` (linked from this repo by Home Manager via `nix/home/dotfiles.nix`).
 - Major sections: global flags、`persistent-workspaces` 常驻 workspace、`[[on-window-detected]]` 窗口规则、`[workspace-to-monitor-force-assignment]` 显示器映射、`[mode.main.binding]` 主快捷键、`[mode.*]` 其他绑定模式。
 
 ## Workflow

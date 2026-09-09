@@ -2,7 +2,7 @@
 
 ## 当前架构
 
-- 本仓库是 Mac 期望状态的事实源，不再把 Nix 描述为可选附加路线。
+- 本仓库是 Mac 期望状态的事实源，Determinate Nix + nix-darwin + Home Manager 是唯一主控制面。
 - Determinate Nix 负责 Nix 分发、daemon 与受支持的 `/etc/nix` 配置边界。
 - `inputs.determinate.darwinModules.default` + `determinateNix.enable = true` 负责与 nix-darwin 协调；不要重新启用 nix-darwin 的 Nix 管理，也不要同时写 `nix.enable = false` 复制同一职责。
 - nix-darwin 负责机器级组合、Homebrew inventory、少量稳定 defaults 和 Home Manager 激活。
@@ -43,7 +43,7 @@ nix/
 - `system.defaults` 只保留当前已验证的 Finder、Dock 与键盘小集合。
 - Home Manager zsh 继续使用 `programs.zsh.initContent`，并显式用 `programs.zsh.dotDir = config.home.homeDirectory` 锁定 `~/.zshrc`；`~/.zshrc.local` 必须保留为私密/机器相关入口。
 - `mise activate zsh` 保持在 `~/.zshrc.local` 之后。Node / Go fallback 由仓库 `.config/mise/config.toml` 声明，runtime payload 由 mise 管理。
-- 不要恢复针对 mise `2026.6.11` 的 `doCheck = false` overlay；当前 nixpkgs 已升级到 mise `2026.7.5`，应优先使用上游可缓存 derivation。
+- 不要为 mise 添加 `doCheck = false` 之类的 overlay；优先使用 nixpkgs 上游可缓存的 derivation。
 - `home.stateVersion = "24.11"` 是兼容边界，不随 input 更新。
 - Hammerspoon Accessibility、其他 TCC 权限、账号登录态与 secrets 仍需人工处理。
 - `/etc/nix/nix.custom.conf` 的 `knownSha256Hashes` 只能列入已审核的 Determinate Installer 空模板；真实自定义设置必须经 `determinateNix.customSettings` 声明，禁止用扩大哈希白名单绕过评审。
@@ -53,7 +53,7 @@ nix/
 1. 修改前读官方 Determinate Nix、nix-darwin、Home Manager 或相关 app 文档。
 2. 做小而聚焦的变更；系统层、Homebrew、dotfile 接管最好分别评审。
 3. 同步根 `README.md`、本文件和需要的上层说明。
-4. 不触碰根目录现有的用户 `CLAUDE.md` dirty change，也不暂存 `.ai/` 或本机私密状态。
+4. 不暂存 `.ai/` 或本机私密状态。
 5. 精确 stage 文件；禁止 `git add .` / `git add -A`。
 6. 提交前检查 diff、运行凭据/隐私扫描并创建英文原子 commit；不自动 push。
 

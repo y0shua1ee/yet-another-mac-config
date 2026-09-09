@@ -2,7 +2,7 @@
 
 ## Scope
 
-This directory is the source of truth for `~/.config/ghostty` on Yoshua's Mac. The live path is expected to be symlinked into this repo by `setup_mac.sh`.
+This directory is the source of truth for `~/.config/ghostty` on Yoshua's Mac. The live path is linked into this repo by Home Manager via `nix/home/dotfiles.nix`.
 
 Tracked files:
 
@@ -20,9 +20,9 @@ Before changing `config`, verify the live file and repo file are the same target
 
 ```bash
 python3 - <<'PY'
-import os
+import os, subprocess
 live = os.path.expanduser('~/.config/ghostty/config')
-repo = '/Users/areslee/Documents/dev/config/yet-another-mac-config/.config/ghostty/config'
+repo = os.path.join(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], text=True).strip(), '.config/ghostty/config')
 print(os.path.exists(live), os.path.exists(repo), os.path.samefile(live, repo))
 PY
 ```
